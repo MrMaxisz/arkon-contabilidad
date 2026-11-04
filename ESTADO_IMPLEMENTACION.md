@@ -1,6 +1,18 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la octava revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la novena revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la novena revisión (sobre el commit c6a296e) — aplicadas y probadas
+
+- **[P2] Migración v7 `iva_credito_backfill`**: rellena `iva_credito_minor` de compras anteriores desde el asiento original vinculado (líneas en la cuenta 1203), sin usar la política global actual; cubre documentos anulados (su asiento original conserva el tratamiento inicial; el reverso no se suma). Las migraciones v6/v5 quedan inmutables en el historial. Prueba de regresión v5→v7: compras con crédito y al costo y compra anulada conservan importes, tratamiento y conciliación al migrar.
+- **[P2] Formulario de anticipos**: el modo «Aplicar anticipo existente» ofrece selección explícita entre anticipo de cliente (a una venta) y a proveedor (a una compra); contrapartes, documentos y payload se derivan coherentemente del tipo elegido y las selecciones incompatibles se limpian al cambiar tipo o contraparte. En modo anticipo solo se piden los datos necesarios (documento, monto, fecha, responsable) y se muestra el saldo disponible de la contraparte.
+- **[P2] Selección única**: la aplicación de anticipo presenta una selección única de documento (no captura múltiple silenciosa); el resto de modos conserva la captura por documento con acumulación validada en el servicio.
+
+Evidencia por nivel de verificación (entorno Linux):
+- **Servicios**: `npm test` → **72/72 en verde** (11 archivos), incluida la regresión v5→v7 del crédito fiscal.
+- **Tipos**: ambas comprobaciones (`tsconfig.node.json` y `tsconfig.renderer.json`) sin errores.
+- **Compilación**: `tsc` del proceso principal y `vite build` correctos.
+- **Componentes**: la lógica del formulario de anticipos se verificó por contratos y tipos; **falta el recorrido gráfico del ejecutable Electron en Windows**, que no se declara completado.
 
 ## Correcciones de la octava revisión (sobre el commit 8ddd406) — aplicadas y probadas
 

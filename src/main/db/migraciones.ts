@@ -393,5 +393,18 @@ CREATE TABLE aplicacion_anticipo (
     sql: `
 ALTER TABLE compra ADD COLUMN iva_credito_minor INTEGER NOT NULL DEFAULT 0;
 `
+  },
+  {
+    version: 7,
+    nombre: 'iva_credito_backfill',
+    sql: `
+UPDATE compra SET iva_credito_minor = (
+  SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0)
+  FROM asiento_linea l
+  JOIN cuenta c ON c.id = l.cuenta_id
+  WHERE l.asiento_id = compra.asiento_id AND c.codigo = '1203'
+)
+WHERE iva_credito_minor = 0;
+`
   }
 ];
