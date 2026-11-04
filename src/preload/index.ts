@@ -46,7 +46,9 @@ const COMANDOS_PERMITIDOS = new Set([
   'retencion:listar',
   'anticipo:saldo',
   'anticipo:aplicar',
-  'anticipo:anular'
+  'anticipo:anular',
+  'fiscal:exportarCsv',
+  'fiscal:politicas'
 ]);
 
 contextBridge.exposeInMainWorld('arkon', {

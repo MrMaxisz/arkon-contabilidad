@@ -186,6 +186,8 @@ export function registrarCompra(
     concepto: string;
     condicion: 'contado' | 'credito';
     lineas: LineaCompraEntrada[];
+    clasificacionDocumento?: ClasificacionDocumento;
+    tipoDocumento?: TipoDocumento;
     claveIdempotencia: string;
     responsable: string;
   }
@@ -250,8 +252,9 @@ export function registrarCompra(
     const info = db
       .prepare(
         `INSERT INTO compra (folio, contraparte_id, proyecto_id, fecha_operacion, concepto, condicion,
-          base_minor, iva_minor, iva_credito_minor, total_minor, asiento_id, clave_idempotencia, responsable)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          base_minor, iva_minor, iva_credito_minor, total_minor, asiento_id, clave_idempotencia, responsable,
+          clasificacion_documento, tipo_documento)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         folio,
@@ -266,7 +269,9 @@ export function registrarCompra(
         total,
         asiento.asientoId,
         entrada.claveIdempotencia,
-        entrada.responsable.trim()
+        entrada.responsable.trim(),
+        entrada.clasificacionDocumento ?? null,
+        entrada.tipoDocumento ?? null
       );
     const compraId = Number(info.lastInsertRowid);
     const insertarLinea = db.prepare(
@@ -293,6 +298,9 @@ export function registrarCompra(
   return tx();
 }
 
+export type ClasificacionDocumento = 'contribuyente' | 'consumidor_final' | 'otro';
+export type TipoDocumento = 'factura' | 'ccf' | 'recibo' | 'otro';
+
 export function registrarVenta(
   db: Database.Database,
   entrada: {
@@ -303,6 +311,8 @@ export function registrarVenta(
     tipoIngreso: 'instalaciones' | 'oym';
     base: string;
     tasa: string;
+    clasificacionDocumento?: ClasificacionDocumento;
+    tipoDocumento?: TipoDocumento;
     claveIdempotencia: string;
     responsable: string;
   }
@@ -364,8 +374,9 @@ export function registrarVenta(
     const info = db
       .prepare(
         `INSERT INTO venta (folio, contraparte_id, proyecto_id, fecha_operacion, concepto, tipo_ingreso,
-          base_minor, iva_minor, total_minor, asiento_id, clave_idempotencia, responsable)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          base_minor, iva_minor, total_minor, asiento_id, clave_idempotencia, responsable,
+          clasificacion_documento, tipo_documento)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         folio,
@@ -379,7 +390,9 @@ export function registrarVenta(
         total,
         asiento.asientoId,
         entrada.claveIdempotencia,
-        entrada.responsable.trim()
+        entrada.responsable.trim(),
+        entrada.clasificacionDocumento ?? null,
+        entrada.tipoDocumento ?? null
       );
     const ventaId = Number(info.lastInsertRowid);
     registroEvento(db, entrada.responsable, 'venta_registrada', 'venta', String(ventaId), { folio, total: minorATexto(total) });

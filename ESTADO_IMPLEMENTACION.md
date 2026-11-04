@@ -1,6 +1,15 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la undécima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la duodécima revisión del PR #1, sin hallazgos; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Avance del hito fiscal tras la duodécima revisión (sin hallazgos) — aplicado y probado
+
+- **Migración v8 `clasificacion_documental`**: `venta` y `compra` admiten clasificación tributaria del receptor/emisor (contribuyente, consumidor final, otro) y tipo documental (factura, crédito fiscal, recibo, otro); política `anticipo_hecho_generador` en configuración, **'pendiente' por defecto** (sin efecto fiscal automático en anticipos hasta la decisión del contador).
+- **Exportación interna de trabajo** (`generarCsvLibro`): CSV por mes y libro con importes monetarios exactos; **bloquea documentos sin clasificación** enumerando sus folios; declara versión (`interna-v1`) y advertencia explícita de que **no constituye el formato oficial** de F-07/F-14 ni se declara compatible sin verificación contra la plantilla vigente del Ministerio de Hacienda. Vista Impuestos: botones de exportación, políticas visibles (hecho generador pendiente, crédito fiscal inactivo) y advertencia en pantalla.
+- **Clasificación en captura**: las vistas Ventas y Compras incluyen clasificación del receptor/emisor y tipo documental (opcional en captura; obligatorio para exportar).
+- Regresiones: política pendiente por defecto; exportación bloquea sin clasificar (folio enumerado); exportación correcta con clasificación y contenido exacto; meses sin documentos exportan solo encabezado.
+
+Evidencia por nivel (Linux): **Servicios y componentes**: `npm test` → **80/80 en verde** (13 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Corrección de la undécima revisión (sobre el commit 994467d) — aplicada y probada
 

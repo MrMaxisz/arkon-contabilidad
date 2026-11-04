@@ -1,4 +1,9 @@
-# MODELO DE DATOS (esquema v5)
+# MODELO DE DATOS (esquema v8)
+
+## Migraciones v6–v8 (resumen)
+
+- **v6/v7**: `compra.iva_credito_minor` fija el IVA acreditable según la política vigente al registrar cada compra; v7 lo rellena para compras anteriores desde su asiento original (cuenta 1203), incluidas anuladas.
+- **v8 `clasificacion_documental`**: `venta`/`compra` con `clasificacion_documento` (contribuyente, consumidor final, otro) y `tipo_documento` (factura, crédito fiscal, recibo, otro); política `anticipo_hecho_generador` ('pendiente' por defecto). La exportación interna de trabajo bloquea documentos sin clasificar y no se declara compatible con formato oficial alguno.
 
 ## Migración v5 (`adaptacion_fiscal`)
 

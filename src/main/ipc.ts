@@ -5,13 +5,15 @@ import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros'
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { manejarRestauracion, type ContextoApp } from './servicios/restauracion';
 import { listarEventos } from './servicios/bitacora';
-import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento } from './servicios/operacion';
+import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 import {
   crearVigencia,
   cerrarVigencia,
   listarVigencias,
+  generarCsvLibro,
+  politicaAnticipoHechoGenerador,
   libroVentas,
   libroCompras,
   conciliarIva,
@@ -188,6 +190,12 @@ const comandos: Record<string, Manejador> = {
       concepto: texto(p, 'concepto'),
       condicion: p.condicion === 'contado' ? 'contado' : 'credito',
       lineas: p.lineas as never,
+      clasificacionDocumento: ['contribuyente', 'consumidor_final', 'otro'].includes(String(p.clasificacionDocumento))
+        ? (p.clasificacionDocumento as 'contribuyente' | 'consumidor_final' | 'otro')
+        : undefined,
+      tipoDocumento: ['factura', 'ccf', 'recibo', 'otro'].includes(String(p.tipoDocumento))
+        ? (p.tipoDocumento as 'factura' | 'ccf' | 'recibo' | 'otro')
+        : undefined,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
     });
@@ -195,6 +203,12 @@ const comandos: Record<string, Manejador> = {
   'compra:listar': ctx => listarCompras(ctx.db),
   'venta:registrar': (ctx, payload) => {
     const p = objeto(payload);
+    const clasificacion = ['contribuyente', 'consumidor_final', 'otro'].includes(String(p.clasificacionDocumento))
+      ? (p.clasificacionDocumento as 'contribuyente' | 'consumidor_final' | 'otro')
+      : undefined;
+    const tipoDocumento = ['factura', 'ccf', 'recibo', 'otro'].includes(String(p.tipoDocumento))
+      ? (p.tipoDocumento as 'factura' | 'ccf' | 'recibo' | 'otro')
+      : undefined;
     return registrarVenta(ctx.db, {
       contraparteId: entero(p, 'contraparteId'),
       proyectoId: typeof p.proyectoId === 'number' ? p.proyectoId : undefined,
@@ -203,6 +217,8 @@ const comandos: Record<string, Manejador> = {
       tipoIngreso: p.tipoIngreso === 'oym' ? 'oym' : 'instalaciones',
       base: texto(p, 'base'),
       tasa: typeof p.tasa === 'string' ? p.tasa : '0',
+      clasificacionDocumento: clasificacion,
+      tipoDocumento,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
     });
@@ -330,7 +346,16 @@ const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     anularAplicacionAnticipo(ctx.db, entero(p, 'id'), texto(p, 'responsable'), texto(p, 'motivo'));
     return { ok: true };
-  }
+  },
+  'fiscal:exportarCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    return generarCsvLibro(ctx.db, texto(p, 'tipo') === 'compra' ? 'compra' : 'venta', texto(p, 'mes'));
+  },
+  'fiscal:politicas': ctx => ({
+    anticipoHechoGenerador: politicaAnticipoHechoGenerador(ctx.db),
+    ivaComprasCreditoFiscal: ivaComprasCreditoFiscal(ctx.db),
+    perfilIvaInscritoConfig: perfilIvaInscrito(ctx.db)
+  })
 };
 
 export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): void {

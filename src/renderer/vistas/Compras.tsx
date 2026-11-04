@@ -32,6 +32,8 @@ export default function Compras() {
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [concepto, setConcepto] = useState('');
   const [condicion, setCondicion] = useState<'credito' | 'contado'>('credito');
+  const [clasificacion, setClasificacion] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState('');
   const [responsable, setResponsable] = useState('');
   const [lineas, setLineas] = useState<LineaForm[]>([
     { descripcion: '', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '', tasa: '13', tratamiento: 'gravado', precioConIva: true }
@@ -65,6 +67,8 @@ export default function Compras() {
         fechaOperacion: fecha,
         concepto,
         condicion,
+        clasificacionDocumento: clasificacion || undefined,
+        tipoDocumento: tipoDocumento || undefined,
         lineas,
         claveIdempotencia: clave.current,
         responsable
@@ -122,6 +126,25 @@ export default function Compras() {
             </select>
           </label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
+        </div>
+        <div className="fila">
+          <label>Clasificación del emisor
+            <select value={clasificacion} onChange={e => setClasificacion(e.target.value)}>
+              <option value="">— Pendiente —</option>
+              <option value="contribuyente">Contribuyente</option>
+              <option value="consumidor_final">Consumidor final</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+          <label>Tipo de documento
+            <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
+              <option value="">— Pendiente —</option>
+              <option value="factura">Factura</option>
+              <option value="ccf">Crédito fiscal</option>
+              <option value="recibo">Recibo</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
         </div>
         {lineas.map((l, i) => (
           <div className="fila" key={i}>

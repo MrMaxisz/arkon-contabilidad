@@ -406,5 +406,19 @@ UPDATE compra SET iva_credito_minor = (
 )
 WHERE iva_credito_minor = 0;
 `
+  },
+  {
+    version: 8,
+    nombre: 'clasificacion_documental',
+    sql: `
+ALTER TABLE venta ADD COLUMN clasificacion_documento TEXT;
+ALTER TABLE venta ADD COLUMN tipo_documento TEXT;
+ALTER TABLE compra ADD COLUMN clasificacion_documento TEXT;
+ALTER TABLE compra ADD COLUMN tipo_documento TEXT;
+
+INSERT INTO configuracion (clave, valor, fuente, vigencia)
+SELECT 'anticipo_hecho_generador', 'pendiente', 'Política pendiente del contador responsable', NULL
+WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'anticipo_hecho_generador');
+`
   }
 ];

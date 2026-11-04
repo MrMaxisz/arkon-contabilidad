@@ -21,6 +21,8 @@ export default function Ventas() {
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [concepto, setConcepto] = useState('');
   const [tipoIngreso, setTipoIngreso] = useState<'instalaciones' | 'oym'>('instalaciones');
+  const [clasificacion, setClasificacion] = useState('');
+  const [tipoDocumento, setTipoDocumento] = useState('');
   const [base, setBase] = useState('');
   const [tasa, setTasa] = useState('0');
   const [responsable, setResponsable] = useState('');
@@ -52,6 +54,8 @@ export default function Ventas() {
         fechaOperacion: fecha,
         concepto,
         tipoIngreso,
+        clasificacionDocumento: clasificacion || undefined,
+        tipoDocumento: tipoDocumento || undefined,
         base,
         tasa,
         claveIdempotencia: clave.current,
@@ -111,11 +115,31 @@ export default function Ventas() {
               <option value="oym">Operación y mantenimiento</option>
             </select>
           </label>
+          <label>Clasificación del receptor
+            <select value={clasificacion} onChange={e => setClasificacion(e.target.value)}>
+              <option value="">— Pendiente —</option>
+              <option value="contribuyente">Contribuyente</option>
+              <option value="consumidor_final">Consumidor final</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+          <label>Tipo de documento
+            <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)}>
+              <option value="">— Pendiente —</option>
+              <option value="factura">Factura</option>
+              <option value="ccf">Crédito fiscal</option>
+              <option value="recibo">Recibo</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
           <label>Base (sin IVA)<input value={base} onChange={e => setBase(e.target.value)} required placeholder="0.00" /></label>
           <label>Tasa IVA %<input value={tasa} onChange={e => setTasa(e.target.value)} /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
           <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar venta'}</button>
         </div>
+        <p className="menor">
+          La clasificación tributaria y el tipo documental son necesarios para la exportación de trabajo; los documentos sin clasificar bloquean la exportación. No se emiten documentos fiscales electrónicos.
+        </p>
         <p className="menor">
           Una cotización aprobada no es una venta: registre el reconocimiento cuando el servicio se presta.
           Sin inscripción de IVA vigente, la tasa debe ser 0.

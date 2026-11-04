@@ -526,3 +526,56 @@ export function anularAplicacionAnticipo(db: Database.Database, id: number, resp
   });
   tx();
 }
+
+export function politicaAnticipoHechoGenerador(db: Database.Database): string {
+  const fila = db
+    .prepare("SELECT valor FROM configuracion WHERE clave = 'anticipo_hecho_generador'")
+    .get() as { valor: string } | undefined;
+  return fila?.valor ?? 'pendiente';
+}
+
+export const VERSION_EXPORTACION_INTERNA = 'interna-v1';
+
+export const ADVERTENCIA_EXPORTACION =
+  'Exportación interna de trabajo. No constituye el formato oficial de ningún formulario o anexo (F-07, F-14 u otros) y no se declara compatible con ellos: requiere verificación contra la plantilla y el manual vigentes del Ministerio de Hacienda antes de cualquier uso tributario.';
+
+export function generarCsvLibro(
+  db: Database.Database,
+  tipo: 'venta' | 'compra',
+  mes: string
+): { csv: string; version: string; advertencia: string } {
+  const { inicio, fin } = mesRango(mes);
+  const tabla = tipo === 'venta' ? 'venta' : 'compra';
+  const filas = db
+    .prepare(
+      `SELECT folio, fecha_operacion, clasificacion_documento, tipo_documento, base_minor, iva_minor, total_minor
+       FROM ${tabla} WHERE fecha_operacion BETWEEN ? AND ? AND estado = 'registrada'
+       ORDER BY fecha_operacion, id`
+    )
+    .all(inicio, fin) as Array<{
+    folio: string;
+    fecha_operacion: string;
+    clasificacion_documento: string | null;
+    tipo_documento: string | null;
+    base_minor: number;
+    iva_minor: number;
+    total_minor: number;
+  }>;
+  const incompletos = filas.filter(f => !f.clasificacion_documento || !f.tipo_documento).map(f => f.folio);
+  if (incompletos.length > 0) {
+    throw new ErrorFiscal(
+      `Exportación bloqueada: documentos sin clasificación tributaria o tipo documental: ${incompletos.join(', ')}`
+    );
+  }
+  const lineas = ['folio,fecha,clasificacion,tipo_documento,base,iva,total'];
+  for (const f of filas) {
+    lineas.push(
+      `${f.folio},${f.fecha_operacion},${f.clasificacion_documento},${f.tipo_documento},${minorATexto(BigInt(f.base_minor))},${minorATexto(BigInt(f.iva_minor))},${minorATexto(BigInt(f.total_minor))}`
+    );
+  }
+  return {
+    csv: lineas.join('\n'),
+    version: VERSION_EXPORTACION_INTERNA,
+    advertencia: ADVERTENCIA_EXPORTACION
+  };
+}

@@ -73,6 +73,8 @@ export default function Impuestos() {
   const [conciliacion, setConciliacion] = useState<Conciliacion | null>(null);
   const [retenciones, setRetenciones] = useState<Retencion[]>([]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
+  const [politicas, setPoliticas] = useState<{ anticipoHechoGenerador: string; ivaComprasCreditoFiscal: boolean; perfilIvaInscritoConfig: boolean } | null>(null);
+  const [exportacion, setExportacion] = useState<{ csv: string; version: string; advertencia: string } | null>(null);
 
   const [desde, setDesde] = useState(fechaLocalElSalvador());
   const [hasta, setHasta] = useState('');
@@ -97,6 +99,7 @@ export default function Impuestos() {
     void api().invocar('vigencia:listar').then(r => setVigencias(r as Vigencia[]));
     void api().invocar('contraparte:listar').then(r => setContrapartes(r as ContraparteResumen[]));
     void api().invocar('retencion:listar').then(r => setRetenciones(r as Retencion[]));
+    void api().invocar('fiscal:politicas').then(r => setPoliticas(r as never));
   }, []);
 
   const cargarMes = useCallback(() => {
@@ -120,6 +123,17 @@ export default function Impuestos() {
       await api().invocar('vigencia:crear', { desde, hasta: hasta || undefined, inscritoIva, fuente, responsable });
       setMensaje({ texto: 'Vigencia registrada. No recalcula el historial ni atribuye operaciones anteriores.', tipo: 'ok' });
       cargar();
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function exportar(tipo: 'venta' | 'compra') {
+    setMensaje(null);
+    setExportacion(null);
+    try {
+      const r = (await api().invocar('fiscal:exportarCsv', { tipo, mes })) as { csv: string; version: string; advertencia: string };
+      setExportacion(r);
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
@@ -212,6 +226,12 @@ export default function Impuestos() {
         </table>
       )}
 
+      {politicas && (
+        <p className="menor">
+          Políticas: hecho generador de anticipos — {politicas.anticipoHechoGenerador === 'pendiente' ? 'PENDIENTE del contador responsable' : politicas.anticipoHechoGenerador};
+          IVA de compras a crédito fiscal — {politicas.ivaComprasCreditoFiscal ? 'activo' : 'inactivo'}.
+        </p>
+      )}
       <h2>Libros y conciliación de IVA</h2>
       <div className="fila">
         <label>Mes<input type="month" value={mes} onChange={e => setMes(e.target.value)} /></label>
@@ -246,6 +266,16 @@ export default function Impuestos() {
         </table>
       ) : (
         <p className="vacio">Sin ventas en el mes.</p>
+      )}
+      <div className="fila">
+        <button onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</button>
+        <button onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</button>
+      </div>
+      {exportacion && (
+        <div>
+          <p className="aviso">{exportacion.advertencia} (versión {exportacion.version})</p>
+          <pre>{exportacion.csv}</pre>
+        </div>
       )}
       <h3>Libro de compras — {libroC?.ivaMinor ?? '0.00'} de IVA</h3>
       {libroC && libroC.filas.length > 0 ? (
