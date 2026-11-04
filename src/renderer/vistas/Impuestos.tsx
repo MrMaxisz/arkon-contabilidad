@@ -41,6 +41,14 @@ interface Conciliacion {
   nota: string;
 }
 
+interface EstadoResultados {
+  mes: string;
+  filas: Array<{ codigo: string; nombre: string; tipo: string; importeMinor: string }>;
+  ingresosMinor: string;
+  costosGastosMinor: string;
+  resultadoMinor: string;
+}
+
 interface Retencion {
   id: number;
   folio: string;
@@ -75,6 +83,7 @@ export default function Impuestos() {
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [politicas, setPoliticas] = useState<{ anticipoHechoGenerador: string; ivaComprasCreditoFiscal: boolean; perfilIvaInscritoConfig: boolean } | null>(null);
   const [exportacion, setExportacion] = useState<{ mes: string; tipo: string; csv: string; version: string; advertencia: string } | null>(null);
+  const [estadoResultados, setEstadoResultados] = useState<EstadoResultados | null>(null);
   const exportacionId = useRef(0);
   const mesRef = useRef(mes);
   mesRef.current = mes;
@@ -109,6 +118,7 @@ export default function Impuestos() {
     void api().invocar('fiscal:libroVentas', { mes }).then(r => setLibroV(r as ResumenLibro));
     void api().invocar('fiscal:libroCompras', { mes }).then(r => setLibroC(r as ResumenLibro));
     void api().invocar('fiscal:conciliar', { mes }).then(r => setConciliacion(r as Conciliacion));
+    void api().invocar('reporte:estadoResultados', { mes }).then(r => setEstadoResultados(r as EstadoResultados));
   }, [mes]);
 
   useEffect(() => {
@@ -145,6 +155,20 @@ export default function Impuestos() {
       if (exportacionId.current !== id) {
         return;
       }
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function guardarArchivo(tipo: 'venta' | 'compra') {
+    setMensaje(null);
+    try {
+      const r = (await api().guardarCsv(tipo, mes)) as { guardado: boolean; ruta?: string; version: string; advertencia: string };
+      if (r.guardado && r.ruta) {
+        setMensaje({ texto: `Exportación interna (${r.version}) guardada en ${r.ruta}. ${r.advertencia}`, tipo: 'ok' });
+      } else {
+        setMensaje({ texto: 'Guardado cancelado por el usuario.', tipo: 'ok' });
+      }
+    } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
   }
@@ -280,6 +304,8 @@ export default function Impuestos() {
       <div className="fila">
         <button onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</button>
         <button onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</button>
+        <button onClick={() => void guardarArchivo('venta')}>Guardar libro de ventas en archivo…</button>
+        <button onClick={() => void guardarArchivo('compra')}>Guardar libro de compras en archivo…</button>
       </div>
       {exportacion && (
         <div>
@@ -306,6 +332,31 @@ export default function Impuestos() {
         </table>
       ) : (
         <p className="vacio">Sin compras en el mes.</p>
+      )}
+
+      <h2>Estado de resultados del mes</h2>
+      {estadoResultados && Array.isArray(estadoResultados.filas) && (
+        <>
+          <table>
+            <thead><tr><th>Cuenta</th><th>Tipo</th><th className="numero">Importe</th></tr></thead>
+            <tbody>
+              {estadoResultados.filas.map(f => (
+                <tr key={f.codigo}>
+                  <td>{f.codigo} · {f.nombre}</td>
+                  <td>{f.tipo}</td>
+                  <td className="numero">${f.importeMinor}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <table>
+            <tbody>
+              <tr><td>Ingresos</td><td className="numero">${estadoResultados.ingresosMinor}</td></tr>
+              <tr><td>Costos y gastos</td><td className="numero">${estadoResultados.costosGastosMinor}</td></tr>
+              <tr><td>Resultado del mes</td><td className="numero">${estadoResultados.resultadoMinor}</td></tr>
+            </tbody>
+          </table>
+        </>
       )}
 
       <form onSubmit={registrarRetencion}>

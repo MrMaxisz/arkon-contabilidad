@@ -5,6 +5,12 @@ import type { ProyectoResumen } from '../../shared/contratos';
 interface Contraparte { id: number; nombre: string }
 interface Cotizacion { id: number; numero: string; estado: string }
 
+interface Rentabilidad {
+  proyectos: Array<{ id: number; codigo: string; nombre: string; ingresoMinor: string; costoMinor: string; margenMinor: string }>;
+  provisional: boolean;
+  nota: string;
+}
+
 export default function Proyectos() {
   const [proyectos, setProyectos] = useState<ProyectoResumen[]>([]);
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
@@ -17,11 +23,13 @@ export default function Proyectos() {
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [rentabilidad, setRentabilidad] = useState<Rentabilidad | null>(null);
 
   const cargar = useCallback(() => {
     void api().invocar('proyecto:listar').then(r => setProyectos(r as ProyectoResumen[]));
     void api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[]));
     void api().invocar('cotizacion:listar').then(r => setCotizaciones((r as Cotizacion[]).filter(c => c.estado === 'aprobada')));
+    void api().invocar('reporte:rentabilidadProyectos').then(r => setRentabilidad(r as Rentabilidad));
   }, []);
 
   useEffect(() => {
@@ -102,7 +110,31 @@ export default function Proyectos() {
           </tbody>
         </table>
       )}
-      <p className="menor">La rentabilidad por proyecto llega con el hito de reportes; un costo desconocido nunca se trata como cero.</p>
+      <h2>Rentabilidad por proyecto</h2>
+      {rentabilidad && (
+        <>
+          {rentabilidad.provisional && <p className="aviso">{rentabilidad.nota}</p>}
+          {rentabilidad.proyectos.length === 0 ? (
+            <p className="vacio">Sin proyectos que reportar.</p>
+          ) : (
+            <table>
+              <thead><tr><th>Código</th><th>Nombre</th><th className="numero">Ingreso</th><th className="numero">Costo</th><th className="numero">Margen</th></tr></thead>
+              <tbody>
+                {rentabilidad.proyectos.map(r => (
+                  <tr key={r.id}>
+                    <td>{r.codigo}</td>
+                    <td>{r.nombre}</td>
+                    <td className="numero">${r.ingresoMinor}</td>
+                    <td className="numero">${r.costoMinor}</td>
+                    <td className="numero">${r.margenMinor}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+      <p className="menor">Un costo desconocido nunca se trata como cero: con compras sin proyecto asignado la rentabilidad se marca como provisional.</p>
     </div>
   );
 }

@@ -49,7 +49,9 @@ const COMANDOS_PERMITIDOS = new Set([
   'anticipo:aplicar',
   'anticipo:anular',
   'fiscal:exportarCsv',
-  'fiscal:politicas'
+  'fiscal:politicas',
+  'reporte:estadoResultados',
+  'reporte:rentabilidadProyectos'
 ]);
 
 contextBridge.exposeInMainWorld('arkon', {
@@ -58,5 +60,11 @@ contextBridge.exposeInMainWorld('arkon', {
       return Promise.reject(new Error(`Comando no permitido: ${comando}`));
     }
     return ipcRenderer.invoke('arkon', { comando, datos });
+  },
+  guardarCsv(tipo: 'venta' | 'compra', mes: string): Promise<unknown> {
+    if (tipo !== 'venta' && tipo !== 'compra') {
+      return Promise.reject(new Error('Tipo de libro inválido'));
+    }
+    return ipcRenderer.invoke('arkon:guardarCsv', { tipo, mes });
   }
 });

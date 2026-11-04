@@ -1,6 +1,15 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimosexta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimoséptima revisión del PR #1, sin hallazgos; hito 5 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Avance tras la decimoséptima revisión (sin hallazgos) — aplicado y probado
+
+- **Guardado del CSV como archivo** (pendiente explícito resuelto): canal `arkon:guardarCsv` con diálogo de guardado nativo (`dialog.showSaveDialog`) que valida remitente, genera la exportación interna, escribe el archivo `.csv` y registra el evento en bitácora; el preload expone `guardarCsv(tipo, mes)` y la vista Impuestos ofrece «Guardar libro de ventas/compras en archivo…». El servicio de escritura (`guardarCsvArchivo`) exige extensión `.csv` y se prueba con fs real. La cancelación del diálogo no escribe nada.
+- **Estado de resultados mensual** (hito 5): `estadoResultados(db, mes)` explica el resultado desde el mayor (ingresos, costos y gastos por cuenta del mes, con totales); se muestra en la vista Impuestos junto a la conciliación. Prueba: ingresos 300.00, costos 80.00, resultado 220.00 con tres cuentas; mes sin movimientos en cero.
+- **Rentabilidad por proyecto** (hito 5): `rentabilidadProyectos` con ingreso, costo y margen por proyecto (ventas y compras registradas vinculadas); **provisional** cuando existen compras sin proyecto asignado — el costo desconocido nunca se trata como cero. Se muestra en la vista Proyectos con la nota visible. Prueba incluida.
+- Corregido durante el avance: la vista Impuestos protege el render del estado de resultados ante respuestas malformadas.
+
+Evidencia por nivel (Linux): **Servicios, contrato IPC y componentes**: `npm test` → **102/102 en verde** (20 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** — incluido el diálogo nativo de guardado, que requiere ese recorrido.
 
 ## Corrección de la decimosexta revisión (sobre el commit d1f33ed) — aplicada y probada
 

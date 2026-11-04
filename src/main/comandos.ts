@@ -21,7 +21,9 @@ import {
   listarRetenciones,
   saldoAnticipo,
   aplicarAnticipo,
-  anularAplicacionAnticipo
+  anularAplicacionAnticipo,
+  estadoResultados,
+  rentabilidadProyectos
 } from './servicios/fiscal';
 import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
@@ -389,6 +391,11 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     return generarCsvLibro(ctx.db, texto(p, 'tipo') === 'compra' ? 'compra' : 'venta', texto(p, 'mes'));
   },
+  'reporte:estadoResultados': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoResultados(ctx.db, texto(p, 'mes'));
+  },
+  'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
   'fiscal:politicas': ctx => ({
     anticipoHechoGenerador: politicaAnticipoHechoGenerador(ctx.db),
     ivaComprasCreditoFiscal: ivaComprasCreditoFiscal(ctx.db),

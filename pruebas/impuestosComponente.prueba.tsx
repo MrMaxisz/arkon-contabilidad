@@ -27,6 +27,14 @@ function baseMockResolve(comando: string, datos?: unknown): Promise<unknown> {
       return Promise.resolve({ filas: [], baseMinor: '0.00', ivaMinor: '0.00', totalMinor: '0.00' });
     case 'fiscal:libroCompras':
       return Promise.resolve({ filas: [], baseMinor: '0.00', ivaMinor: '0.00', totalMinor: '0.00' });
+    case 'reporte:estadoResultados':
+      return Promise.resolve({
+        mes: '2026-10',
+        filas: [],
+        ingresosMinor: '0.00',
+        costosGastosMinor: '0.00',
+        resultadoMinor: '0.00'
+      });
     case 'fiscal:conciliar':
       return Promise.resolve({
         mes: '2026-10',

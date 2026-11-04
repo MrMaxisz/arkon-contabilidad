@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import fs from 'fs';
 import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
@@ -577,5 +578,120 @@ export function generarCsvLibro(
     csv: lineas.join('\n'),
     version: VERSION_EXPORTACION_INTERNA,
     advertencia: ADVERTENCIA_EXPORTACION
+  };
+}
+
+export function guardarCsvArchivo(ruta: string, contenido: string): void {
+  if (!ruta.endsWith('.csv')) {
+    throw new ErrorFiscal('El archivo de exportación interna debe terminar en .csv');
+  }
+  fs.writeFileSync(ruta, `${contenido}\n`, 'utf8');
+}
+
+export interface FilaEstadoResultados {
+  codigo: string;
+  nombre: string;
+  tipo: string;
+  importeMinor: string;
+}
+
+export interface EstadoResultados {
+  mes: string;
+  filas: FilaEstadoResultados[];
+  ingresosMinor: string;
+  costosGastosMinor: string;
+  resultadoMinor: string;
+}
+
+export function estadoResultados(db: Database.Database, mes: string): EstadoResultados {
+  const { inicio, fin } = mesRango(mes);
+  const filas = db
+    .prepare(
+      `SELECT c.codigo, c.nombre, c.tipo,
+              COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+       FROM cuenta c
+       JOIN asiento_linea l ON l.cuenta_id = c.id
+       JOIN asiento a ON a.id = l.asiento_id
+       WHERE c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+         AND a.fecha_operacion BETWEEN ? AND ?
+         AND a.estado IN ('contabilizado','anulado')
+       GROUP BY c.id
+       ORDER BY c.codigo`
+    )
+    .all(inicio, fin) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>;
+  let ingresos = 0n;
+  let costosGastos = 0n;
+  const mapeadas = filas.map(f => {
+    const saldo = BigInt(f.saldo);
+    const esIngreso = f.tipo === 'ingreso';
+    const importe = esIngreso ? -saldo : saldo;
+    if (esIngreso) {
+      ingresos += importe;
+    } else {
+      costosGastos += importe;
+    }
+    return {
+      codigo: f.codigo,
+      nombre: f.nombre,
+      tipo: f.tipo,
+      importeMinor: minorATexto(importe)
+    };
+  });
+  return {
+    mes,
+    filas: mapeadas,
+    ingresosMinor: minorATexto(ingresos),
+    costosGastosMinor: minorATexto(costosGastos),
+    resultadoMinor: minorATexto(ingresos - costosGastos)
+  };
+}
+
+export interface RentabilidadProyecto {
+  id: number;
+  codigo: string;
+  nombre: string;
+  ingresoMinor: string;
+  costoMinor: string;
+  margenMinor: string;
+}
+
+export function rentabilidadProyectos(
+  db: Database.Database
+): { proyectos: RentabilidadProyecto[]; provisional: boolean; nota: string } {
+  const proyectos = db
+    .prepare('SELECT id, codigo, nombre FROM proyecto ORDER BY codigo')
+    .all() as Array<{ id: number; codigo: string; nombre: string }>;
+  const lista = proyectos.map(p => {
+    const ingreso = (
+      db
+        .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM venta WHERE proyecto_id = ? AND estado = 'registrada'")
+        .get(p.id) as { t: number }
+    ).t;
+    const costo = (
+      db
+        .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM compra WHERE proyecto_id = ? AND estado = 'registrada'")
+        .get(p.id) as { t: number }
+    ).t;
+    return {
+      id: p.id,
+      codigo: p.codigo,
+      nombre: p.nombre,
+      ingresoMinor: minorATexto(BigInt(ingreso)),
+      costoMinor: minorATexto(BigInt(costo)),
+      margenMinor: minorATexto(BigInt(ingreso) - BigInt(costo))
+    };
+  });
+  const comprasSinProyecto = (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM compra WHERE proyecto_id IS NULL AND estado = 'registrada'")
+      .get() as { n: number }
+  ).n;
+  return {
+    proyectos: lista,
+    provisional: comprasSinProyecto > 0,
+    nota:
+      comprasSinProyecto > 0
+        ? 'Hay compras registradas sin proyecto asignado: ningún costo se inventa como cero, por lo que la rentabilidad mostrada es provisional.'
+        : 'Todas las compras registradas están asignadas a un proyecto.'
   };
 }
