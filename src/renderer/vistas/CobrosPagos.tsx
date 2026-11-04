@@ -41,7 +41,10 @@ export default function CobrosPagos() {
     cargar();
   }, [cargar]);
 
-  const documentos = modo === 'cobro' ? ventas : compras;
+  const contraparteSeleccionada = contrapartes.find(c => c.id === contraparteId);
+  const documentosFiltrados = (modo === 'cobro' ? ventas : compras).filter(
+    d => contraparteSeleccionada && d.contraparteNombre === contraparteSeleccionada.nombre
+  );
 
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
@@ -94,7 +97,7 @@ export default function CobrosPagos() {
             </select>
           </label>
           <label>Contraparte
-            <select value={contraparteId} onChange={e => setContraparteId(Number(e.target.value))} required>
+            <select value={contraparteId} onChange={e => { setContraparteId(Number(e.target.value)); setAplicaciones([]); }} required>
               <option value={0}>— Seleccione —</option>
               {contrapartes
                 .filter(c => (modo === 'cobro' ? c.esCliente : c.esProveedor))
@@ -113,10 +116,10 @@ export default function CobrosPagos() {
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
         <h3>Aplicación a documentos (opcional; el excedente queda como anticipo)</h3>
-        {documentos.length === 0 ? (
-          <p className="menor">Sin documentos pendientes de {modo === 'cobro' ? 'cobro' : 'pago'}.</p>
+        {documentosFiltrados.length === 0 ? (
+          <p className="menor">Sin documentos pendientes de {modo === 'cobro' ? 'cobro' : 'pago'} para la contraparte seleccionada.</p>
         ) : (
-          documentos.map(d => (
+          documentosFiltrados.map(d => (
             <div className="fila" key={d.id}>
               <label style={{ flex: 2 }}>
                 {d.folio} · {d.concepto} (saldo ${d.saldoMinor})

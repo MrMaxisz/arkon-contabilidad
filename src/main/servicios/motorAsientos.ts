@@ -188,11 +188,14 @@ export function contabilizarAsiento(
   return ejecutar();
 }
 
+const ORIGENES_ADMINISTRADOS = new Set(['venta', 'compra', 'cobro', 'pago', 'transferencia']);
+
 export function anularAsiento(
   db: Database.Database,
   asientoId: number,
   responsable: string,
-  motivo: string
+  motivo: string,
+  rutaAutorizada = false
 ): ResultadoContabilizacion {
   if (!motivo?.trim()) {
     throw new ErrorContable('La anulación requiere motivo');
@@ -209,10 +212,16 @@ export function anularAsiento(
         concepto: string;
         estado: string;
         reverso_de_id: number | null;
+        origen_tipo: string | null;
       }
     | undefined;
   if (!original) {
     throw new ErrorContable(`No existe el asiento ${asientoId}`);
+  }
+  if (!rutaAutorizada && original.origen_tipo && ORIGENES_ADMINISTRADOS.has(original.origen_tipo)) {
+    throw new ErrorContable(
+      `El asiento ${original.folio} pertenece a un documento de ${original.origen_tipo}; anúlelo desde su vista para conservar la conciliación`
+    );
   }
   if (original.reverso_de_id) {
     throw new ErrorContable(`Un reverso no se anula: ${original.folio}`);

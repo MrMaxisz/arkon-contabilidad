@@ -6,7 +6,7 @@ import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { manejarRestauracion, type ContextoApp } from './servicios/restauracion';
 import { listarEventos } from './servicios/bitacora';
 import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento } from './servicios/operacion';
-import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion } from './servicios/cotizaciones';
+import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
@@ -136,6 +136,15 @@ const comandos: Record<string, Manejador> = {
   'cotizacion:anular': (ctx, payload) => {
     const p = objeto(payload);
     anularCotizacion(ctx.db, entero(p, 'cotizacionId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
+  'cotizacion:guardar': (ctx, payload) => {
+    const p = objeto(payload);
+    actualizarCotizacionBorrador(ctx.db, entero(p, 'cotizacionId'), {
+      condiciones: typeof p.condiciones === 'string' ? p.condiciones : undefined,
+      lineas: p.lineas as never,
+      responsable: texto(p, 'responsable')
+    });
     return { ok: true };
   },
   'cotizacion:listar': ctx => listarCotizaciones(ctx.db),

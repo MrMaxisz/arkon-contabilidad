@@ -44,6 +44,7 @@ export default function Cotizaciones() {
   ]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const [anulando, setAnulando] = useState<Cotizacion | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
   const clave = useRef(nuevaClave());
@@ -69,14 +70,25 @@ export default function Cotizaciones() {
     setOcupado(true);
     setMensaje(null);
     try {
-      const r = (await api().invocar('cotizacion:crear', {
-        contraparteId,
-        fecha,
-        condiciones,
-        responsable,
-        lineas
-      })) as { numero: string };
-      setMensaje({ texto: `Cotización ${r.numero} creada. No genera ingresos ni cuentas por cobrar por sí sola.`, tipo: 'ok' });
+      if (editandoId) {
+        await api().invocar('cotizacion:guardar', {
+          cotizacionId: editandoId,
+          condiciones,
+          responsable,
+          lineas
+        });
+        setMensaje({ texto: 'Borrador actualizado; el historial de versiones previas se conserva.', tipo: 'ok' });
+        setEditandoId(null);
+      } else {
+        const r = (await api().invocar('cotizacion:crear', {
+          contraparteId,
+          fecha,
+          condiciones,
+          responsable,
+          lineas
+        })) as { numero: string };
+        setMensaje({ texto: `Cotización ${r.numero} creada. No genera ingresos ni cuentas por cobrar por sí sola.`, tipo: 'ok' });
+      }
       setLineas([{ tipo: 'servicio', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }]);
       clave.current = nuevaClave();
       cargar();
@@ -84,6 +96,33 @@ export default function Cotizaciones() {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
       setOcupado(false);
+    }
+  }
+
+  async function editar(c: Cotizacion) {
+    setEditandoId(c.id);
+    setMensaje(null);
+    try {
+      const lineasGuardadas = (await api().invocar('cotizacion:lineas', { cotizacionId: c.id })) as Array<{
+        tipo: string;
+        descripcion: string;
+        cantidad: string;
+        precioUnitarioMinor: string;
+        precioConIva: boolean;
+        tasaPuntosBase: number;
+      }>;
+      setLineas(
+        lineasGuardadas.map(l => ({
+          tipo: l.tipo as LineaForm['tipo'],
+          descripcion: l.descripcion,
+          cantidad: l.cantidad,
+          precioUnitario: l.precioUnitarioMinor,
+          precioConIva: l.precioConIva,
+          tasa: String(l.tasaPuntosBase / 100)
+        }))
+      );
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
   }
 
@@ -106,7 +145,7 @@ export default function Cotizaciones() {
       <h1>Cotizaciones</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={crear}>
-        <h2>Nueva cotización</h2>
+        <h2>{editandoId ? 'Editar borrador de cotización' : 'Nueva cotización'}</h2>
         <div className="fila">
           <label>Cliente
             <select value={contraparteId} onChange={e => setContraparteId(Number(e.target.value))} required>
@@ -159,7 +198,13 @@ export default function Cotizaciones() {
         ))}
         <div className="fila">
           <button type="button" onClick={() => setLineas([...lineas, { tipo: 'material', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }])}>Agregar línea</button>
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Creando…' : 'Crear cotización'}</button>
+          {editandoId && (
+            <button type="button" onClick={() => {
+              setEditandoId(null);
+              setLineas([{ tipo: 'servicio', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }]);
+            }}>Cancelar edición</button>
+          )}
+          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear cotización'}</button>
         </div>
         <p className="menor">Si el precio incluye IVA, el desglose conserva el total; base + IVA reconcilian sin aumentarlo.</p>
       </form>
@@ -185,6 +230,7 @@ export default function Cotizaciones() {
                 <td className="numero">${c.totalMinor}</td>
                 <td>
                   {c.estado === 'borrador' && <>
+                    <button onClick={() => void editar(c)}>Editar</button>{' '}
                     <button onClick={() => void accion('cotizacion:aprobar', c.id)}>Aprobar</button>{' '}
                     <button onClick={() => void accion('cotizacion:revision', c.id)}>Nueva revisión</button>{' '}
                     <button onClick={() => { setAnulando(c); setMotivoAnular(''); }}>Anular</button>

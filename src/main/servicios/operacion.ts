@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { parseMontoMinor, parseTasa, desglosarIvaSeparado, desglosarIvaIncluido, minorATexto } from '../../shared/dinero';
+import { parseMontoMinor, parseTasa, desglosarIvaSeparado, desglosarIvaIncluido, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento, ErrorContable } from './motorAsientos';
 import { registroEvento } from './bitacora';
@@ -120,12 +120,19 @@ export function listarProyectos(db: Database.Database): Array<{
   contraparteNombre: string;
   estado: string;
 }> {
-  return db
+  const filas = db
     .prepare(
-      `SELECT pr.id, pr.codigo, pr.nombre, c.nombre AS contraparte_nombre, pr.estado
+      `SELECT pr.id, pr.codigo, pr.nombre, c.nombre AS contraparte, pr.estado
        FROM proyecto pr JOIN contraparte c ON c.id = pr.contraparte_id ORDER BY pr.codigo`
     )
-    .all() as never;
+    .all() as Array<{ id: number; codigo: string; nombre: string; contraparte: string; estado: string }>;
+  return filas.map(f => ({
+    id: f.id,
+    codigo: f.codigo,
+    nombre: f.nombre,
+    contraparteNombre: f.contraparte,
+    estado: f.estado
+  }));
 }
 
 export interface LineaCompraEntrada {
@@ -170,7 +177,7 @@ function calcularLineasCompra(db: Database.Database, lineas: LineaCompraEntrada[
     if (cantidad <= 0n || precio <= 0n) {
       throw new ErrorOperacion('Cantidad y precio deben ser mayores que cero');
     }
-    const bruto = (cantidad * precio) / 100n;
+    const bruto = multiplicarLinea(cantidad, precio);
     const tasa = parseTasa(l.tasa);
     const precioConIva = l.precioConIva === true;
     if (l.tratamiento !== 'gravado') {
@@ -442,7 +449,7 @@ export function anularDocumento(
     throw new ErrorOperacion(`El documento ${doc.folio} tiene cobros o pagos aplicados; anúlelos primero`);
   }
   const tx = db.transaction(() => {
-    anularAsiento(db, doc.asiento_id, responsable, `Anulación de ${doc.folio}: ${motivo}`);
+    anularAsiento(db, doc.asiento_id, responsable, `Anulación de ${doc.folio}: ${motivo}`, true);
     db.prepare(`UPDATE ${tabla} SET estado = 'anulada' WHERE id = ?`).run(documentoId);
     registroEvento(db, responsable, `${tipo}_anulada`, tipo, String(documentoId), { folio: doc.folio, motivo });
   });

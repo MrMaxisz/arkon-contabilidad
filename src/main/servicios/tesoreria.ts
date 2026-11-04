@@ -7,6 +7,48 @@ import { registroEvento } from './bitacora';
 
 export class ErrorTesoreria extends Error {}
 
+function validarAplicaciones(
+  db: Database.Database,
+  aplicaciones: AplicacionEntrada[],
+  tipoEsperado: 'venta' | 'compra',
+  contraparteId: number
+): Array<{ documentoId: number; monto: bigint }> {
+  const porDocumento = new Map<number, bigint>();
+  for (const a of aplicaciones) {
+    const montoA = parseMontoMinor(a.monto);
+    if (montoA <= 0n) {
+      throw new ErrorTesoreria('Cada aplicación requiere monto positivo');
+    }
+    if (a.documentoTipo !== tipoEsperado) {
+      throw new ErrorTesoreria(`El movimiento solo aplica a documentos tipo ${tipoEsperado}`);
+    }
+    const tabla = tipoEsperado === 'venta' ? 'venta' : 'compra';
+    const doc = db
+      .prepare(`SELECT contraparte_id FROM ${tabla} WHERE id = ? AND estado = 'registrada'`)
+      .get(a.documentoId) as { contraparte_id: number } | undefined;
+    if (!doc) {
+      throw new ErrorTesoreria(`No existe el documento ${tipoEsperado} ${a.documentoId} en estado registrada`);
+    }
+    if (doc.contraparte_id !== contraparteId) {
+      throw new ErrorTesoreria(
+        `El documento ${tipoEsperado} ${a.documentoId} pertenece a otra contraparte; cobros y pagos cruzados se rechazan`
+      );
+    }
+    porDocumento.set(a.documentoId, (porDocumento.get(a.documentoId) ?? 0n) + montoA);
+  }
+  const resultado: Array<{ documentoId: number; monto: bigint }> = [];
+  for (const [documentoId, montoAcumulado] of porDocumento) {
+    const pendiente = saldoPendienteDocumento(db, tipoEsperado, documentoId);
+    if (montoAcumulado > pendiente) {
+      throw new ErrorTesoreria(
+        `Las aplicaciones al documento ${documentoId} (${minorATexto(montoAcumulado)}) exceden el saldo pendiente (${minorATexto(pendiente)})`
+      );
+    }
+    resultado.push({ documentoId, monto: montoAcumulado });
+  }
+  return resultado;
+}
+
 interface CuentaEfectivo {
   id: number;
   codigo: string;
@@ -78,25 +120,8 @@ export function registrarCobro(
     throw new ErrorTesoreria('La contraparte no es un cliente activo');
   }
 
-  let aplicado = 0n;
-  const aplicaciones: Array<{ documentoId: number; monto: bigint }> = [];
-  for (const a of entrada.aplicaciones ?? []) {
-    const montoA = parseMontoMinor(a.monto);
-    if (montoA <= 0n) {
-      throw new ErrorTesoreria('Cada aplicación requiere monto positivo');
-    }
-    if (a.documentoTipo !== 'venta') {
-      throw new ErrorTesoreria('Un cobro solo aplica a ventas');
-    }
-    const pendiente = saldoPendienteDocumento(db, 'venta', a.documentoId);
-    if (montoA > pendiente) {
-      throw new ErrorTesoreria(
-        `La aplicación excede el saldo pendiente de la venta ${a.documentoId} (${minorATexto(pendiente)})`
-      );
-    }
-    aplicado += montoA;
-    aplicaciones.push({ documentoId: a.documentoId, monto: montoA });
-  }
+  const aplicaciones = validarAplicaciones(db, entrada.aplicaciones ?? [], 'venta', entrada.contraparteId);
+  const aplicado = aplicaciones.reduce((suma, a) => suma + a.monto, 0n);
   if (aplicado > monto) {
     throw new ErrorTesoreria('Las aplicaciones exceden el monto cobrado');
   }
@@ -194,25 +219,8 @@ export function registrarPago(
     throw new ErrorTesoreria('La contraparte no es un proveedor activo');
   }
 
-  let aplicado = 0n;
-  const aplicaciones: Array<{ documentoId: number; monto: bigint }> = [];
-  for (const a of entrada.aplicaciones ?? []) {
-    const montoA = parseMontoMinor(a.monto);
-    if (montoA <= 0n) {
-      throw new ErrorTesoreria('Cada aplicación requiere monto positivo');
-    }
-    if (a.documentoTipo !== 'compra') {
-      throw new ErrorTesoreria('Un pago solo aplica a compras');
-    }
-    const pendiente = saldoPendienteDocumento(db, 'compra', a.documentoId);
-    if (montoA > pendiente) {
-      throw new ErrorTesoreria(
-        `La aplicación excede el saldo pendiente de la compra ${a.documentoId} (${minorATexto(pendiente)})`
-      );
-    }
-    aplicado += montoA;
-    aplicaciones.push({ documentoId: a.documentoId, monto: montoA });
-  }
+  const aplicaciones = validarAplicaciones(db, entrada.aplicaciones ?? [], 'compra', entrada.contraparteId);
+  const aplicado = aplicaciones.reduce((suma, a) => suma + a.monto, 0n);
   if (aplicado > monto) {
     throw new ErrorTesoreria('Las aplicaciones exceden el monto pagado');
   }
@@ -362,7 +370,7 @@ export function anularMovimiento(db: Database.Database, movimientoId: number, re
     throw new ErrorTesoreria(`El movimiento ${mov.folio} ya está anulado`);
   }
   const tx = db.transaction(() => {
-    anularAsiento(db, mov.asiento_id, responsable, `Anulación de ${mov.folio}: ${motivo}`);
+    anularAsiento(db, mov.asiento_id, responsable, `Anulación de ${mov.folio}: ${motivo}`, true);
     db.prepare("UPDATE tesoreria_movimiento SET estado = 'anulado' WHERE id = ?").run(movimientoId);
     registroEvento(db, responsable, 'movimiento_anulado', 'tesoreria_movimiento', String(movimientoId), {
       folio: mov.folio,

@@ -43,6 +43,10 @@ export function redondearDivision(numerador: bigint, denominador: bigint): bigin
   return cociente;
 }
 
+export function multiplicarLinea(cantidad: EnteroMinor, precioUnitario: EnteroMinor): EnteroMinor {
+  return redondearDivision(cantidad * precioUnitario, 10n ** BigInt(DECIMALES_MONEDA));
+}
+
 export type Tasa = { puntosBase: bigint };
 
 export function parseTasa(texto: string): Tasa {

@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { parseMontoMinor, parseTasa, desglosarIvaIncluido, desglosarIvaSeparado, minorATexto } from '../../shared/dinero';
+import { parseMontoMinor, parseTasa, desglosarIvaIncluido, desglosarIvaSeparado, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { registroEvento } from './bitacora';
 
@@ -33,7 +33,7 @@ export function calcularLinea(linea: LineaCotizacionEntrada): LineaCotizacionCal
     throw new ErrorCotizacion('El precio unitario debe ser mayor que cero');
   }
   const tasa = parseTasa(linea.tasa);
-  const bruto = (cantidad * precioUnitario) / 100n;
+  const bruto = multiplicarLinea(cantidad, precioUnitario);
   if (linea.precioConIva) {
     if (tasa.puntosBase === 0n) {
       throw new ErrorCotizacion('Un precio con IVA incluye exige tasa mayor que cero');
@@ -191,6 +191,61 @@ export function crearRevision(db: Database.Database, cotizacionId: number, respo
     return { id: nueva, numero, revision: original.revision + 1 };
   });
   return tx();
+}
+
+export function actualizarCotizacionBorrador(
+  db: Database.Database,
+  cotizacionId: number,
+  entrada: { condiciones?: string; lineas: LineaCotizacionEntrada[]; responsable: string }
+): void {
+  if (!entrada.responsable?.trim()) {
+    throw new ErrorCotizacion('La edición requiere responsable');
+  }
+  const cot = db
+    .prepare('SELECT id, numero, estado FROM cotizacion WHERE id = ?')
+    .get(cotizacionId) as { id: number; numero: string; estado: string } | undefined;
+  if (!cot) {
+    throw new ErrorCotizacion('Cotización inexistente');
+  }
+  if (cot.estado !== 'borrador') {
+    throw new ErrorCotizacion(`Solo se editan cotizaciones en borrador: ${cot.numero}`);
+  }
+  if (!Array.isArray(entrada.lineas) || entrada.lineas.length === 0) {
+    throw new ErrorCotizacion('La cotización requiere al menos una línea');
+  }
+  const calculadas = entrada.lineas.map(calcularLinea);
+  const tx = db.transaction(() => {
+    if (entrada.condiciones !== undefined) {
+      db.prepare('UPDATE cotizacion SET condiciones = ? WHERE id = ?').run(entrada.condiciones.trim() || null, cotizacionId);
+    }
+    db.prepare('DELETE FROM cotizacion_linea WHERE cotizacion_id = ?').run(cotizacionId);
+    const insertar = db.prepare(
+      `INSERT INTO cotizacion_linea
+       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    entrada.lineas.forEach((l, i) => {
+      const c = calculadas[i];
+      if (!c) {
+        throw new ErrorCotizacion('Línea sin cálculo');
+      }
+      insertar.run(
+        cotizacionId,
+        l.tipo,
+        l.descripcion.trim(),
+        l.cantidad,
+        parseMontoMinor(l.precioUnitario),
+        l.precioConIva ? 1 : 0,
+        Number(parseTasa(l.tasa).puntosBase),
+        c.base,
+        c.iva,
+        c.total,
+        i + 1
+      );
+    });
+    registroEvento(db, entrada.responsable, 'cotizacion_editada', 'cotizacion', String(cotizacionId), { numero: cot.numero });
+  });
+  tx();
 }
 
 export function aprobarCotizacion(db: Database.Database, cotizacionId: number, responsable: string): void {

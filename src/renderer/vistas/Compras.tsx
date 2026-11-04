@@ -3,6 +3,7 @@ import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esProveedor: boolean }
+interface Proyecto { id: number; codigo: string; nombre: string }
 interface Cuenta { id: number; codigo: string; nombre: string; tipo: string }
 interface Compra {
   id: number;
@@ -34,6 +35,8 @@ function nuevaClave(): string {
 export default function Compras() {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [proveedores, setProveedores] = useState<Contraparte[]>([]);
+  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [proyectoId, setProyectoId] = useState(0);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [proveedorId, setProveedorId] = useState(0);
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
@@ -50,6 +53,7 @@ export default function Compras() {
   const cargar = useCallback(() => {
     void api().invocar('compra:listar').then(r => setCompras(r as Compra[]));
     void api().invocar('contraparte:listar').then(r => setProveedores((r as Contraparte[]).filter(c => c.esProveedor)));
+    void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
     void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
   }, []);
 
@@ -67,6 +71,7 @@ export default function Compras() {
     try {
       const r = (await api().invocar('compra:registrar', {
         contraparteId: proveedorId,
+        proyectoId: proyectoId || undefined,
         fechaOperacion: fecha,
         concepto,
         condicion,
@@ -110,6 +115,12 @@ export default function Compras() {
             <select value={proveedorId} onChange={e => setProveedorId(Number(e.target.value))} required>
               <option value={0}>— Seleccione —</option>
               {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </label>
+          <label>Proyecto (opcional)
+            <select value={proyectoId} onChange={e => setProyectoId(Number(e.target.value))}>
+              <option value={0}>— Ninguno —</option>
+              {proyectos.map(p => <option key={p.id} value={p.id}>{p.codigo} · {p.nombre}</option>)}
             </select>
           </label>
           <label>Fecha<input type="date" value={fecha} onChange={e => setFecha(e.target.value)} required /></label>

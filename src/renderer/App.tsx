@@ -7,6 +7,7 @@ import Contrapartes from './vistas/Contrapartes';
 import Cotizaciones from './vistas/Cotizaciones';
 import Proyectos from './vistas/Proyectos';
 import Compras from './vistas/Compras';
+import Ventas from './vistas/Ventas';
 import CobrosPagos from './vistas/CobrosPagos';
 import CajaBancos from './vistas/CajaBancos';
 
@@ -23,6 +24,7 @@ const SECCIONES = [
   'Clientes y proveedores',
   'Cotizaciones',
   'Proyectos',
+  'Ventas',
   'Compras y gastos',
   'Cobros y pagos',
   'Caja y bancos',
@@ -91,6 +93,7 @@ export default function App() {
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Cotizaciones' && <Cotizaciones />}
         {seccion === 'Proyectos' && <Proyectos />}
+        {seccion === 'Ventas' && <Ventas />}
         {seccion === 'Compras y gastos' && <Compras />}
         {seccion === 'Cobros y pagos' && <CobrosPagos />}
         {seccion === 'Caja y bancos' && <CajaBancos />}

@@ -18,6 +18,7 @@ const COMANDOS_PERMITIDOS = new Set([
   'contraparte:crear',
   'contraparte:listar',
   'cotizacion:crear',
+  'cotizacion:guardar',
   'cotizacion:revision',
   'cotizacion:aprobar',
   'cotizacion:anular',

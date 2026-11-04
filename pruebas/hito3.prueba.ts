@@ -308,7 +308,7 @@ describe('reglas de negocio del hito 3', () => {
         claveIdempotencia: 'cob-4',
         responsable: 'prueba'
       })
-    ).toThrow(/excede el saldo pendiente/);
+    ).toThrow(/exceden el saldo pendiente/);
     const cobro = registrarCobro(db, {
       fechaOperacion: '2026-03-15',
       contraparteId: cliente,
