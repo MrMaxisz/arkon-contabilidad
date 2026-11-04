@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import fs from 'fs';
+import path from 'path';
 import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
@@ -582,10 +583,27 @@ export function generarCsvLibro(
 }
 
 export function guardarCsvArchivo(ruta: string, contenido: string): void {
-  if (!ruta.endsWith('.csv')) {
+  if (!/\.csv$/i.test(ruta)) {
     throw new ErrorFiscal('El archivo de exportación interna debe terminar en .csv');
   }
   fs.writeFileSync(ruta, `${contenido}\n`, 'utf8');
+}
+
+export function guardarExportacionArchivo(
+  db: Database.Database,
+  tipo: 'venta' | 'compra',
+  mes: string,
+  ruta: string
+): { guardado: true; ruta: string; version: string; advertencia: string } {
+  const exportacion = generarCsvLibro(db, tipo, mes);
+  const rutaFinal = path.extname(ruta) === '' ? `${ruta}.csv` : ruta;
+  guardarCsvArchivo(rutaFinal, exportacion.csv);
+  registroEvento(db, 'sistema', 'exportacion_guardada', 'archivo_csv', rutaFinal, {
+    tipo,
+    mes,
+    nota: 'Exportación interna de trabajo guardada como archivo'
+  });
+  return { guardado: true, ruta: rutaFinal, version: exportacion.version, advertencia: exportacion.advertencia };
 }
 
 export interface FilaEstadoResultados {
@@ -653,21 +671,54 @@ export interface RentabilidadProyecto {
   ingresoMinor: string;
   costoMinor: string;
   margenMinor: string;
+  totalDocumentalVentaMinor: string;
+  totalDocumentalCompraMinor: string;
 }
 
 export function rentabilidadProyectos(
   db: Database.Database
-): { proyectos: RentabilidadProyecto[]; provisional: boolean; nota: string } {
+): {
+  proyectos: RentabilidadProyecto[];
+  provisional: boolean;
+  nota: string;
+  criterio: string;
+} {
   const proyectos = db
     .prepare('SELECT id, codigo, nombre FROM proyecto ORDER BY codigo')
     .all() as Array<{ id: number; codigo: string; nombre: string }>;
   const lista = proyectos.map(p => {
-    const ingreso = (
+    const ingresoMayor = (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS t
+           FROM asiento_linea l
+           JOIN asiento a ON a.id = l.asiento_id
+           JOIN cuenta c ON c.id = l.cuenta_id
+           WHERE c.tipo = 'ingreso'
+             AND a.origen_tipo = 'venta'
+             AND a.origen_id IN (SELECT folio FROM venta WHERE proyecto_id = ? AND estado = 'registrada')`
+        )
+        .get(p.id) as { t: number }
+    ).t;
+    const costoMayor = (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS t
+           FROM asiento_linea l
+           JOIN asiento a ON a.id = l.asiento_id
+           JOIN cuenta c ON c.id = l.cuenta_id
+           WHERE c.tipo IN ('costo','gasto')
+             AND a.origen_tipo = 'compra'
+             AND a.origen_id IN (SELECT folio FROM compra WHERE proyecto_id = ? AND estado = 'registrada')`
+        )
+        .get(p.id) as { t: number }
+    ).t;
+    const totalVenta = (
       db
         .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM venta WHERE proyecto_id = ? AND estado = 'registrada'")
         .get(p.id) as { t: number }
     ).t;
-    const costo = (
+    const totalCompra = (
       db
         .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM compra WHERE proyecto_id = ? AND estado = 'registrada'")
         .get(p.id) as { t: number }
@@ -676,9 +727,11 @@ export function rentabilidadProyectos(
       id: p.id,
       codigo: p.codigo,
       nombre: p.nombre,
-      ingresoMinor: minorATexto(BigInt(ingreso)),
-      costoMinor: minorATexto(BigInt(costo)),
-      margenMinor: minorATexto(BigInt(ingreso) - BigInt(costo))
+      ingresoMinor: minorATexto(BigInt(ingresoMayor)),
+      costoMinor: minorATexto(BigInt(costoMayor)),
+      margenMinor: minorATexto(BigInt(ingresoMayor) - BigInt(costoMayor)),
+      totalDocumentalVentaMinor: minorATexto(BigInt(totalVenta)),
+      totalDocumentalCompraMinor: minorATexto(BigInt(totalCompra))
     };
   });
   const comprasSinProyecto = (
@@ -692,6 +745,8 @@ export function rentabilidadProyectos(
     nota:
       comprasSinProyecto > 0
         ? 'Hay compras registradas sin proyecto asignado: ningún costo se inventa como cero, por lo que la rentabilidad mostrada es provisional.'
-        : 'Todas las compras registradas están asignadas a un proyecto.'
+        : 'Todas las compras registradas están asignadas a un proyecto.',
+    criterio:
+      'La rentabilidad se calcula con los ingresos y costos/gastos reconocidos en asientos vinculados a los documentos del proyecto (coherente con el mayor): el IVA acreditable (1203) no es costo, el IVA al costo sí lo es, y las compras de activo no se convierten en gasto. Los totales documentales se muestran aparte, como métrica informativa.'
   };
 }

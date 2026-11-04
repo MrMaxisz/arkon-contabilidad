@@ -6,9 +6,19 @@ interface Contraparte { id: number; nombre: string }
 interface Cotizacion { id: number; numero: string; estado: string }
 
 interface Rentabilidad {
-  proyectos: Array<{ id: number; codigo: string; nombre: string; ingresoMinor: string; costoMinor: string; margenMinor: string }>;
+  proyectos: Array<{
+    id: number;
+    codigo: string;
+    nombre: string;
+    ingresoMinor: string;
+    costoMinor: string;
+    margenMinor: string;
+    totalDocumentalVentaMinor: string;
+    totalDocumentalCompraMinor: string;
+  }>;
   provisional: boolean;
   nota: string;
+  criterio: string;
 }
 
 export default function Proyectos() {
@@ -118,7 +128,7 @@ export default function Proyectos() {
             <p className="vacio">Sin proyectos que reportar.</p>
           ) : (
             <table>
-              <thead><tr><th>Código</th><th>Nombre</th><th className="numero">Ingreso</th><th className="numero">Costo</th><th className="numero">Margen</th></tr></thead>
+              <thead><tr><th>Código</th><th>Nombre</th><th className="numero">Ingreso reconocido</th><th className="numero">Costo/gasto reconocido</th><th className="numero">Margen</th><th className="numero">Total documental venta</th><th className="numero">Total documental compra</th></tr></thead>
               <tbody>
                 {rentabilidad.proyectos.map(r => (
                   <tr key={r.id}>
@@ -127,11 +137,14 @@ export default function Proyectos() {
                     <td className="numero">${r.ingresoMinor}</td>
                     <td className="numero">${r.costoMinor}</td>
                     <td className="numero">${r.margenMinor}</td>
+                    <td className="numero">${r.totalDocumentalVentaMinor}</td>
+                    <td className="numero">${r.totalDocumentalCompraMinor}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <p className="menor">{rentabilidad.criterio}</p>
         </>
       )}
       <p className="menor">Un costo desconocido nunca se trata como cero: con compras sin proyecto asignado la rentabilidad se marca como provisional.</p>

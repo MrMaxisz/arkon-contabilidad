@@ -1,6 +1,14 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimoséptima revisión del PR #1, sin hallazgos; hito 5 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimoctava revisión del PR #1; hito 5 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la decimoctava revisión (sobre el commit f6753d4) — aplicadas y probadas
+
+- **[P2] Rentabilidad coherente con el mayor**: `rentabilidadProyectos` calcula ingreso y costo/gasto desde los **asientos vinculados a los documentos del proyecto** (cuentas de ingreso y de costo/gasto): el IVA acreditable (1203) no es costo, el IVA al costo sí lo es, y las compras de activo no se convierten en gasto. Los **totales documentales** se muestran aparte como métrica informativa, con el criterio visible en la vista. Regresiones: IVA acreditable (margen 50.00 = estado de resultados), compra de equipo a activo (costo 0, margen 100.00 = mayor), anulaciones excluidas.
+- **[P2] Estado de resultados asociado al mes vigente**: la consulta del reporte lleva identificador de solicitud y verificación contra el mes vigente y el mes del propio reporte; se limpia al cambiar de mes (encabezado «Estado de resultados de {mes}») y los errores de consultas viejas se descartan. Regresiones de componente: respuestas de dos meses en orden inverso con resultados distintos (la tardía no reemplaza) y cambio de mes limpia el reporte anterior.
+- **[P2] Guardado centralizado**: el canal `arkon:guardarCsv` usa el servicio validado `guardarExportacionArchivo` (sin escritura directa en el canal): genera la exportación, normaliza la ruta (sin extensión → `.csv`; extensión ajena → **rechazada**; `.CSV` aceptado por mayúsculas), escribe y registra bitácora. Regresiones: ruta válida escribe y registra evento; `.txt` rechazada sin escribir; sin extensión se normaliza; `.CSV` se acepta.
+
+Evidencia por nivel (Linux): **Servicios, contrato IPC y componentes**: `npm test` → **109/109 en verde** (21 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** — incluye el diálogo nativo de guardado.
 
 ## Avance tras la decimoséptima revisión (sin hallazgos) — aplicado y probado
 

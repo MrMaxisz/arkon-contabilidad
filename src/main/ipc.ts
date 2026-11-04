@@ -1,6 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
-import fs from 'fs';
 import { despachar, type ContextoApp } from './comandos';
+import { guardarExportacionArchivo } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -26,11 +26,6 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     const p = objetoSolicitud(solicitud);
     const tipo = p.tipo === 'compra' ? 'compra' : 'venta';
     const mes = typeof p.mes === 'string' ? p.mes : '';
-    const exportacion = despachar(ctx, 'fiscal:exportarCsv', { tipo, mes }) as {
-      csv: string;
-      version: string;
-      advertencia: string;
-    };
     const ventana = BrowserWindow.fromWebContents(evento.sender);
     const opciones = {
       title: 'Guardar exportación interna de trabajo',
@@ -41,26 +36,8 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       ? await dialog.showSaveDialog(ventana, opciones)
       : await dialog.showSaveDialog(opciones);
     if (destino.canceled || !destino.filePath) {
-      return { guardado: false, version: exportacion.version, advertencia: exportacion.advertencia };
+      return { guardado: false };
     }
-    fs.writeFileSync(destino.filePath, `${exportacion.csv}\n`, 'utf8');
-    registroEventoCsv(ctx, tipo, mes, destino.filePath);
-    return {
-      guardado: true,
-      ruta: destino.filePath,
-      version: exportacion.version,
-      advertencia: exportacion.advertencia
-    };
+    return guardarExportacionArchivo(ctx.db, tipo, mes, destino.filePath);
   });
-}
-
-function registroEventoCsv(ctx: ContextoApp, tipo: string, mes: string, ruta: string): void {
-  try {
-    const detalle = { tipo, mes, nota: 'Exportación interna de trabajo guardada como archivo' };
-    ctx.db
-      .prepare('INSERT INTO bitacora_evento (actor, tipo, entidad, entidad_id, detalle) VALUES (?, ?, ?, ?, ?)')
-      .run('sistema', 'exportacion_guardada', 'archivo_csv', ruta, JSON.stringify(detalle));
-  } catch {
-    return;
-  }
 }

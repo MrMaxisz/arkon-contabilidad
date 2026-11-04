@@ -169,3 +169,71 @@ describe('decimotercera revisión: CSV asociado a mes y tipo', () => {
     expect(screen.queryByText(/FILA-2026-10-venta/)).toBeNull();
   });
 });
+
+describe('decimoctava revisión: estado de resultados asociado al mes vigente', () => {
+  it('la respuesta tardía de septiembre no reemplaza el resultado de octubre', async () => {
+    const pendientes: Array<Resolver> = [];
+    invocar.mockImplementation((comando: string, datos?: unknown) => {
+      if (comando === 'reporte:estadoResultados') {
+        const mesPedido = (datos as { mes: string }).mes;
+        return new Promise(resolve => {
+          pendientes.push(() => resolve({
+            mes: mesPedido,
+            filas: [{ codigo: '4101', nombre: `Ingreso ${mesPedido}`, tipo: 'ingreso', importeMinor: mesPedido === '2026-10' ? '200.00' : '100.00' }],
+            ingresosMinor: mesPedido === '2026-10' ? '200.00' : '100.00',
+            costosGastosMinor: '0.00',
+            resultadoMinor: mesPedido === '2026-10' ? '200.00' : '100.00'
+          }));
+        });
+      }
+      return baseMockResolve(comando, datos);
+    });
+
+    render(<Impuestos />);
+    fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
+    const llamadasSept = invocar.mock.calls.filter(c => c[0] === 'reporte:estadoResultados').length;
+    await waitFor(() => expect(pendientes).toHaveLength(llamadasSept));
+
+    fireEvent.change(selectorMes(), { target: { value: '2026-10' } });
+    await waitFor(() => expect(pendientes.length).toBeGreaterThanOrEqual(llamadasSept + 1));
+
+    const indiceOctubre = pendientes.length - 1;
+    pendientes[indiceOctubre]?.();
+    await waitFor(() => screen.getByText('Estado de resultados de 2026-10'));
+    expect(screen.getAllByText('$200.00').length).toBeGreaterThan(0);
+
+    pendientes[llamadasSept - 1]?.();
+    await new Promise(r => setTimeout(r, 30));
+    expect(screen.getByText('Estado de resultados de 2026-10')).toBeTruthy();
+    expect(screen.getAllByText('$200.00').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Estado de resultados de 2026-09')).toBeNull();
+    expect(screen.queryAllByText('$100.00')).toHaveLength(0);
+  });
+
+  it('cambiar de mes limpia el estado de resultados visible y muestra el del mes nuevo', async () => {
+    invocar.mockImplementation((comando: string, datos?: unknown) => {
+      if (comando === 'reporte:estadoResultados') {
+        const mesPedido = (datos as { mes: string }).mes;
+        const esSeptiembre = mesPedido === '2026-09';
+        return Promise.resolve({
+          mes: mesPedido,
+          filas: [],
+          ingresosMinor: esSeptiembre ? '50.00' : '20.00',
+          costosGastosMinor: '0.00',
+          resultadoMinor: esSeptiembre ? '50.00' : '20.00'
+        });
+      }
+      return baseMockResolve(comando, datos);
+    });
+
+    render(<Impuestos />);
+    fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
+    await waitFor(() => screen.getByText('Estado de resultados de 2026-09'));
+    expect(screen.getAllByText('$50.00').length).toBeGreaterThan(0);
+    fireEvent.change(selectorMes(), { target: { value: '2026-10' } });
+    await waitFor(() => screen.getByText('Estado de resultados de 2026-10'));
+    expect(screen.queryByText('Estado de resultados de 2026-09')).toBeNull();
+    expect(screen.queryAllByText('$50.00')).toHaveLength(0);
+    expect(screen.getAllByText('$20.00').length).toBeGreaterThan(0);
+  });
+});

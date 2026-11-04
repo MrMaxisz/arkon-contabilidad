@@ -84,6 +84,9 @@ export default function Impuestos() {
   const [politicas, setPoliticas] = useState<{ anticipoHechoGenerador: string; ivaComprasCreditoFiscal: boolean; perfilIvaInscritoConfig: boolean } | null>(null);
   const [exportacion, setExportacion] = useState<{ mes: string; tipo: string; csv: string; version: string; advertencia: string } | null>(null);
   const [estadoResultados, setEstadoResultados] = useState<EstadoResultados | null>(null);
+  const consultaResultadosId = useRef(0);
+  const mesResultadosRef = useRef(mes);
+  mesResultadosRef.current = mes;
   const exportacionId = useRef(0);
   const mesRef = useRef(mes);
   mesRef.current = mes;
@@ -118,7 +121,23 @@ export default function Impuestos() {
     void api().invocar('fiscal:libroVentas', { mes }).then(r => setLibroV(r as ResumenLibro));
     void api().invocar('fiscal:libroCompras', { mes }).then(r => setLibroC(r as ResumenLibro));
     void api().invocar('fiscal:conciliar', { mes }).then(r => setConciliacion(r as Conciliacion));
-    void api().invocar('reporte:estadoResultados', { mes }).then(r => setEstadoResultados(r as EstadoResultados));
+    const id = ++consultaResultadosId.current;
+    const mesSolicitado = mes;
+    api()
+      .invocar('reporte:estadoResultados', { mes })
+      .then(r => {
+        if (consultaResultadosId.current === id && mesResultadosRef.current === mesSolicitado) {
+          const reporte = r as EstadoResultados;
+          if (reporte.mes === mesSolicitado) {
+            setEstadoResultados(reporte);
+          }
+        }
+      })
+      .catch(err => {
+        if (consultaResultadosId.current === id && mesResultadosRef.current === mesSolicitado) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      });
   }, [mes]);
 
   useEffect(() => {
@@ -268,7 +287,7 @@ export default function Impuestos() {
       )}
       <h2>Libros y conciliación de IVA</h2>
       <div className="fila">
-        <label>Mes<input type="month" value={mes} onChange={e => { setMes(e.target.value); exportacionId.current++; setExportacion(null); }} /></label>
+        <label>Mes<input type="month" value={mes} onChange={e => { setMes(e.target.value); exportacionId.current++; consultaResultadosId.current++; setExportacion(null); setEstadoResultados(null); }} /></label>
       </div>
       {conciliacion && (
         <table>
@@ -334,9 +353,9 @@ export default function Impuestos() {
         <p className="vacio">Sin compras en el mes.</p>
       )}
 
-      <h2>Estado de resultados del mes</h2>
       {estadoResultados && Array.isArray(estadoResultados.filas) && (
         <>
+          <h2>Estado de resultados de {estadoResultados.mes}</h2>
           <table>
             <thead><tr><th>Cuenta</th><th>Tipo</th><th className="numero">Importe</th></tr></thead>
             <tbody>
