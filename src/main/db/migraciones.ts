@@ -196,5 +196,145 @@ BEGIN
       THEN RAISE(ABORT, 'Una línea no puede trasladarse a un asiento contabilizado') END;
 END;
 `
+  },
+  {
+    version: 4,
+    nombre: 'operacion_comercial',
+    sql: `
+ALTER TABLE cuenta ADD COLUMN es_efectivo INTEGER NOT NULL DEFAULT 0;
+
+UPDATE cuenta SET es_efectivo = 1 WHERE codigo IN ('1101','1102','1103');
+
+INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id)
+SELECT '1203', 'IVA crédito fiscal', 'activo', 0, (SELECT id FROM cuenta WHERE codigo = '12')
+WHERE NOT EXISTS (SELECT 1 FROM cuenta WHERE codigo = '1203');
+
+CREATE TABLE cotizacion (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  numero TEXT NOT NULL UNIQUE,
+  revision INTEGER NOT NULL DEFAULT 1,
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  fecha TEXT NOT NULL,
+  vigencia TEXT,
+  estado TEXT NOT NULL DEFAULT 'borrador' CHECK (estado IN ('borrador','aprobada','anulada')),
+  condiciones TEXT,
+  responsable TEXT NOT NULL,
+  congelada INTEGER NOT NULL DEFAULT 0 CHECK (congelada IN (0,1)),
+  proyecto_id INTEGER,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE cotizacion_linea (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cotizacion_id INTEGER NOT NULL REFERENCES cotizacion(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('servicio','material')),
+  descripcion TEXT NOT NULL,
+  cantidad TEXT NOT NULL,
+  precio_unitario_minor INTEGER NOT NULL CHECK (precio_unitario_minor >= 0),
+  precio_con_iva INTEGER NOT NULL CHECK (precio_con_iva IN (0,1)),
+  tasa_puntos_base INTEGER NOT NULL DEFAULT 0,
+  base_minor INTEGER NOT NULL,
+  iva_minor INTEGER NOT NULL,
+  total_minor INTEGER NOT NULL,
+  orden INTEGER NOT NULL
+);
+
+CREATE TABLE proyecto (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  cotizacion_id INTEGER REFERENCES cotizacion(id),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','cerrado')),
+  responsable TEXT NOT NULL,
+  alcance TEXT,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE venta (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folio TEXT NOT NULL UNIQUE,
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  proyecto_id INTEGER REFERENCES proyecto(id),
+  fecha_operacion TEXT NOT NULL,
+  concepto TEXT NOT NULL,
+  tipo_ingreso TEXT NOT NULL DEFAULT 'instalaciones' CHECK (tipo_ingreso IN ('instalaciones','oym')),
+  base_minor INTEGER NOT NULL,
+  iva_minor INTEGER NOT NULL,
+  total_minor INTEGER NOT NULL,
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  estado TEXT NOT NULL DEFAULT 'registrada' CHECK (estado IN ('registrada','anulada')),
+  clave_idempotencia TEXT UNIQUE,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE compra (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folio TEXT NOT NULL UNIQUE,
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  proyecto_id INTEGER REFERENCES proyecto(id),
+  fecha_operacion TEXT NOT NULL,
+  concepto TEXT NOT NULL,
+  condicion TEXT NOT NULL DEFAULT 'credito' CHECK (condicion IN ('contado','credito')),
+  base_minor INTEGER NOT NULL,
+  iva_minor INTEGER NOT NULL,
+  total_minor INTEGER NOT NULL,
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  estado TEXT NOT NULL DEFAULT 'registrada' CHECK (estado IN ('registrada','anulada')),
+  clave_idempotencia TEXT UNIQUE,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE compra_linea (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  compra_id INTEGER NOT NULL REFERENCES compra(id),
+  descripcion TEXT NOT NULL,
+  cuenta_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cantidad TEXT NOT NULL,
+  precio_unitario_minor INTEGER NOT NULL,
+  tasa_puntos_base INTEGER NOT NULL DEFAULT 0,
+  tratamiento TEXT NOT NULL DEFAULT 'gravado' CHECK (tratamiento IN ('gravado','exento','no_sujeto')),
+  base_minor INTEGER NOT NULL,
+  iva_minor INTEGER NOT NULL,
+  total_minor INTEGER NOT NULL
+);
+
+CREATE TABLE tesoreria_movimiento (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folio TEXT NOT NULL UNIQUE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('cobro','pago','transferencia')),
+  fecha_operacion TEXT NOT NULL,
+  contraparte_id INTEGER REFERENCES contraparte(id),
+  cuenta_origen_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cuenta_destino_id INTEGER REFERENCES cuenta(id),
+  monto_minor INTEGER NOT NULL CHECK (monto_minor > 0),
+  referencia TEXT,
+  concepto TEXT NOT NULL,
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  estado TEXT NOT NULL DEFAULT 'registrado' CHECK (estado IN ('registrado','anulado')),
+  clave_idempotencia TEXT UNIQUE,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE aplicacion (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  movimiento_id INTEGER NOT NULL REFERENCES tesoreria_movimiento(id),
+  documento_tipo TEXT NOT NULL CHECK (documento_tipo IN ('venta','compra')),
+  documento_id INTEGER NOT NULL,
+  monto_minor INTEGER NOT NULL CHECK (monto_minor > 0)
+);
+CREATE INDEX idx_aplicacion_documento ON aplicacion(documento_tipo, documento_id);
+
+INSERT INTO configuracion (clave, valor, fuente, vigencia)
+SELECT 'perfil_iva_inscrito', '0', 'Pendiente de inscripción ante el Ministerio de Hacienda', NULL
+WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'perfil_iva_inscrito');
+
+INSERT INTO configuracion (clave, valor, fuente, vigencia)
+SELECT 'iva_compras_credito_fiscal', '0', 'Política pendiente del contador responsable', NULL
+WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'iva_compras_credito_fiscal');
+`
   }
 ];

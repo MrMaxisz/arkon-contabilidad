@@ -8,6 +8,13 @@
 
 ## Operación diaria
 
+- **Clientes y proveedores**: registre contrapartes con su rol (cliente, proveedor o ambos). NRC/NIT solo cuando existan; la aplicación no crea identificaciones ficticias.
+- **Cotizaciones**: líneas de servicio y material con precio con o sin IVA incluido (el desglose nunca aumenta el total). Una cotización no genera ingresos ni cuentas por cobrar. «Nueva revisión» crea la revisión siguiente; «Aprobar» congela esa versión; anular exige motivo.
+- **Proyectos**: código único, contraparte y, opcionalmente, la cotización aprobada que originó el acuerdo.
+- **Compras y gastos**: proveedor, líneas con cuenta de costo/gasto/activo y tratamiento tributario (gravado/exento/no sujeto). La compra reconoce la obligación con proveedores; pagar después no duplica el gasto. El IVA documentado se conserva y va al costo por defecto.
+- **Cobros y pagos**: aplique a documentos pendientes; la aplicación no puede exceder el saldo y el excedente queda como anticipo. Cobrar no vuelve a registrar el ingreso ya reconocido.
+- **Caja y bancos**: transferencias entre cuentas propias (no generan ingreso ni gasto) y listado de movimientos con anulación por reverso.
+
 - **Inicio**: resumen del balance (activo, pasivo, patrimonio, resultado) derivado del mayor, con indicador de cuadre de partida doble. Muestra la advertencia de ámbito administrativo previo a la constitución.
 - **Contabilidad**:
   - *Nuevo asiento manual*: fecha de operación, concepto, responsable y líneas (cuenta de movimiento, importe en Debe **o** Haber). El motor rechaza asientos descuadrados, cuentas de agrupación, cuentas inexistentes o inactivas y períodos cerrados antes de escribir nada.

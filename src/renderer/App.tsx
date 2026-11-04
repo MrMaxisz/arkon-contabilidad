@@ -3,6 +3,12 @@ import { api } from './api';
 import Contabilidad from './vistas/Contabilidad';
 import Respaldo from './vistas/Respaldo';
 import Bitacora from './vistas/Bitacora';
+import Contrapartes from './vistas/Contrapartes';
+import Cotizaciones from './vistas/Cotizaciones';
+import Proyectos from './vistas/Proyectos';
+import Compras from './vistas/Compras';
+import CobrosPagos from './vistas/CobrosPagos';
+import CajaBancos from './vistas/CajaBancos';
 
 interface BalanceResumen {
   totalActivoMinor: string;
@@ -12,7 +18,18 @@ interface BalanceResumen {
   cuadra: boolean;
 }
 
-const SECCIONES = ['Inicio', 'Contabilidad', 'Respaldo', 'Bitácora'] as const;
+const SECCIONES = [
+  'Inicio',
+  'Clientes y proveedores',
+  'Cotizaciones',
+  'Proyectos',
+  'Compras y gastos',
+  'Cobros y pagos',
+  'Caja y bancos',
+  'Contabilidad',
+  'Respaldo',
+  'Bitácora'
+] as const;
 type Seccion = (typeof SECCIONES)[number];
 
 function formatoDinero(minorTexto: string): string {
@@ -71,6 +88,12 @@ export default function App() {
       </aside>
       <main className="contenido">
         {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
+        {seccion === 'Clientes y proveedores' && <Contrapartes />}
+        {seccion === 'Cotizaciones' && <Cotizaciones />}
+        {seccion === 'Proyectos' && <Proyectos />}
+        {seccion === 'Compras y gastos' && <Compras />}
+        {seccion === 'Cobros y pagos' && <CobrosPagos />}
+        {seccion === 'Caja y bancos' && <CajaBancos />}
         {seccion === 'Contabilidad' && <Contabilidad alCambiar={cargarBalance} />}
         {seccion === 'Respaldo' && <Respaldo />}
         {seccion === 'Bitácora' && <Bitacora />}

@@ -14,7 +14,27 @@ const COMANDOS_PERMITIDOS = new Set([
   'respaldo:crear',
   'respaldo:listar',
   'respaldo:restaurar',
-  'bitacora:listar'
+  'bitacora:listar',
+  'contraparte:crear',
+  'contraparte:listar',
+  'cotizacion:crear',
+  'cotizacion:revision',
+  'cotizacion:aprobar',
+  'cotizacion:anular',
+  'cotizacion:listar',
+  'cotizacion:lineas',
+  'proyecto:crear',
+  'proyecto:listar',
+  'compra:registrar',
+  'compra:listar',
+  'venta:registrar',
+  'venta:listar',
+  'documento:anular',
+  'cobro:registrar',
+  'pago:registrar',
+  'transferencia:registrar',
+  'tesoreria:listar',
+  'tesoreria:anular'
 ]);
 
 contextBridge.exposeInMainWorld('arkon', {

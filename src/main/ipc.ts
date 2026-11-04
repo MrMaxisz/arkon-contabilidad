@@ -5,6 +5,9 @@ import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros'
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { manejarRestauracion, type ContextoApp } from './servicios/restauracion';
 import { listarEventos } from './servicios/bitacora';
+import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento } from './servicios/operacion';
+import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion } from './servicios/cotizaciones';
+import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
 
@@ -94,6 +97,147 @@ const comandos: Record<string, Manejador> = {
   'bitacora:listar': (ctx, payload) => {
     const p = objeto(payload);
     return listarEventos(ctx.db, typeof p.limite === 'number' ? p.limite : 100);
+  },
+  'contraparte:crear': (ctx, payload) => {
+    const p = objeto(payload);
+    return {
+      id: crearContraparte(ctx.db, {
+        nombre: texto(p, 'nombre'),
+        esCliente: p.esCliente === true,
+        esProveedor: p.esProveedor === true,
+        nrc: typeof p.nrc === 'string' ? p.nrc : undefined,
+        nit: typeof p.nit === 'string' ? p.nit : undefined,
+        clasificacionTributaria: typeof p.clasificacionTributaria === 'string' ? p.clasificacionTributaria : undefined,
+        notas: typeof p.notas === 'string' ? p.notas : undefined,
+        responsable: texto(p, 'responsable')
+      })
+    };
+  },
+  'contraparte:listar': ctx => listarContrapartes(ctx.db),
+  'cotizacion:crear': (ctx, payload) => {
+    const p = objeto(payload);
+    return crearCotizacion(ctx.db, {
+      contraparteId: entero(p, 'contraparteId'),
+      fecha: texto(p, 'fecha'),
+      condiciones: typeof p.condiciones === 'string' ? p.condiciones : undefined,
+      responsable: texto(p, 'responsable'),
+      lineas: p.lineas as never
+    });
+  },
+  'cotizacion:revision': (ctx, payload) => {
+    const p = objeto(payload);
+    return crearRevision(ctx.db, entero(p, 'cotizacionId'), texto(p, 'responsable'));
+  },
+  'cotizacion:aprobar': (ctx, payload) => {
+    const p = objeto(payload);
+    aprobarCotizacion(ctx.db, entero(p, 'cotizacionId'), texto(p, 'responsable'));
+    return { ok: true };
+  },
+  'cotizacion:anular': (ctx, payload) => {
+    const p = objeto(payload);
+    anularCotizacion(ctx.db, entero(p, 'cotizacionId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
+  'cotizacion:listar': ctx => listarCotizaciones(ctx.db),
+  'cotizacion:lineas': (ctx, payload) => {
+    const p = objeto(payload);
+    return lineasDeCotizacion(ctx.db, entero(p, 'cotizacionId'));
+  },
+  'proyecto:crear': (ctx, payload) => {
+    const p = objeto(payload);
+    return {
+      id: crearProyecto(ctx.db, {
+        codigo: texto(p, 'codigo'),
+        nombre: texto(p, 'nombre'),
+        contraparteId: entero(p, 'contraparteId'),
+        cotizacionId: typeof p.cotizacionId === 'number' ? p.cotizacionId : undefined,
+        alcance: typeof p.alcance === 'string' ? p.alcance : undefined,
+        responsable: texto(p, 'responsable')
+      })
+    };
+  },
+  'proyecto:listar': ctx => listarProyectos(ctx.db),
+  'compra:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarCompra(ctx.db, {
+      contraparteId: entero(p, 'contraparteId'),
+      proyectoId: typeof p.proyectoId === 'number' ? p.proyectoId : undefined,
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      concepto: texto(p, 'concepto'),
+      condicion: p.condicion === 'contado' ? 'contado' : 'credito',
+      lineas: p.lineas as never,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'compra:listar': ctx => listarCompras(ctx.db),
+  'venta:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarVenta(ctx.db, {
+      contraparteId: entero(p, 'contraparteId'),
+      proyectoId: typeof p.proyectoId === 'number' ? p.proyectoId : undefined,
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      concepto: texto(p, 'concepto'),
+      tipoIngreso: p.tipoIngreso === 'oym' ? 'oym' : 'instalaciones',
+      base: texto(p, 'base'),
+      tasa: typeof p.tasa === 'string' ? p.tasa : '0',
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'venta:listar': ctx => listarVentas(ctx.db),
+  'documento:anular': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo') === 'venta' ? 'venta' : 'compra';
+    anularDocumento(ctx.db, tipo, entero(p, 'documentoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
+  'cobro:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarCobro(ctx.db, {
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      contraparteId: entero(p, 'contraparteId'),
+      cuentaDestinoId: entero(p, 'cuentaDestinoId'),
+      monto: texto(p, 'monto'),
+      concepto: texto(p, 'concepto'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      aplicaciones: p.aplicaciones as never,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'pago:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarPago(ctx.db, {
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      contraparteId: entero(p, 'contraparteId'),
+      cuentaOrigenId: entero(p, 'cuentaOrigenId'),
+      monto: texto(p, 'monto'),
+      concepto: texto(p, 'concepto'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      aplicaciones: p.aplicaciones as never,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'transferencia:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarTransferencia(ctx.db, {
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      cuentaOrigenId: entero(p, 'cuentaOrigenId'),
+      cuentaDestinoId: entero(p, 'cuentaDestinoId'),
+      monto: texto(p, 'monto'),
+      concepto: texto(p, 'concepto'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'tesoreria:listar': ctx => listarMovimientos(ctx.db),
+  'tesoreria:anular': (ctx, payload) => {
+    const p = objeto(payload);
+    anularMovimiento(ctx.db, entero(p, 'movimientoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
   }
 };
 

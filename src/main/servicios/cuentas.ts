@@ -7,17 +7,19 @@ export interface DefinicionCuenta {
   tipo: 'activo' | 'pasivo' | 'patrimonio' | 'ingreso' | 'costo' | 'gasto';
   esGrupo: boolean;
   padre?: string;
+  esEfectivo?: boolean;
 }
 
 export const catalogoBasePropuesto: DefinicionCuenta[] = [
   { codigo: '1', nombre: 'Activos', tipo: 'activo', esGrupo: true },
   { codigo: '11', nombre: 'Efectivo y equivalentes', tipo: 'activo', esGrupo: true, padre: '1' },
-  { codigo: '1101', nombre: 'Caja general', tipo: 'activo', esGrupo: false, padre: '11' },
-  { codigo: '1102', nombre: 'Caja chica', tipo: 'activo', esGrupo: false, padre: '11' },
-  { codigo: '1103', nombre: 'Bancos', tipo: 'activo', esGrupo: false, padre: '11' },
+  { codigo: '1101', nombre: 'Caja general', tipo: 'activo', esGrupo: false, padre: '11', esEfectivo: true },
+  { codigo: '1102', nombre: 'Caja chica', tipo: 'activo', esGrupo: false, padre: '11', esEfectivo: true },
+  { codigo: '1103', nombre: 'Bancos', tipo: 'activo', esGrupo: false, padre: '11', esEfectivo: true },
   { codigo: '12', nombre: 'Cuentas por cobrar', tipo: 'activo', esGrupo: true, padre: '1' },
   { codigo: '1201', nombre: 'Clientes', tipo: 'activo', esGrupo: false, padre: '12' },
   { codigo: '1202', nombre: 'Anticipos a proveedores', tipo: 'activo', esGrupo: false, padre: '12' },
+  { codigo: '1203', nombre: 'IVA crédito fiscal', tipo: 'activo', esGrupo: false, padre: '12' },
   { codigo: '13', nombre: 'Inventarios', tipo: 'activo', esGrupo: true, padre: '1' },
   { codigo: '1301', nombre: 'Materiales disponibles', tipo: 'activo', esGrupo: false, padre: '13' },
   { codigo: '14', nombre: 'Proyectos en proceso', tipo: 'activo', esGrupo: true, padre: '1' },
@@ -61,19 +63,23 @@ export const catalogoBasePropuesto: DefinicionCuenta[] = [
 ];
 
 export function sembrarCatalogoBase(db: Database.Database, actor = 'sistema'): void {
-  const yaHay = (db.prepare('SELECT COUNT(*) AS n FROM cuenta').get() as { n: number }).n;
-  if (yaHay > 0) {
+  const raizExiste = db.prepare("SELECT 1 AS x FROM cuenta WHERE codigo = '1'").get();
+  if (raizExiste) {
     return;
   }
   const insertar = db.prepare(
-    'INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id) VALUES (?, ?, ?, ?, ?)'
+    'INSERT OR IGNORE INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id, es_efectivo) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  const porCodigo = new Map<string, number>();
+  const porCodigo = new Map<string, number>(
+    (db.prepare('SELECT id, codigo FROM cuenta').all() as Array<{ id: number; codigo: string }>).map(c => [c.codigo, c.id])
+  );
   const tx = db.transaction(() => {
     for (const def of catalogoBasePropuesto) {
       const padreId = def.padre ? porCodigo.get(def.padre) ?? null : null;
-      const info = insertar.run(def.codigo, def.nombre, def.tipo, def.esGrupo ? 1 : 0, padreId);
-      porCodigo.set(def.codigo, Number(info.lastInsertRowid));
+      const info = insertar.run(def.codigo, def.nombre, def.tipo, def.esGrupo ? 1 : 0, padreId, def.esEfectivo ? 1 : 0);
+      if (info.changes > 0) {
+        porCodigo.set(def.codigo, Number(info.lastInsertRowid));
+      }
     }
   });
   tx();

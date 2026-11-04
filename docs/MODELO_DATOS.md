@@ -1,4 +1,15 @@
-# MODELO DE DATOS (esquema v3)
+# MODELO DE DATOS (esquema v4)
+
+## Migración v4 (`operacion_comercial`)
+
+- `cuenta.es_efectivo` marca las cuentas de efectivo (1101 caja general, 1102 caja chica, 1103 bancos); se añade `1203` IVA crédito fiscal.
+- `cotizacion` / `cotizacion_linea`: cotizaciones numeradas (`C-000001`) con revisiones; estado borrador/aprobada/anulada; `congelada` tras la aprobación. Líneas de servicio/material con cantidad y precio exactos, IVA incluido o separado por línea, base/IVA/total calculados.
+- `proyecto`: código único, contraparte y cotización aprobada de origen.
+- `venta`: reconocimiento de servicio (CxC); folio `V-…`; base/IVA/total, asiento vinculado, idempotencia. El IVA débito solo se admite con `perfil_iva_inscrito = 1`.
+- `compra` / `compra_linea`: folio `CMP-…`; líneas con cuenta de costo/gasto/activo y tratamiento gravado/exento/no sujeto; el IVA se preserva y se lleva al costo salvo política `iva_compras_credito_fiscal = 1` (entonces a 1203).
+- `tesoreria_movimiento`: cobros (`COB-…`), pagos (`PAG-…`) y transferencias (`TRF-…`) con asiento vinculado e idempotencia.
+- `aplicacion`: aplica cobros a ventas y pagos a compras; la validación impide exceder el saldo pendiente (derivado, nunca almacenado); el excedente queda como anticipo (2102 clientes, 1202 proveedores).
+- `configuracion`: `perfil_iva_inscrito` y `iva_compras_credito_fiscal` con fuente y vigencia, en '0' por defecto.
 
 Esquema del núcleo contable. Las migraciones son versionadas (`_migracion`) y se aplican en transacción; cada aplicación registra el evento en bitácora. Nunca se edita una migración ya aplicada; los cambios van en una versión nueva.
 
