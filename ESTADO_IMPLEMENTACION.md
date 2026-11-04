@@ -1,0 +1,51 @@
+# ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
+
+Actualizado: 4 de noviembre de 2026. Documento de continuidad entre sesiones.
+
+## Qué funciona (verificado)
+
+- **Proyecto aislado** `arkon-contabilidad` (Electron 33 + TypeScript + React 18 + SQLite local better-sqlite3 12). Versiones fijadas en `package-lock.json`.
+- **Dinero exacto** (`src/shared/dinero.ts`): enteros BigInt en unidades mínimas; parseo/serialización decimal exacta; redondeo half-up determinista; desglose IVA incluido (`base = total/(1+tasa)`, `iva = total − base`, el total nunca aumenta) e IVA separado aplicado una sola vez.
+- **Esquema v1 + migraciones versionadas** en transacción, con registro en bitácora (`src/main/db/migraciones.ts`).
+- **Motor contable** (`src/main/servicios/motorAsientos.ts`):
+  - Asientos cuadrados, atómicos; líneas con importe positivo en un solo lado; solo cuentas de movimiento vigentes.
+  - Idempotencia por `clave_idempotencia` UNIQUE (doble clic/reintento → mismo asiento).
+  - Períodos mensuales con cierre/reapertura (motivo + bitácora); contabilización bloqueada en período cerrado.
+  - Anulación solo por reverso trazable (`reverso_de_id`), conservando folio y estado `anulado`; reverso no se anula dos veces.
+  - Mayor por cuenta con saldo corrido; original anulado + reverso cancelan el efecto.
+- **Estados financieros** (`estadosFinancieros.ts`): saldos derivados del mayor; balance con ecuación patrimonial (verificador `cuadra`); resultado = ingresos − costos − gastos. Sin saldos almacenados.
+- **Respaldo/restauración** (`respaldo.ts`): API `backup` de SQLite, verificación `integrity_check`, hash SHA-256, manifiesto `.manifest.json`, restauración a área temporal con verificación, copia previa `.antes-restauracion`, bloqueo de esquemas futuros.
+- **Bitácora** de contabilizaciones, anulaciones, cierres/reaperturas, respaldos, migraciones.
+- **Seguridad Electron**: contextIsolation + sandbox, sin nodeIntegration, CSP restrictiva, preload con lista de comandos permitidos, IPC con verificación de remitente y validación de payloads; SQL parametrizado; instancia única.
+- **Interfaz mínima funcional** (español, identidad ARKON con Barlow Condensed + IBM Plex Sans empaquetadas localmente): Inicio (balance), Contabilidad (asientos, mayor, anulación), Respaldo, Bitácora. Estados vacíos reales, sin datos precargados. Catálogo base **propuesto** sembrado como estructura editable (sin cifras).
+- **Pruebas**: 18 pruebas Vitest en verde — dinero exacto y desgloses IVA (incluido/separado/redondeo), cuadre, rechazos (descuadre, dos lados, importe cero, cuenta grupo/inexistente), idempotencia, atomicidad (fallo no deja parciales), período cerrado/reapertura, reverso y cancelación de efecto, ecuación patrimonial, respaldo (hash, manifiesto, restauración en entorno limpio, rechazo de hash alterado).
+- **Empaquetado**: `electron-builder --dir` verificado en Linux con módulo nativo better-sqlite3 (`asarUnpack`), Electron 33.4.11 descargado y empaquetado.
+
+## Qué comprobé y cómo
+
+- `npx tsc --noEmit -p tsconfig.node.json` → sin errores.
+- `npx vitest run` → 18/18 pruebas en verde.
+- `npm run build` (main + renderer con fuentes locales) → OK.
+- `npx electron-builder --dir --linux` → paquete generado con app.asar; el binario no se pudo ejecutar en el sandbox por falta de bibliotecas gráficas del contenedor (documentado como pendiente en Windows).
+
+## Qué falta (siguiente paso)
+
+1. **Hito 3 — Operación comercial** (siguiente paso inmediato): CRUD de contrapartes, catálogo de servicios/materiales vacío, cotizaciones versionadas con congelamiento de la versión aprobada, proyectos con costos previstos/reales (costo desconocido ≠ cero → rentabilidad provisional), compras y gastos, CxC/CxP con tabla de aplicaciones y saldos no aplicados, caja/bancos con transferencias internas que no generan ingreso/gasto.
+2. Respaldo automático previo a migraciones y al trabajar; respaldo de adjuntos coordinado con la instantánea de la base.
+3. Hito 4 — motor fiscal por línea con perfil por vigencia, anticipos (reconocimiento financiero vs hecho generador), retenciones, libros de IVA y conciliaciones.
+4. Hito 5 — reportes y cierre completo. Hito 6 — exportadores fiscales por versión, manual final e instalador comprobado en Windows sin internet.
+5. Verificación en Windows del instalador NSIS y de la ruta `%LOCALAPPDATA%\ARKON Contabilidad` fuera de OneDrive.
+
+## Decisiones tomadas
+
+- Ámbito contable único inicial `administrativo`, identificado en cada asiento; la entidad jurídica futura será otro ámbito sin recalcular historial.
+- Folio de asiento secuencial por ámbito (`A-000001`).
+- El IVA incluido deriva `iva = total − base` (reconcilia exactamente con el total); el IVA separado se calcula con redondeo half-up sobre la base.
+- Catálogo base sembrado solo como estructura (grupos y cuentas de movimiento), editable, pendiente del contador; ninguna cifra del negocio se usó.
+- La restauración requiere manifiesto o registro previo con hash coincidente; copia del estado anterior siempre preservada.
+
+## Cómo continuar en otra sesión
+
+- Arrancar por este archivo y `docs/PENDIENTES.md`; el plan maestro es `PLAN_SISTEMA_CONTABLE_ARKON_PARA_VIBE.md` (proporcionado por el propietario).
+- Todo cambio de esquema va en `src/main/db/migraciones.ts` como nueva versión; nunca editar una migración ya aplicada.
+- Pruebas siempre con datos sintéticos en base temporal (`pruebas/utilidades.ts`), nunca en la base operativa.

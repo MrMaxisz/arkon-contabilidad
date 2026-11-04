@@ -1,0 +1,17 @@
+appId: sv.arkon.contabilidad
+productName: ARKON Contabilidad
+directories:
+  output: paquete
+files:
+  - dist/**/*
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: ARKON Contabilidad
