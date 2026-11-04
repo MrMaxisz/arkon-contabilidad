@@ -1,6 +1,18 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la novena revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la décima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Corrección de la décima revisión (sobre el commit f693799) — aplicada y probada
+
+- **[P2] Saldo visible de anticipos**: la consulta del saldo es una función reutilizable que se ejecuta al cambiar selección y **después de cada aplicación exitosa**; las respuestas obsoletas se descartan por identificador de consulta (cambios rápidos de contraparte o tipo no sobrescriben el saldo de la selección actual); durante la consulta se muestra estado de carga y nunca el importe anterior como vigente. El saldo se presenta en formato monetario con conversión exacta (`minorATexto`), igual que el resto del formulario.
+- **Regresión de componente** (nuevo nivel de verificación): se añadieron `jsdom` + `@testing-library/react` como dependencias de desarrollo y una prueba que renderiza la vista real de Cobros y pagos con IPC simulado: aplica un anticipo, comprueba la **segunda consulta de saldo** con el remanente ($100.00 → $70.00) y verifica que una respuesta obsoleta de una selección anterior no sobrescriba el saldo actual.
+- **Detalle**: la prueba de migración cuyo título prometía una comparación «base nueva vs actualizada» se renombró para describir exactamente lo que ejecuta.
+
+Evidencia por nivel de verificación (entorno Linux):
+- **Servicios**: suite completa en verde.
+- **Componentes**: pruebas de la vista real con IPC simulado (jsdom + Testing Library), incluida la regresión de la décima revisión.
+- **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos.
+- **Ejecutable**: el recorrido gráfico del ejecutable Electron en Windows **sigue pendiente** y no se declara completado.
 
 ## Correcciones de la novena revisión (sobre el commit c6a296e) — aplicadas y probadas
 

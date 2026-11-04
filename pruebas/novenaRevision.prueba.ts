@@ -114,7 +114,7 @@ describe('novena revisión: migración v5 → v7 del crédito fiscal', () => {
     dbMigrada.close();
   });
 
-  it('una base nueva y una actualizada desde v5 concilian igual tras el cambio de política', () => {
+  it('una compra v5 con crédito conserva su tratamiento al actualizar a la versión actual', () => {
     const db = baseV5();
     const contraparte = db.prepare("INSERT INTO contraparte (nombre, es_cliente, es_proveedor) VALUES ('Prov Z', 0, 1)").run();
     compraV5Sintetica(db, Number(contraparte.lastInsertRowid), { conCredito: true, ivaMinor: 260, totalMinor: 2260 });

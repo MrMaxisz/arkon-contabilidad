@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { VentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { minorATexto } from '../../shared/dinero';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
 interface Cuenta { id: number; nombre: string; codigo: string }
@@ -30,6 +31,8 @@ export default function CobrosPagos() {
   const [documentoAnticipo, setDocumentoAnticipo] = useState(0);
   const [montoAnticipo, setMontoAnticipo] = useState('');
   const [saldoAnticipo, setSaldoAnticipo] = useState<string | null>(null);
+  const [saldoAnticipoCargando, setSaldoAnticipoCargando] = useState(false);
+  const consultaSaldoId = useRef(0);
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -46,16 +49,33 @@ export default function CobrosPagos() {
     cargar();
   }, [cargar]);
 
-  useEffect(() => {
+  const consultarSaldoAnticipo = useCallback(() => {
     if (modo !== 'anticipo' || !contraparteId) {
       setSaldoAnticipo(null);
+      setSaldoAnticipoCargando(false);
       return;
     }
-    void api()
+    const id = ++consultaSaldoId.current;
+    setSaldoAnticipoCargando(true);
+    api()
       .invocar('anticipo:saldo', { tipo: tipoAnticipo, contraparteId })
-      .then(r => setSaldoAnticipo(String((r as { saldoMinor: string }).saldoMinor)))
-      .catch(() => setSaldoAnticipo(null));
+      .then(r => {
+        if (consultaSaldoId.current === id) {
+          setSaldoAnticipo(String((r as { saldoMinor: string }).saldoMinor));
+          setSaldoAnticipoCargando(false);
+        }
+      })
+      .catch(() => {
+        if (consultaSaldoId.current === id) {
+          setSaldoAnticipo(null);
+          setSaldoAnticipoCargando(false);
+        }
+      });
   }, [modo, tipoAnticipo, contraparteId]);
+
+  useEffect(() => {
+    consultarSaldoAnticipo();
+  }, [consultarSaldoAnticipo]);
 
   const esAnticipo = modo === 'anticipo';
   const contrapartesVisibles = esAnticipo
@@ -115,6 +135,7 @@ export default function CobrosPagos() {
         texto = `Aplicación de anticipo ${r.folio} registrada sin mover dinero nuevo.`;
         setDocumentoAnticipo(0);
         setMontoAnticipo('');
+        consultarSaldoAnticipo();
       } else {
         const comando = modo === 'cobro' ? 'cobro:registrar' : 'pago:registrar';
         const r = (await api().invocar(comando, {
@@ -191,8 +212,9 @@ export default function CobrosPagos() {
             <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>
           </div>
         )}
-        {esAnticipo && saldoAnticipo !== null && (
-          <p className="menor">Saldo de anticipo disponible: {saldoAnticipo} (unidades mínimas).</p>
+        {esAnticipo && saldoAnticipoCargando && <p className="menor">Consultando saldo de anticipo…</p>}
+        {esAnticipo && !saldoAnticipoCargando && saldoAnticipo !== null && (
+          <p className="menor">Saldo de anticipo disponible: ${minorATexto(BigInt(saldoAnticipo))}.</p>
         )}
         {esAnticipo ? (
           <div className="fila">
