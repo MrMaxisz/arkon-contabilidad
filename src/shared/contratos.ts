@@ -51,6 +51,8 @@ export interface VentaResumen {
   totalMinor: string;
   saldoMinor: string;
   estado: string;
+  clasificacionDocumento: string | null;
+  tipoDocumento: string | null;
 }
 
 export interface CompraResumen {
@@ -63,6 +65,8 @@ export interface CompraResumen {
   totalMinor: string;
   saldoMinor: string;
   estado: string;
+  clasificacionDocumento: string | null;
+  tipoDocumento: string | null;
 }
 
 export interface MovimientoTesoreriaResumen {

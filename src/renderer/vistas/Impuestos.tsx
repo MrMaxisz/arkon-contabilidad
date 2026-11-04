@@ -74,7 +74,10 @@ export default function Impuestos() {
   const [retenciones, setRetenciones] = useState<Retencion[]>([]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [politicas, setPoliticas] = useState<{ anticipoHechoGenerador: string; ivaComprasCreditoFiscal: boolean; perfilIvaInscritoConfig: boolean } | null>(null);
-  const [exportacion, setExportacion] = useState<{ csv: string; version: string; advertencia: string } | null>(null);
+  const [exportacion, setExportacion] = useState<{ mes: string; tipo: string; csv: string; version: string; advertencia: string } | null>(null);
+  const exportacionId = useRef(0);
+  const mesRef = useRef(mes);
+  mesRef.current = mes;
 
   const [desde, setDesde] = useState(fechaLocalElSalvador());
   const [hasta, setHasta] = useState('');
@@ -129,12 +132,19 @@ export default function Impuestos() {
   }
 
   async function exportar(tipo: 'venta' | 'compra') {
+    const id = ++exportacionId.current;
+    const mesSolicitado = mes;
     setMensaje(null);
-    setExportacion(null);
     try {
       const r = (await api().invocar('fiscal:exportarCsv', { tipo, mes })) as { csv: string; version: string; advertencia: string };
-      setExportacion(r);
+      if (exportacionId.current !== id || mesRef.current !== mesSolicitado) {
+        return;
+      }
+      setExportacion({ mes, tipo, ...r });
     } catch (err) {
+      if (exportacionId.current !== id) {
+        return;
+      }
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
   }
@@ -234,7 +244,7 @@ export default function Impuestos() {
       )}
       <h2>Libros y conciliación de IVA</h2>
       <div className="fila">
-        <label>Mes<input type="month" value={mes} onChange={e => setMes(e.target.value)} /></label>
+        <label>Mes<input type="month" value={mes} onChange={e => { setMes(e.target.value); exportacionId.current++; setExportacion(null); }} /></label>
       </div>
       {conciliacion && (
         <table>
@@ -273,7 +283,10 @@ export default function Impuestos() {
       </div>
       {exportacion && (
         <div>
-          <p className="aviso">{exportacion.advertencia} (versión {exportacion.version})</p>
+          <p className="aviso">
+            Exportación de {exportacion.mes} · libro de {exportacion.tipo === 'venta' ? 'ventas' : 'compras'} (versión {exportacion.version}).
+            {exportacion.advertencia}
+          </p>
           <pre>{exportacion.csv}</pre>
         </div>
       )}

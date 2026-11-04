@@ -1,6 +1,13 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la duodécima revisión del PR #1, sin hallazgos; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimotercera revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la decimotercera revisión (sobre el commit 6e3d96e) — aplicadas y probadas
+
+- **[P2] Completar clasificación documental de documentos ya registrados**: nuevo servicio auditado `completarClasificacionDocumento` + comando `documento:clasificar` + acción «Clasificar» en las vistas Ventas y Compras (columna de clasificación con estado «Pendiente»). Valida valores, exige responsable y motivo, registra valores anteriores/nuevos y motivo en bitácora, y **no altera importes, asiento, aplicaciones, folio ni clave de idempotencia** (el registro idempotente conserva su semántica). Regresiones: documento nuevo sin clasificar, documento con cobro aplicado (conserva aplicaciones y clave; el reenvío idempotente sigue devolviendo duplicado), documentos con anticipo aplicado y pago aplicado, y rechazo de anulados/falta de responsable o motivo. Tras completar metadatos, el CSV se genera conservando mayor y saldos.
+- **[P2] CSV asociado a mes y tipo**: la exportación mostrada identifica mes y libro («Exportación de 2026-10 · libro de ventas»), se limpia e invalida al cambiar de mes, y las respuestas se descartan por identidad de solicitud y mes vigente (también en errores). Regresiones de componente con promesas diferidas y contenidos distinguibles: cambio de mes limpia el CSV; respuesta tardía de septiembre no reemplaza la de octubre; respuesta tardía de ventas no reemplaza la de compras posterior.
+
+Evidencia por nivel (Linux): **Servicios y componentes**: `npm test` → **87/87 en verde** (15 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Avance del hito fiscal tras la duodécima revisión (sin hallazgos) — aplicado y probado
 

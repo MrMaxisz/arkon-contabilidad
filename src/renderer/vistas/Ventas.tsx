@@ -27,6 +27,10 @@ export default function Ventas() {
   const [tasa, setTasa] = useState('0');
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
+  const [clasificando, setClasificando] = useState<VentaResumen | null>(null);
+  const [clasValor, setClasValor] = useState('contribuyente');
+  const [tipoDocValor, setTipoDocValor] = useState('factura');
+  const [motivoClas, setMotivoClas] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
@@ -145,12 +149,54 @@ export default function Ventas() {
           Sin inscripción de IVA vigente, la tasa debe ser 0.
         </p>
       </form>
+      {clasificando && (
+        <form onSubmit={async e => {
+          e.preventDefault();
+          try {
+            await api().invocar('documento:clasificar', {
+              tipo: 'venta',
+              documentoId: clasificando.id,
+              clasificacionDocumento: clasValor,
+              tipoDocumento: tipoDocValor,
+              responsable,
+              motivo: motivoClas
+            });
+            setMensaje({ texto: `Clasificación de ${clasificando.folio} completada; acción auditada sin tocar importes ni asiento.`, tipo: 'ok' });
+            setClasificando(null);
+            cargar();
+          } catch (err) {
+            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          }
+        }}>
+          <h2>Clasificar {clasificando.folio}</h2>
+          <div className="fila">
+            <label>Clasificación
+              <select value={clasValor} onChange={e => setClasValor(e.target.value)}>
+                <option value="contribuyente">Contribuyente</option>
+                <option value="consumidor_final">Consumidor final</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label>Tipo de documento
+              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)}>
+                <option value="factura">Factura</option>
+                <option value="ccf">Crédito fiscal</option>
+                <option value="recibo">Recibo</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={motivoClas} onChange={e => setMotivoClas(e.target.value)} required /></label>
+            <button className="primario" type="submit">Completar clasificación</button>
+            <button type="button" onClick={() => setClasificando(null)}>Cancelar</button>
+          </div>
+        </form>
+      )}
       <h2>Ventas recientes</h2>
       {ventas.length === 0 ? (
         <p className="vacio">Sin ventas reconocidas.</p>
       ) : (
         <table>
-          <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Cliente</th><th className="numero">Total</th><th className="numero">Saldo</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Cliente</th><th className="numero">Total</th><th className="numero">Saldo</th><th>Estado</th><th>Clasificación</th><th></th></tr></thead>
           <tbody>
             {ventas.map(v => (
               <tr key={v.id}>
@@ -161,7 +207,13 @@ export default function Ventas() {
                 <td className="numero">${v.totalMinor}</td>
                 <td className="numero">${v.saldoMinor}</td>
                 <td>{v.estado}</td>
-                <td>{v.estado === 'registrada' && <button onClick={() => void anular(v)}>Anular</button>}</td>
+                <td>{v.clasificacionDocumento && v.tipoDocumento ? `${v.clasificacionDocumento} · ${v.tipoDocumento}` : 'Pendiente'}</td>
+                <td>
+                  {v.estado === 'registrada' && (!v.clasificacionDocumento || !v.tipoDocumento) && (
+                    <button onClick={() => { setClasificando(v); setMotivoClas(''); }}>Clasificar</button>
+                  )}
+                  {v.estado === 'registrada' && <button onClick={() => void anular(v)}>Anular</button>}
+                </td>
               </tr>
             ))}
           </tbody>

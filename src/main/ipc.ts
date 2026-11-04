@@ -5,7 +5,7 @@ import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros'
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { manejarRestauracion, type ContextoApp } from './servicios/restauracion';
 import { listarEventos } from './servicios/bitacora';
-import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal } from './servicios/operacion';
+import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 import {
@@ -228,6 +228,25 @@ const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     const tipo = texto(p, 'tipo') === 'venta' ? 'venta' : 'compra';
     anularDocumento(ctx.db, tipo, entero(p, 'documentoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
+  'documento:clasificar': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo') === 'venta' ? 'venta' : 'compra';
+    const clasificacion = texto(p, 'clasificacionDocumento');
+    if (!['contribuyente', 'consumidor_final', 'otro'].includes(clasificacion)) {
+      throw new ErrorValidacion('Clasificación inválida');
+    }
+    const tipoDoc = texto(p, 'tipoDocumento');
+    if (!['factura', 'ccf', 'recibo', 'otro'].includes(tipoDoc)) {
+      throw new ErrorValidacion('Tipo documental inválido');
+    }
+    completarClasificacionDocumento(ctx.db, tipo, entero(p, 'documentoId'), {
+      clasificacionDocumento: clasificacion as 'contribuyente' | 'consumidor_final' | 'otro',
+      tipoDocumento: tipoDoc as 'factura' | 'ccf' | 'recibo' | 'otro',
+      responsable: texto(p, 'responsable'),
+      motivo: texto(p, 'motivo')
+    });
     return { ok: true };
   },
   'cobro:registrar': (ctx, payload) => {

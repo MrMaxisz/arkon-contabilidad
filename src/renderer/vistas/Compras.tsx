@@ -39,6 +39,10 @@ export default function Compras() {
     { descripcion: '', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '', tasa: '13', tratamiento: 'gravado', precioConIva: true }
   ]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
+  const [clasificando, setClasificando] = useState<CompraResumen | null>(null);
+  const [clasValor, setClasValor] = useState('contribuyente');
+  const [tipoDocValor, setTipoDocValor] = useState('factura');
+  const [motivoClas, setMotivoClas] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
@@ -203,12 +207,54 @@ export default function Compras() {
         <p className="menor">El IVA documentado del proveedor se conserva; no se clasifica como crédito fiscal automáticamente.</p>
       </form>
 
+      {clasificando && (
+        <form onSubmit={async e => {
+          e.preventDefault();
+          try {
+            await api().invocar('documento:clasificar', {
+              tipo: 'compra',
+              documentoId: clasificando.id,
+              clasificacionDocumento: clasValor,
+              tipoDocumento: tipoDocValor,
+              responsable,
+              motivo: motivoClas
+            });
+            setMensaje({ texto: `Clasificación de ${clasificando.folio} completada; acción auditada sin tocar importes ni asiento.`, tipo: 'ok' });
+            setClasificando(null);
+            cargar();
+          } catch (err) {
+            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          }
+        }}>
+          <h2>Clasificar {clasificando.folio}</h2>
+          <div className="fila">
+            <label>Clasificación
+              <select value={clasValor} onChange={e => setClasValor(e.target.value)}>
+                <option value="contribuyente">Contribuyente</option>
+                <option value="consumidor_final">Consumidor final</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label>Tipo de documento
+              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)}>
+                <option value="factura">Factura</option>
+                <option value="ccf">Crédito fiscal</option>
+                <option value="recibo">Recibo</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={motivoClas} onChange={e => setMotivoClas(e.target.value)} required /></label>
+            <button className="primario" type="submit">Completar clasificación</button>
+            <button type="button" onClick={() => setClasificando(null)}>Cancelar</button>
+          </div>
+        </form>
+      )}
       <h2>Compras recientes</h2>
       {compras.length === 0 ? (
         <p className="vacio">Sin compras registradas.</p>
       ) : (
         <table>
-          <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Proveedor</th><th className="numero">Total</th><th className="numero">Saldo</th><th>Estado</th><th></th></tr></thead>
+          <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Proveedor</th><th className="numero">Total</th><th className="numero">Saldo</th><th>Estado</th><th>Clasificación</th><th></th></tr></thead>
           <tbody>
             {compras.map(c => (
               <tr key={c.id}>
@@ -219,7 +265,13 @@ export default function Compras() {
                 <td className="numero">${c.totalMinor}</td>
                 <td className="numero">${c.saldoMinor}</td>
                 <td>{c.estado}</td>
-                <td>{c.estado === 'registrada' && <button onClick={() => void anular(c)}>Anular</button>}</td>
+                <td>{c.clasificacionDocumento && c.tipoDocumento ? `${c.clasificacionDocumento} · ${c.tipoDocumento}` : 'Pendiente'}</td>
+                <td>
+                  {c.estado === 'registrada' && (!c.clasificacionDocumento || !c.tipoDocumento) && (
+                    <button onClick={() => { setClasificando(c); setMotivoClas(''); }}>Clasificar</button>
+                  )}
+                  {c.estado === 'registrada' && <button onClick={() => void anular(c)}>Anular</button>}
+                </td>
               </tr>
             ))}
           </tbody>

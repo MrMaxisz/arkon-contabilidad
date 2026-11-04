@@ -31,6 +31,7 @@ const COMANDOS_PERMITIDOS = new Set([
   'venta:registrar',
   'venta:listar',
   'documento:anular',
+  'documento:clasificar',
   'cobro:registrar',
   'pago:registrar',
   'transferencia:registrar',

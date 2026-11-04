@@ -435,7 +435,7 @@ export function anularDocumento(
 export function listarCompras(db: Database.Database): CompraResumen[] {
   const filas = db
     .prepare(
-      `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado,
+      `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado, co.clasificacion_documento, co.tipo_documento,
               (co.total_minor
                 - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
                   JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
@@ -454,6 +454,8 @@ export function listarCompras(db: Database.Database): CompraResumen[] {
     total_minor: number;
     saldo: number;
     estado: string;
+    clasificacion_documento: string | null;
+    tipo_documento: string | null;
   }>;
   return filas.map(f => ({
     id: f.id,
@@ -464,14 +466,16 @@ export function listarCompras(db: Database.Database): CompraResumen[] {
     contraparteNombre: f.contraparte,
     totalMinor: minorATexto(BigInt(f.total_minor)),
     saldoMinor: minorATexto(BigInt(f.saldo)),
-    estado: f.estado
+    estado: f.estado,
+    clasificacionDocumento: f.clasificacion_documento,
+    tipoDocumento: f.tipo_documento
   }));
 }
 
 export function listarVentas(db: Database.Database): VentaResumen[] {
   const filas = db
     .prepare(
-      `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado,
+      `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado, v.clasificacion_documento, v.tipo_documento,
               (v.total_minor
                 - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
                   JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
@@ -490,6 +494,8 @@ export function listarVentas(db: Database.Database): VentaResumen[] {
     total_minor: number;
     saldo: number;
     estado: string;
+    clasificacion_documento: string | null;
+    tipo_documento: string | null;
   }>;
   return filas.map(f => ({
     id: f.id,
@@ -500,6 +506,52 @@ export function listarVentas(db: Database.Database): VentaResumen[] {
     contraparteNombre: f.contraparte,
     totalMinor: minorATexto(BigInt(f.total_minor)),
     saldoMinor: minorATexto(BigInt(f.saldo)),
-    estado: f.estado
+    estado: f.estado,
+    clasificacionDocumento: f.clasificacion_documento,
+    tipoDocumento: f.tipo_documento
   }));
+}
+
+export function completarClasificacionDocumento(
+  db: Database.Database,
+  tipo: 'venta' | 'compra',
+  documentoId: number,
+  entrada: {
+    clasificacionDocumento: 'contribuyente' | 'consumidor_final' | 'otro';
+    tipoDocumento: 'factura' | 'ccf' | 'recibo' | 'otro';
+    responsable: string;
+    motivo: string;
+  }
+): void {
+  if (!entrada.responsable?.trim()) {
+    throw new ErrorOperacion('Completar la clasificación exige responsable');
+  }
+  if (!entrada.motivo?.trim()) {
+    throw new ErrorOperacion('Completar la clasificación exige motivo');
+  }
+  const tabla = tipo === 'venta' ? 'venta' : 'compra';
+  const doc = db
+    .prepare(`SELECT id, folio, estado, clasificacion_documento, tipo_documento FROM ${tabla} WHERE id = ?`)
+    .get(documentoId) as
+    | { id: number; folio: string; estado: string; clasificacion_documento: string | null; tipo_documento: string | null }
+    | undefined;
+  if (!doc) {
+    throw new ErrorOperacion('Documento inexistente');
+  }
+  if (doc.estado !== 'registrada') {
+    throw new ErrorOperacion(`Solo se clasifican documentos registrados: ${doc.folio}`);
+  }
+  const cambiado = db
+    .prepare(`UPDATE ${tabla} SET clasificacion_documento = ?, tipo_documento = ? WHERE id = ?`)
+    .run(entrada.clasificacionDocumento, entrada.tipoDocumento, documentoId);
+  if (cambiado.changes === 0) {
+    throw new ErrorOperacion('No fue posible actualizar la clasificación');
+  }
+  registroEvento(db, entrada.responsable, 'clasificacion_completada', tipo, String(documentoId), {
+    folio: doc.folio,
+    anteriores: { clasificacion: doc.clasificacion_documento, tipo: doc.tipo_documento },
+    nuevos: { clasificacion: entrada.clasificacionDocumento, tipo: entrada.tipoDocumento },
+    motivo: entrada.motivo,
+    nota: 'Acción de metadatos documentales; no altera importes, asiento, aplicaciones, folio ni clave de idempotencia'
+  });
 }
