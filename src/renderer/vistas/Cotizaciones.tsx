@@ -20,8 +20,8 @@ function nuevaClave(): string {
     : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function CotizacionResumenes() {
-  const [cotizaciones, setCotizacionResumenes] = useState<CotizacionResumen[]>([]);
+export default function Cotizaciones() {
+  const [cotizaciones, setCotizaciones] = useState<CotizacionResumen[]>([]);
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
   const [clientes, setClientes] = useState<Contraparte[]>([]);
   const [contraparteId, setContraparteId] = useState(0);
@@ -40,7 +40,7 @@ export default function CotizacionResumenes() {
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('cotizacion:listar').then(r => setCotizacionResumenes(r as CotizacionResumen[]));
+    void api().invocar('cotizacion:listar').then(r => setCotizaciones(r as CotizacionResumen[]));
     void api().invocar('contraparte:listar').then(r => {
       const lista = r as Contraparte[];
       setContrapartes(lista);
@@ -138,7 +138,7 @@ export default function CotizacionResumenes() {
 
   return (
     <div>
-      <h1>CotizacionResumenes</h1>
+      <h1>Cotizaciones</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={crear}>
         <h2>{editandoId ? 'Editar borrador de cotización' : 'Nueva cotización'}</h2>
@@ -205,7 +205,7 @@ export default function CotizacionResumenes() {
         <p className="menor">Si el precio incluye IVA, el desglose conserva el total; base + IVA reconcilian sin aumentarlo.</p>
       </form>
 
-      <h2>CotizacionResumenes recientes</h2>
+      <h2>Cotizaciones recientes</h2>
       {cotizaciones.length === 0 ? (
         <p className="vacio">Sin cotizaciones.</p>
       ) : (

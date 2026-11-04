@@ -35,7 +35,17 @@ const COMANDOS_PERMITIDOS = new Set([
   'pago:registrar',
   'transferencia:registrar',
   'tesoreria:listar',
-  'tesoreria:anular'
+  'tesoreria:anular',
+  'vigencia:crear',
+  'vigencia:listar',
+  'fiscal:libroVentas',
+  'fiscal:libroCompras',
+  'fiscal:conciliar',
+  'retencion:registrar',
+  'retencion:listar',
+  'anticipo:saldo',
+  'anticipo:aplicar',
+  'anticipo:anular'
 ]);
 
 contextBridge.exposeInMainWorld('arkon', {

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { parseMontoMinor, parseTasa, desglosarIvaSeparado, desglosarIvaIncluido, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
+import { inscritoIvaEnFecha } from './fiscal';
 import type { ContraparteResumen, ProyectoResumen, VentaResumen, CompraResumen } from '../../shared/contratos';
 import { contabilizarAsiento, anularAsiento, ErrorContable } from './motorAsientos';
 import { registroEvento } from './bitacora';
@@ -321,7 +322,7 @@ export function registrarVenta(
     throw new ErrorOperacion('La base debe ser mayor que cero');
   }
   const tasa = parseTasa(entrada.tasa);
-  const inscrito = perfilIvaInscrito(db);
+  const inscrito = inscritoIvaEnFecha(db, entrada.fechaOperacion);
   let iva = 0n;
   if (tasa.puntosBase > 0n) {
     if (!inscrito) {

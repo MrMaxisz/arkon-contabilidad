@@ -1,4 +1,10 @@
-# MODELO DE DATOS (esquema v4)
+# MODELO DE DATOS (esquema v5)
+
+## Migración v5 (`adaptacion_fiscal`)
+
+- `vigencia_fiscal`: perfil tributario por vigencia (`desde`, `hasta` opcional, `inscrito_iva`, fuente y responsable). Las vigencias no se solapan; `inscritoIvaEnFecha(fecha)` decide si una operación admite IVA débito según su fecha de operación, sin recalcular historial.
+- `retencion`: control de retenciones efectuadas/recibidas con base, tasa, monto, regla, contraparte y comprobante. Sin efecto contable automático hasta política aprobada.
+- `aplicacion_anticipo`: aplicación posterior de un anticipo (cliente 2102→1201; proveedor 1202→2101) a un documento pendiente de la misma contraparte, con asiento e idempotencia. El saldo de anticipo por contraparte se deriva de los movimientos (excedentes de cobros/pagos menos aplicaciones), nunca se almacena.
 
 ## Migración v4 (`operacion_comercial`)
 

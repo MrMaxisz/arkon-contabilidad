@@ -188,7 +188,7 @@ export function contabilizarAsiento(
   return ejecutar();
 }
 
-const ORIGENES_ADMINISTRADOS = new Set(['venta', 'compra', 'cobro', 'pago', 'transferencia']);
+const ORIGENES_ADMINISTRADOS = new Set(['venta', 'compra', 'cobro', 'pago', 'transferencia', 'aplicacion_anticipo']);
 
 export function anularAsiento(
   db: Database.Database,

@@ -8,6 +8,18 @@ import { listarEventos } from './servicios/bitacora';
 import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
+import {
+  crearVigencia,
+  listarVigencias,
+  libroVentas,
+  libroCompras,
+  conciliarIva,
+  registrarRetencion,
+  listarRetenciones,
+  saldoAnticipo,
+  aplicarAnticipo,
+  anularAplicacionAnticipo
+} from './servicios/fiscal';
 
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
 
@@ -246,6 +258,71 @@ const comandos: Record<string, Manejador> = {
   'tesoreria:anular': (ctx, payload) => {
     const p = objeto(payload);
     anularMovimiento(ctx.db, entero(p, 'movimientoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
+  'vigencia:crear': (ctx, payload) => {
+    const p = objeto(payload);
+    return {
+      id: crearVigencia(ctx.db, {
+        desde: texto(p, 'desde'),
+        hasta: typeof p.hasta === 'string' && p.hasta ? p.hasta : undefined,
+        inscritoIva: p.inscritoIva === true,
+        descripcion: typeof p.descripcion === 'string' ? p.descripcion : undefined,
+        fuente: typeof p.fuente === 'string' ? p.fuente : undefined,
+        responsable: texto(p, 'responsable')
+      })
+    };
+  },
+  'vigencia:listar': ctx => listarVigencias(ctx.db),
+  'fiscal:libroVentas': (ctx, payload) => {
+    const p = objeto(payload);
+    return libroVentas(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:libroCompras': (ctx, payload) => {
+    const p = objeto(payload);
+    return libroCompras(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:conciliar': (ctx, payload) => {
+    const p = objeto(payload);
+    return conciliarIva(ctx.db, texto(p, 'mes'));
+  },
+  'retencion:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    return registrarRetencion(ctx.db, {
+      tipo: texto(p, 'tipo') === 'recibida' ? 'recibida' : 'efectuada',
+      contraparteId: entero(p, 'contraparteId'),
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      base: texto(p, 'base'),
+      tasa: texto(p, 'tasa'),
+      regla: texto(p, 'regla'),
+      comprobante: typeof p.comprobante === 'string' ? p.comprobante : undefined,
+      concepto: texto(p, 'concepto'),
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'retencion:listar': ctx => listarRetenciones(ctx.db),
+  'anticipo:saldo': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo') === 'proveedor' ? 'proveedor' : 'cliente';
+    return { saldoMinor: saldoAnticipo(ctx.db, tipo, entero(p, 'contraparteId')).toString() };
+  },
+  'anticipo:aplicar': (ctx, payload) => {
+    const p = objeto(payload);
+    return aplicarAnticipo(ctx.db, {
+      tipo: texto(p, 'tipo') === 'proveedor' ? 'proveedor' : 'cliente',
+      contraparteId: entero(p, 'contraparteId'),
+      documentoTipo: texto(p, 'documentoTipo') === 'compra' ? 'compra' : 'venta',
+      documentoId: entero(p, 'documentoId'),
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      monto: texto(p, 'monto'),
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'anticipo:anular': (ctx, payload) => {
+    const p = objeto(payload);
+    anularAplicacionAnticipo(ctx.db, entero(p, 'id'), texto(p, 'responsable'), texto(p, 'motivo'));
     return { ok: true };
   }
 };

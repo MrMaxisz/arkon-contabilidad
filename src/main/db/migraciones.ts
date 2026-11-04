@@ -336,5 +336,55 @@ INSERT INTO configuracion (clave, valor, fuente, vigencia)
 SELECT 'iva_compras_credito_fiscal', '0', 'Política pendiente del contador responsable', NULL
 WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'iva_compras_credito_fiscal');
 `
+  },
+  {
+    version: 5,
+    nombre: 'adaptacion_fiscal',
+    sql: `
+CREATE TABLE vigencia_fiscal (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  desde TEXT NOT NULL,
+  hasta TEXT,
+  inscrito_iva INTEGER NOT NULL DEFAULT 0 CHECK (inscrito_iva IN (0,1)),
+  descripcion TEXT,
+  fuente TEXT,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE retencion (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folio TEXT NOT NULL UNIQUE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('efectuada','recibida')),
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  fecha_operacion TEXT NOT NULL,
+  base_minor INTEGER NOT NULL CHECK (base_minor > 0),
+  tasa_puntos_base INTEGER NOT NULL CHECK (tasa_puntos_base > 0),
+  monto_minor INTEGER NOT NULL CHECK (monto_minor > 0),
+  regla TEXT NOT NULL,
+  comprobante TEXT,
+  concepto TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'registrada' CHECK (estado IN ('registrada','anulada')),
+  clave_idempotencia TEXT UNIQUE,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE aplicacion_anticipo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folio TEXT NOT NULL UNIQUE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('cliente','proveedor')),
+  contraparte_id INTEGER NOT NULL REFERENCES contraparte(id),
+  documento_tipo TEXT NOT NULL CHECK (documento_tipo IN ('venta','compra')),
+  documento_id INTEGER NOT NULL,
+  fecha_operacion TEXT NOT NULL,
+  monto_minor INTEGER NOT NULL CHECK (monto_minor > 0),
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  estado TEXT NOT NULL DEFAULT 'registrada' CHECK (estado IN ('registrada','anulada')),
+  clave_idempotencia TEXT UNIQUE,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`
   }
 ];

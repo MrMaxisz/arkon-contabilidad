@@ -1,6 +1,21 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la sexta revisión del PR #1). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la séptima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Corrección de la séptima revisión (sobre el commit 70e5c9c) — aplicada
+
+- **[P3] Títulos de Cotizaciones restituidos**: «Cotizaciones» y «Cotizaciones recientes» vuelven a ser los textos visibles; el contrato conserva su nombre técnico.
+
+## Hito 4 — Adaptación fiscal salvadoreña (parcial, implementado y probado)
+
+- **Migración v5 `adaptacion_fiscal`**: `vigencia_fiscal` (perfil por vigencia sin solapamientos), `retencion` (control con base, regla, tasa, comprobante) y `aplicacion_anticipo` (aplicación posterior de anticipos sin mover dinero).
+- **Vigencias**: `inscritoIvaEnFecha` gobierna el IVA débito por fecha de operación; una vigencia futura no recalcula el historial ni atribuye operaciones anteriores. Fallback al parámetro de configuración mientras no existan vigencias.
+- **Libros y conciliación de IVA**: libro mensual de ventas y compras (solo documentos `registrada` suman a totales) y conciliación con las cuentas 2201/1203 del mayor, con nota explícita cuando la política de crédito fiscal está inactiva. Vista «Impuestos» con vigencias, mes seleccionable, libros y conciliación.
+- **Retenciones**: registro de control (efectuada/recibida) con base, regla, contraparte y comprobante, **sin efecto contable automático** hasta la política del contador (regla del plan: no activar por defecto). Idempotencia por clave.
+- **Aplicación posterior de anticipos** (pendiente de la cuarta revisión resuelto): `aplicarAnticipo` aplica el excedente de un cliente (2102→1201) o proveedor (1202→2101) a un documento pendiente de la misma contraparte, con asiento, idempotencia, validación de saldo disponible y anulación por reverso. El saldo de anticipo se deriva por contraparte de los movimientos, no de un saldo almacenado.
+- La anulación manual de asientos de aplicación de anticipo queda bloqueada (origen administrado).
+
+Evidencia (Linux): `npm run typecheck` sin errores en ambas configuraciones; `npm test` → **62/62 en verde** (9 archivos); `npm run build` OK. Siguen pendientes del hito 4: anticipos con hecho generador fiscal diferenciado (política del contador), exportadores fiscales verificados por versión (F-07/F-14 y libros), y soporte del F-11.
 
 ## Correcciones de la sexta revisión (sobre el commit 84e142e) — aplicadas y probadas
 
