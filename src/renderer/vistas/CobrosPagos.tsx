@@ -33,6 +33,8 @@ export default function CobrosPagos() {
   const [saldoAnticipo, setSaldoAnticipo] = useState<string | null>(null);
   const [saldoAnticipoCargando, setSaldoAnticipoCargando] = useState(false);
   const consultaSaldoId = useRef(0);
+  const seleccionRef = useRef({ modo: 'cobro' as Modo, tipo: 'cliente' as 'cliente' | 'proveedor', contraparte: 0 });
+  seleccionRef.current = { modo, tipo: tipoAnticipo, contraparte: contraparteId };
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -50,31 +52,45 @@ export default function CobrosPagos() {
   }, [cargar]);
 
   const consultarSaldoAnticipo = useCallback(() => {
+    const id = ++consultaSaldoId.current;
     if (modo !== 'anticipo' || !contraparteId) {
       setSaldoAnticipo(null);
       setSaldoAnticipoCargando(false);
       return;
     }
-    const id = ++consultaSaldoId.current;
+    const seleccion = { modo, tipo: tipoAnticipo, contraparte: contraparteId };
     setSaldoAnticipoCargando(true);
     api()
       .invocar('anticipo:saldo', { tipo: tipoAnticipo, contraparteId })
       .then(r => {
-        if (consultaSaldoId.current === id) {
-          setSaldoAnticipo(String((r as { saldoMinor: string }).saldoMinor));
-          setSaldoAnticipoCargando(false);
+        if (consultaSaldoId.current !== id) {
+          return;
         }
+        const actual = seleccionRef.current;
+        if (actual.modo !== seleccion.modo || actual.tipo !== seleccion.tipo || actual.contraparte !== seleccion.contraparte) {
+          return;
+        }
+        setSaldoAnticipo(String((r as { saldoMinor: string }).saldoMinor));
+        setSaldoAnticipoCargando(false);
       })
       .catch(() => {
-        if (consultaSaldoId.current === id) {
-          setSaldoAnticipo(null);
-          setSaldoAnticipoCargando(false);
+        if (consultaSaldoId.current !== id) {
+          return;
         }
+        const actual = seleccionRef.current;
+        if (actual.modo !== seleccion.modo || actual.tipo !== seleccion.tipo || actual.contraparte !== seleccion.contraparte) {
+          return;
+        }
+        setSaldoAnticipo(null);
+        setSaldoAnticipoCargando(false);
       });
   }, [modo, tipoAnticipo, contraparteId]);
 
   useEffect(() => {
     consultarSaldoAnticipo();
+    return () => {
+      consultaSaldoId.current++;
+    };
   }, [consultarSaldoAnticipo]);
 
   const esAnticipo = modo === 'anticipo';
@@ -177,7 +193,7 @@ export default function CobrosPagos() {
         </h2>
         <div className="fila">
           <label>Tipo
-            <select value={modo} onChange={e => cambiarModo(e.target.value as Modo)}>
+            <select value={modo} onChange={e => cambiarModo(e.target.value as Modo)} disabled={ocupado}>
               <option value="cobro">Cobro de cliente</option>
               <option value="pago">Pago a proveedor</option>
               <option value="anticipo">Aplicar anticipo existente</option>
@@ -185,14 +201,14 @@ export default function CobrosPagos() {
           </label>
           {esAnticipo && (
             <label>Anticipo de
-              <select value={tipoAnticipo} onChange={e => cambiarTipoAnticipo(e.target.value as 'cliente' | 'proveedor')}>
+              <select value={tipoAnticipo} onChange={e => cambiarTipoAnticipo(e.target.value as 'cliente' | 'proveedor')} disabled={ocupado}>
                 <option value="cliente">Cliente (a una venta)</option>
                 <option value="proveedor">Proveedor (a una compra)</option>
               </select>
             </label>
           )}
           <label>Contraparte
-            <select value={contraparteId} onChange={e => cambiarContraparte(Number(e.target.value))} required>
+            <select value={contraparteId} onChange={e => cambiarContraparte(Number(e.target.value))} required disabled={ocupado}>
               <option value={0}>— Seleccione —</option>
               {contrapartesVisibles.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
@@ -219,7 +235,7 @@ export default function CobrosPagos() {
         {esAnticipo ? (
           <div className="fila">
             <label style={{ flex: 2 }}>Documento a aplicar
-              <select value={documentoAnticipo} onChange={e => setDocumentoAnticipo(Number(e.target.value))} required>
+              <select value={documentoAnticipo} onChange={e => setDocumentoAnticipo(Number(e.target.value))} required disabled={ocupado}>
                 <option value={0}>— Seleccione —</option>
                 {documentosFiltrados.map(d => (
                   <option key={d.id} value={d.id}>{d.folio} · {d.concepto} (saldo ${d.saldoMinor})</option>

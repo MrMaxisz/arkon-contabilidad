@@ -1,6 +1,13 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la décima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la undécima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Corrección de la undécima revisión (sobre el commit 994467d) — aplicada y probada
+
+- **[P2] Respuestas de selecciones anteriores**: la consulta de saldo invalida las peticiones previas al cambiar o quitar la selección (aunque no se envíe una petición nueva) y al desmontar la vista; el resultado se asocia a la selección vigente (modo, tipo de anticipo y contraparte) además del identificador de petición; durante una aplicación pendiente los selectores (tipo, contraparte y documento) quedan bloqueados para que un manejador de una operación anterior no pueda reactivar una selección obsoleta.
+- **Regresiones deterministas** (promesas diferidas con respuestas distinguibles, sin temporizadores iguales): respuesta tardía de Alfa no reemplaza el saldo de Beta ($50.00 permanece); aplicación pendiente bloquea los selectores y al resolverse refresca el saldo de su propia selección ($100.00 → $70.00); quitar la selección con consulta pendiente no muestra saldo sin contraparte.
+
+Evidencia por nivel (Linux): **Servicios y componentes**: `npm test` → **76/76 en verde** (12 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Corrección de la décima revisión (sobre el commit f693799) — aplicada y probada
 
