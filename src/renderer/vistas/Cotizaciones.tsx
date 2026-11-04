@@ -1,20 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { CotizacionResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
-interface Cotizacion {
-  id: number;
-  numero: string;
-  revision: number;
-  contraparteNombre: string;
-  fecha: string;
-  estado: string;
-  congelada: boolean;
-  baseMinor: string;
-  ivaMinor: string;
-  totalMinor: string;
-}
 
 interface LineaForm {
   tipo: 'servicio' | 'material';
@@ -31,8 +20,8 @@ function nuevaClave(): string {
     : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export default function Cotizaciones() {
-  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
+export default function CotizacionResumenes() {
+  const [cotizaciones, setCotizacionResumenes] = useState<CotizacionResumen[]>([]);
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
   const [clientes, setClientes] = useState<Contraparte[]>([]);
   const [contraparteId, setContraparteId] = useState(0);
@@ -46,12 +35,12 @@ export default function Cotizaciones() {
   const [ocupado, setOcupado] = useState(false);
   const [cargando, setCargando] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
-  const [anulando, setAnulando] = useState<Cotizacion | null>(null);
+  const [anulando, setAnulando] = useState<CotizacionResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('cotizacion:listar').then(r => setCotizaciones(r as Cotizacion[]));
+    void api().invocar('cotizacion:listar').then(r => setCotizacionResumenes(r as CotizacionResumen[]));
     void api().invocar('contraparte:listar').then(r => {
       const lista = r as Contraparte[];
       setContrapartes(lista);
@@ -100,7 +89,7 @@ export default function Cotizaciones() {
     }
   }
 
-  async function editar(c: Cotizacion) {
+  async function editar(c: CotizacionResumen) {
     setEditandoId(c.id);
     setCargando(true);
     setMensaje(null);
@@ -149,7 +138,7 @@ export default function Cotizaciones() {
 
   return (
     <div>
-      <h1>Cotizaciones</h1>
+      <h1>CotizacionResumenes</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={crear}>
         <h2>{editandoId ? 'Editar borrador de cotización' : 'Nueva cotización'}</h2>
@@ -216,7 +205,7 @@ export default function Cotizaciones() {
         <p className="menor">Si el precio incluye IVA, el desglose conserva el total; base + IVA reconcilian sin aumentarlo.</p>
       </form>
 
-      <h2>Cotizaciones recientes</h2>
+      <h2>CotizacionResumenes recientes</h2>
       {cotizaciones.length === 0 ? (
         <p className="vacio">Sin cotizaciones.</p>
       ) : (

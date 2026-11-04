@@ -3,19 +3,11 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { registroEvento } from './bitacora';
+import type { InfoRespaldo as InfoRespaldoContrato } from '../../shared/contratos';
 import { versionEsquemaActual } from '../db/aplicarMigraciones';
 
 export class ErrorRespaldo extends Error {}
 
-export interface InfoRespaldo {
-  id: number;
-  creadoEn: string;
-  nombre: string;
-  hashSha256: string;
-  versionApp: string;
-  versionEsquema: number;
-  estado: string;
-}
 
 function hashArchivo(ruta: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
@@ -84,6 +76,8 @@ interface FilaRespaldo {
   version_esquema: number;
   estado: string;
 }
+
+export type InfoRespaldo = InfoRespaldoContrato;
 
 export function listarRespaldos(db: Database.Database): InfoRespaldo[] {
   const filas = db

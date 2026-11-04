@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import type { ProyectoResumen } from '../../shared/contratos';
 
 interface Contraparte { id: number; nombre: string }
-interface Proyecto { id: number; codigo: string; nombre: string; contraparteNombre: string; estado: string }
 interface Cotizacion { id: number; numero: string; estado: string }
 
 export default function Proyectos() {
-  const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+  const [proyectos, setProyectos] = useState<ProyectoResumen[]>([]);
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [codigo, setCodigo] = useState('');
@@ -19,7 +19,7 @@ export default function Proyectos() {
   const [ocupado, setOcupado] = useState(false);
 
   const cargar = useCallback(() => {
-    void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
+    void api().invocar('proyecto:listar').then(r => setProyectos(r as ProyectoResumen[]));
     void api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[]));
     void api().invocar('cotizacion:listar').then(r => setCotizaciones((r as Cotizacion[]).filter(c => c.estado === 'aprobada')));
   }, []);

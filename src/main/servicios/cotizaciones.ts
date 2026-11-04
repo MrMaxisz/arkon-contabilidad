@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { parseMontoMinor, parseTasa, desglosarIvaIncluido, desglosarIvaSeparado, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
+import type { CotizacionResumen as CotizacionResumenContrato } from '../../shared/contratos';
 import { registroEvento } from './bitacora';
 
 export class ErrorCotizacion extends Error {}
@@ -43,20 +44,6 @@ export function calcularLinea(linea: LineaCotizacionEntrada): LineaCotizacionCal
   return desglosarIvaSeparado(bruto, tasa);
 }
 
-export interface CotizacionResumen {
-  id: number;
-  numero: string;
-  revision: number;
-  contraparteId: number;
-  contraparteNombre: string;
-  fecha: string;
-  estado: string;
-  congelada: boolean;
-  baseMinor: string;
-  ivaMinor: string;
-  totalMinor: string;
-  condiciones: string | null;
-}
 
 interface FilaCotizacion {
   id: number;
@@ -272,6 +259,8 @@ export function anularCotizacion(db: Database.Database, cotizacionId: number, re
   }
   registroEvento(db, responsable, 'cotizacion_anulada', 'cotizacion', String(cotizacionId), { motivo });
 }
+
+export type CotizacionResumen = CotizacionResumenContrato;
 
 export function listarCotizaciones(db: Database.Database): CotizacionResumen[] {
   return (db

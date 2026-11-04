@@ -1,18 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import type { ContraparteResumen } from '../../shared/contratos';
 
-interface Contraparte {
-  id: number;
-  nombre: string;
-  esCliente: boolean;
-  esProveedor: boolean;
-  nrc: string | null;
-  nit: string | null;
-  activa: boolean;
-}
 
 export default function Contrapartes() {
-  const [lista, setLista] = useState<Contraparte[]>([]);
+  const [lista, setLista] = useState<ContraparteResumen[]>([]);
   const [nombre, setNombre] = useState('');
   const [cliente, setCliente] = useState(false);
   const [proveedor, setProveedor] = useState(false);
@@ -21,7 +13,7 @@ export default function Contrapartes() {
   const [ocupado, setOcupado] = useState(false);
 
   const cargar = useCallback(() => {
-    void api().invocar('contraparte:listar').then(r => setLista(r as Contraparte[]));
+    void api().invocar('contraparte:listar').then(r => setLista(r as ContraparteResumen[]));
   }, []);
 
   useEffect(() => {

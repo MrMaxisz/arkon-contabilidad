@@ -1,19 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { VentaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
-interface Venta {
-  id: number;
-  folio: string;
-  fecha: string;
-  concepto: string;
-  contraparteNombre: string;
-  totalMinor: string;
-  saldoMinor: string;
-  estado: string;
-}
 
 function nuevaClave(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -22,7 +13,7 @@ function nuevaClave(): string {
 }
 
 export default function Ventas() {
-  const [ventas, setVentas] = useState<Venta[]>([]);
+  const [ventas, setVentas] = useState<VentaResumen[]>([]);
   const [clientes, setClientes] = useState<Contraparte[]>([]);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [contraparteId, setContraparteId] = useState(0);
@@ -38,7 +29,7 @@ export default function Ventas() {
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('venta:listar').then(r => setVentas(r as Venta[]));
+    void api().invocar('venta:listar').then(r => setVentas(r as VentaResumen[]));
     void api().invocar('contraparte:listar').then(r => setClientes((r as Contraparte[]).filter(c => c.esCliente)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
   }, []);
@@ -78,7 +69,7 @@ export default function Ventas() {
     }
   }
 
-  async function anular(v: Venta) {
+  async function anular(v: VentaResumen) {
     if (!responsable.trim()) {
       setMensaje({ texto: 'Registre el responsable antes de anular.', tipo: 'error' });
       return;

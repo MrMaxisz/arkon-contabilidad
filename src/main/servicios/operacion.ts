@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { parseMontoMinor, parseTasa, desglosarIvaSeparado, desglosarIvaIncluido, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
+import type { ContraparteResumen, ProyectoResumen, VentaResumen, CompraResumen } from '../../shared/contratos';
 import { contabilizarAsiento, anularAsiento, ErrorContable } from './motorAsientos';
 import { registroEvento } from './bitacora';
 
@@ -47,15 +48,7 @@ export function crearContraparte(
   return Number(info.lastInsertRowid);
 }
 
-export function listarContrapartes(db: Database.Database): Array<{
-  id: number;
-  nombre: string;
-  esCliente: boolean;
-  esProveedor: boolean;
-  nrc: string | null;
-  nit: string | null;
-  activa: boolean;
-}> {
+export function listarContrapartes(db: Database.Database): ContraparteResumen[] {
   const filas = db
     .prepare('SELECT id, nombre, es_cliente, es_proveedor, nrc, nit, activa FROM contraparte ORDER BY nombre')
     .all() as Array<{
@@ -113,13 +106,7 @@ export function crearProyecto(
   return Number(info.lastInsertRowid);
 }
 
-export function listarProyectos(db: Database.Database): Array<{
-  id: number;
-  codigo: string;
-  nombre: string;
-  contraparteNombre: string;
-  estado: string;
-}> {
+export function listarProyectos(db: Database.Database): ProyectoResumen[] {
   const filas = db
     .prepare(
       `SELECT pr.id, pr.codigo, pr.nombre, c.nombre AS contraparte, pr.estado
@@ -456,17 +443,7 @@ export function anularDocumento(
   tx();
 }
 
-export function listarCompras(db: Database.Database): Array<{
-  id: number;
-  folio: string;
-  fecha: string;
-  concepto: string;
-  contraparteId: number;
-  contraparteNombre: string;
-  totalMinor: string;
-  saldoMinor: string;
-  estado: string;
-}> {
+export function listarCompras(db: Database.Database): CompraResumen[] {
   const filas = db
     .prepare(
       `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado,
@@ -499,17 +476,7 @@ export function listarCompras(db: Database.Database): Array<{
   }));
 }
 
-export function listarVentas(db: Database.Database): Array<{
-  id: number;
-  folio: string;
-  fecha: string;
-  concepto: string;
-  contraparteId: number;
-  contraparteNombre: string;
-  totalMinor: string;
-  saldoMinor: string;
-  estado: string;
-}> {
+export function listarVentas(db: Database.Database): VentaResumen[] {
   const filas = db
     .prepare(
       `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado,

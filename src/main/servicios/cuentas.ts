@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { registroEvento } from './bitacora';
+import type { CuentaResumen } from '../../shared/contratos';
 
 export interface DefinicionCuenta {
   codigo: string;
@@ -89,15 +90,8 @@ export function sembrarCatalogoBase(db: Database.Database, actor = 'sistema'): v
   });
 }
 
-export interface CuentaFila {
-  id: number;
-  codigo: string;
-  nombre: string;
-  tipo: string;
-  esGrupo: boolean;
-  padreId: number | null;
-  activa: boolean;
-}
+
+export type CuentaFila = CuentaResumen;
 
 export function listarCuentas(db: Database.Database): CuentaFila[] {
   const filas = db

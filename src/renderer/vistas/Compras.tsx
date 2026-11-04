@@ -1,20 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { CuentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esProveedor: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
-interface Cuenta { id: number; codigo: string; nombre: string; tipo: string }
-interface Compra {
-  id: number;
-  folio: string;
-  fecha: string;
-  concepto: string;
-  contraparteNombre: string;
-  totalMinor: string;
-  saldoMinor: string;
-  estado: string;
-}
 
 interface LineaForm {
   descripcion: string;
@@ -33,11 +23,11 @@ function nuevaClave(): string {
 }
 
 export default function Compras() {
-  const [compras, setCompras] = useState<Compra[]>([]);
+  const [compras, setCompras] = useState<CompraResumen[]>([]);
   const [proveedores, setProveedores] = useState<Contraparte[]>([]);
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [proyectoId, setProyectoId] = useState(0);
-  const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [cuentas, setCuentas] = useState<CuentaResumen[]>([]);
   const [proveedorId, setProveedorId] = useState(0);
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [concepto, setConcepto] = useState('');
@@ -51,10 +41,10 @@ export default function Compras() {
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('compra:listar').then(r => setCompras(r as Compra[]));
+    void api().invocar('compra:listar').then(r => setCompras(r as CompraResumen[]));
     void api().invocar('contraparte:listar').then(r => setProveedores((r as Contraparte[]).filter(c => c.esProveedor)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
-    void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
+    void api().invocar('cuenta:listar').then(r => setCuentas((r as CuentaResumen[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
   }, []);
 
   useEffect(() => {
@@ -91,7 +81,7 @@ export default function Compras() {
     }
   }
 
-  async function anular(c: Compra) {
+  async function anular(c: CompraResumen) {
     if (!responsable.trim()) {
       setMensaje({ texto: 'Registre el responsable antes de anular.', tipo: 'error' });
       return;

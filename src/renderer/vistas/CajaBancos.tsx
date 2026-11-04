@@ -1,18 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Cuenta { id: number; codigo: string; nombre: string }
-interface Movimiento {
-  id: number;
-  folio: string;
-  tipo: string;
-  fecha: string;
-  concepto: string;
-  montoMinor: string;
-  estado: string;
-  contraparteNombre: string | null;
-}
 
 function nuevaClave(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -22,7 +13,7 @@ function nuevaClave(): string {
 
 export default function CajaBancos() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
-  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [movimientos, setMovimientos] = useState<MovimientoTesoreriaResumen[]>([]);
   const [origen, setOrigen] = useState(0);
   const [destino, setDestino] = useState(0);
   const [monto, setMonto] = useState('');
@@ -35,7 +26,7 @@ export default function CajaBancos() {
 
   const cargar = useCallback(() => {
     void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter(c => ['1101', '1102', '1103'].includes(c.codigo))));
-    void api().invocar('tesoreria:listar').then(r => setMovimientos(r as Movimiento[]));
+    void api().invocar('tesoreria:listar').then(r => setMovimientos(r as MovimientoTesoreriaResumen[]));
   }, []);
 
   useEffect(() => {
@@ -71,7 +62,7 @@ export default function CajaBancos() {
     }
   }
 
-  async function anular(m: Movimiento) {
+  async function anular(m: MovimientoTesoreriaResumen) {
     if (!responsable.trim()) {
       setMensaje({ texto: 'Registre el responsable antes de anular.', tipo: 'error' });
       return;

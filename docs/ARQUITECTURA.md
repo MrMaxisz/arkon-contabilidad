@@ -50,3 +50,7 @@ En desarrollo (Linux/macOS) se usa `~/.arkon-contabilidad`. La base activa nunca
 - `electron-builder` con destino NSIS para Windows (`npm run dist:win`).
 - `better-sqlite3` se marca en `asarUnpack` (módulo nativo).
 - Verificado en este hito: empaquetado `--dir` con módulo nativo reconstruido. Pendiente: ejecutar el instalador NSIS en Windows y recorrer los flujos en el ejecutable.
+
+## Verificación de tipos
+
+`npm run typecheck` ejecuta ambas comprobaciones: `tsconfig.node.json` (main/preload/shared) y `tsconfig.renderer.json` (renderer con DOM y JSX). Falla ante errores de tipos en cualquier parte de la aplicación. Los contratos de datos compartidos entre servicios y vistas están en `src/shared/contratos.ts`.

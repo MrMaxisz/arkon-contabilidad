@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import type { VentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
 interface Cuenta { id: number; nombre: string; codigo: string }
-interface Venta { id: number; folio: string; concepto: string; contraparteId: number; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
-interface Compra { id: number; folio: string; concepto: string; contraparteId: number; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
 
 function nuevaClave(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -17,8 +16,8 @@ export default function CobrosPagos() {
   const [modo, setModo] = useState<'cobro' | 'pago'>('cobro');
   const [contrapartes, setContrapartes] = useState<Contraparte[]>([]);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
-  const [ventas, setVentas] = useState<Venta[]>([]);
-  const [compras, setCompras] = useState<Compra[]>([]);
+  const [ventas, setVentas] = useState<VentaResumen[]>([]);
+  const [compras, setCompras] = useState<CompraResumen[]>([]);
   const [contraparteId, setContraparteId] = useState(0);
   const [cuentaId, setCuentaId] = useState(0);
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
@@ -33,8 +32,8 @@ export default function CobrosPagos() {
   const cargar = useCallback(() => {
     void api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[]));
     void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo))));
-    void api().invocar('venta:listar').then(r => setVentas((r as Venta[]).filter(v => v.estado === 'registrada')));
-    void api().invocar('compra:listar').then(r => setCompras((r as Compra[]).filter(c => c.estado === 'registrada')));
+    void api().invocar('venta:listar').then(r => setVentas((r as VentaResumen[]).filter(v => v.estado === 'registrada')));
+    void api().invocar('compra:listar').then(r => setCompras((r as CompraResumen[]).filter(c => c.estado === 'registrada')));
   }, []);
 
   useEffect(() => {

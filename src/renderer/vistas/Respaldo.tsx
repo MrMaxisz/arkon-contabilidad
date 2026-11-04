@@ -1,15 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import type { InfoRespaldo } from '../../shared/contratos';
 
-interface InfoRespaldo {
-  id: number;
-  creadoEn: string;
-  nombre: string;
-  hashSha256: string;
-  versionApp: string;
-  versionEsquema: number;
-  estado: string;
-}
 
 export default function Respaldo() {
   const [respaldos, setRespaldos] = useState<InfoRespaldo[]>([]);

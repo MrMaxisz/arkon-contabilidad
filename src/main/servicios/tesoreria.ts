@@ -4,6 +4,7 @@ import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { saldoPendienteDocumento, ErrorOperacion } from './operacion';
 import { registroEvento } from './bitacora';
+import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 
 export class ErrorTesoreria extends Error {}
 
@@ -380,16 +381,7 @@ export function anularMovimiento(db: Database.Database, movimientoId: number, re
   tx();
 }
 
-export function listarMovimientos(db: Database.Database): Array<{
-  id: number;
-  folio: string;
-  tipo: string;
-  fecha: string;
-  concepto: string;
-  montoMinor: string;
-  estado: string;
-  contraparteNombre: string | null;
-}> {
+export function listarMovimientos(db: Database.Database): MovimientoTesoreriaResumen[] {
   const filas = db
     .prepare(
       `SELECT t.id, t.folio, t.tipo, t.fecha_operacion, t.concepto, t.monto_minor, t.estado, c.nombre AS contraparte
