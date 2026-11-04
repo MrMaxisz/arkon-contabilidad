@@ -200,7 +200,14 @@ const comandos: Record<string, Manejador> = {
       responsable: texto(p, 'responsable')
     });
   },
-  'compra:listar': ctx => listarCompras(ctx.db),
+  'compra:listar': (ctx, payload) => {
+    const p = objeto(payload);
+    return listarCompras(ctx.db, {
+      mes: typeof p.mes === 'string' && p.mes ? p.mes : undefined,
+      limite: typeof p.limite === 'number' ? p.limite : undefined,
+      desde: typeof p.desde === 'number' ? p.desde : undefined
+    });
+  },
   'venta:registrar': (ctx, payload) => {
     const p = objeto(payload);
     const clasificacion = ['contribuyente', 'consumidor_final', 'otro'].includes(String(p.clasificacionDocumento))
@@ -223,7 +230,14 @@ const comandos: Record<string, Manejador> = {
       responsable: texto(p, 'responsable')
     });
   },
-  'venta:listar': ctx => listarVentas(ctx.db),
+  'venta:listar': (ctx, payload) => {
+    const p = objeto(payload);
+    return listarVentas(ctx.db, {
+      mes: typeof p.mes === 'string' && p.mes ? p.mes : undefined,
+      limite: typeof p.limite === 'number' ? p.limite : undefined,
+      desde: typeof p.desde === 'number' ? p.desde : undefined
+    });
+  },
   'documento:anular': (ctx, payload) => {
     const p = objeto(payload);
     const tipo = texto(p, 'tipo') === 'venta' ? 'venta' : 'compra';

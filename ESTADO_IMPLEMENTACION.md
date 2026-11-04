@@ -1,6 +1,14 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimotercera revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimocuarta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la decimocuarta revisión (sobre el commit 727be68) — aplicadas y probadas
+
+- **[P2] Documentos históricos accesibles**: `listarVentas`/`listarCompras` aceptan filtro por mes y paginación (`mes`, `limite`, `desde`); las vistas Ventas y Compras ofrecen «Filtrar por mes» y botones Anteriores/Siguientes. Un documento fuera de los últimos 100 se localiza por su mes, se clasifica y su mes exporta. Regresiones con 101+ documentos por tipo (ventas y compras): el histórico excluido del listado reciente aparece con el filtro, se clasifica y el CSV del mes se genera; paginación verificada.
+- **[P2] Diálogo precargado desde el documento**: al abrir «Clasificar» ambos selectores se inicializan con los valores existentes del documento; el campo faltante muestra «— Seleccione —» y se exige elección explícita antes de enviar (validación en el envío). No se hereda la selección de otro documento y el botón también se ofrece para corregir documentos ya completos (acción auditada). Regresiones de componente: clasificación conocida con tipo pendiente (payload conserva `consumidor_final`), y apertura consecutiva de documentos diferentes sin herencia.
+- **[P2] Atomicidad de la auditoría documental**: `completarClasificacionDocumento` ejecuta actualización y evento de bitácora en una única transacción; si falla cualquier escritura, los metadatos previos se conservan y no queda evento parcial. Regresión con fallo inducido por trigger en bitácora: el documento queda exactamente como estaba, sin eventos; el éxito posterior persiste ambos.
+
+Evidencia por nivel (Linux): **Servicios y componentes**: `npm test` → **92/92 en verde** (17 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Correcciones de la decimotercera revisión (sobre el commit 6e3d96e) — aplicadas y probadas
 

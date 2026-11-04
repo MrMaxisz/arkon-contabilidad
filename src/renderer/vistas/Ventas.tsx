@@ -28,14 +28,16 @@ export default function Ventas() {
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [clasificando, setClasificando] = useState<VentaResumen | null>(null);
-  const [clasValor, setClasValor] = useState('contribuyente');
-  const [tipoDocValor, setTipoDocValor] = useState('factura');
+  const [clasValor, setClasValor] = useState('');
+  const [tipoDocValor, setTipoDocValor] = useState('');
   const [motivoClas, setMotivoClas] = useState('');
+  const [mesFiltro, setMesFiltro] = useState('');
+  const [pagina, setPagina] = useState(0);
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('venta:listar').then(r => setVentas(r as VentaResumen[]));
+    void api().invocar('venta:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 }).then(r => setVentas(r as VentaResumen[]));
     void api().invocar('contraparte:listar').then(r => setClientes((r as Contraparte[]).filter(c => c.esCliente)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
   }, []);
@@ -43,6 +45,10 @@ export default function Ventas() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [mesFiltro]);
 
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
@@ -152,6 +158,10 @@ export default function Ventas() {
       {clasificando && (
         <form onSubmit={async e => {
           e.preventDefault();
+          if (!clasValor || !tipoDocValor) {
+            setMensaje({ texto: 'Seleccione clasificación y tipo documental; no se sustituye un valor conocido por un predeterminado.', tipo: 'error' });
+            return;
+          }
           try {
             await api().invocar('documento:clasificar', {
               tipo: 'venta',
@@ -171,14 +181,16 @@ export default function Ventas() {
           <h2>Clasificar {clasificando.folio}</h2>
           <div className="fila">
             <label>Clasificación
-              <select value={clasValor} onChange={e => setClasValor(e.target.value)}>
+              <select value={clasValor} onChange={e => setClasValor(e.target.value)} required>
+                <option value="">— Seleccione —</option>
                 <option value="contribuyente">Contribuyente</option>
                 <option value="consumidor_final">Consumidor final</option>
                 <option value="otro">Otro</option>
               </select>
             </label>
             <label>Tipo de documento
-              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)}>
+              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)} required>
+                <option value="">— Seleccione —</option>
                 <option value="factura">Factura</option>
                 <option value="ccf">Crédito fiscal</option>
                 <option value="recibo">Recibo</option>
@@ -209,8 +221,13 @@ export default function Ventas() {
                 <td>{v.estado}</td>
                 <td>{v.clasificacionDocumento && v.tipoDocumento ? `${v.clasificacionDocumento} · ${v.tipoDocumento}` : 'Pendiente'}</td>
                 <td>
-                  {v.estado === 'registrada' && (!v.clasificacionDocumento || !v.tipoDocumento) && (
-                    <button onClick={() => { setClasificando(v); setMotivoClas(''); }}>Clasificar</button>
+                  {v.estado === 'registrada' && (
+                    <button onClick={() => {
+                      setClasificando(v);
+                      setClasValor(v.clasificacionDocumento ?? '');
+                      setTipoDocValor(v.tipoDocumento ?? '');
+                      setMotivoClas('');
+                    }}>Clasificar</button>
                   )}
                   {v.estado === 'registrada' && <button onClick={() => void anular(v)}>Anular</button>}
                 </td>

@@ -40,14 +40,16 @@ export default function Compras() {
   ]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [clasificando, setClasificando] = useState<CompraResumen | null>(null);
-  const [clasValor, setClasValor] = useState('contribuyente');
-  const [tipoDocValor, setTipoDocValor] = useState('factura');
+  const [clasValor, setClasValor] = useState('');
+  const [tipoDocValor, setTipoDocValor] = useState('');
   const [motivoClas, setMotivoClas] = useState('');
+  const [mesFiltro, setMesFiltro] = useState('');
+  const [pagina, setPagina] = useState(0);
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('compra:listar').then(r => setCompras(r as CompraResumen[]));
+    void api().invocar('compra:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 }).then(r => setCompras(r as CompraResumen[]));
     void api().invocar('contraparte:listar').then(r => setProveedores((r as Contraparte[]).filter(c => c.esProveedor)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
     void api().invocar('cuenta:listar').then(r => setCuentas((r as CuentaResumen[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
@@ -56,6 +58,10 @@ export default function Compras() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [mesFiltro]);
 
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
@@ -210,6 +216,10 @@ export default function Compras() {
       {clasificando && (
         <form onSubmit={async e => {
           e.preventDefault();
+          if (!clasValor || !tipoDocValor) {
+            setMensaje({ texto: 'Seleccione clasificación y tipo documental; no se sustituye un valor conocido por un predeterminado.', tipo: 'error' });
+            return;
+          }
           try {
             await api().invocar('documento:clasificar', {
               tipo: 'compra',
@@ -229,14 +239,16 @@ export default function Compras() {
           <h2>Clasificar {clasificando.folio}</h2>
           <div className="fila">
             <label>Clasificación
-              <select value={clasValor} onChange={e => setClasValor(e.target.value)}>
+              <select value={clasValor} onChange={e => setClasValor(e.target.value)} required>
+                <option value="">— Seleccione —</option>
                 <option value="contribuyente">Contribuyente</option>
                 <option value="consumidor_final">Consumidor final</option>
                 <option value="otro">Otro</option>
               </select>
             </label>
             <label>Tipo de documento
-              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)}>
+              <select value={tipoDocValor} onChange={e => setTipoDocValor(e.target.value)} required>
+                <option value="">— Seleccione —</option>
                 <option value="factura">Factura</option>
                 <option value="ccf">Crédito fiscal</option>
                 <option value="recibo">Recibo</option>
@@ -249,7 +261,12 @@ export default function Compras() {
           </div>
         </form>
       )}
-      <h2>Compras recientes</h2>
+      <h2>{mesFiltro ? `Compras de ${mesFiltro}` : 'Compras recientes'}</h2>
+      <div className="fila">
+        <label>Filtrar por mes (vacío = recientes)<input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} /></label>
+        <button onClick={() => setPagina(p => Math.max(0, p - 1))} disabled={pagina === 0}>Anteriores</button>
+        <button onClick={() => setPagina(p => p + 1)} disabled={compras.length < 100}>Siguientes</button>
+      </div>
       {compras.length === 0 ? (
         <p className="vacio">Sin compras registradas.</p>
       ) : (
@@ -267,8 +284,13 @@ export default function Compras() {
                 <td>{c.estado}</td>
                 <td>{c.clasificacionDocumento && c.tipoDocumento ? `${c.clasificacionDocumento} · ${c.tipoDocumento}` : 'Pendiente'}</td>
                 <td>
-                  {c.estado === 'registrada' && (!c.clasificacionDocumento || !c.tipoDocumento) && (
-                    <button onClick={() => { setClasificando(c); setMotivoClas(''); }}>Clasificar</button>
+                  {c.estado === 'registrada' && (
+                    <button onClick={() => {
+                      setClasificando(c);
+                      setClasValor(c.clasificacionDocumento ?? '');
+                      setTipoDocValor(c.tipoDocumento ?? '');
+                      setMotivoClas('');
+                    }}>Clasificar</button>
                   )}
                   {c.estado === 'registrada' && <button onClick={() => void anular(c)}>Anular</button>}
                 </td>

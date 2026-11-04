@@ -432,7 +432,10 @@ export function anularDocumento(
   tx();
 }
 
-export function listarCompras(db: Database.Database): CompraResumen[] {
+export function listarCompras(
+  db: Database.Database,
+  opciones: { mes?: string; limite?: number; desde?: number } = {}
+): CompraResumen[] {
   const filas = db
     .prepare(
       `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado, co.clasificacion_documento, co.tipo_documento,
@@ -442,9 +445,11 @@ export function listarCompras(db: Database.Database): CompraResumen[] {
                   WHERE a.documento_tipo = 'compra' AND a.documento_id = co.id AND t.estado = 'registrado'), 0)
                 - COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
                   WHERE aa.documento_tipo = 'compra' AND aa.documento_id = co.id AND aa.estado = 'registrada'), 0)) AS saldo
-       FROM compra co JOIN contraparte p ON p.id = co.contraparte_id ORDER BY co.id DESC LIMIT 100`
+       FROM compra co JOIN contraparte p ON p.id = co.contraparte_id
+       WHERE (? IS NULL OR co.fecha_operacion LIKE ? || '%')
+       ORDER BY co.id DESC LIMIT ? OFFSET ?`
     )
-    .all() as Array<{
+    .all(opciones.mes ?? null, opciones.mes ?? '', opciones.limite ?? 100, opciones.desde ?? 0) as Array<{
     id: number;
     folio: string;
     fecha_operacion: string;
@@ -472,7 +477,10 @@ export function listarCompras(db: Database.Database): CompraResumen[] {
   }));
 }
 
-export function listarVentas(db: Database.Database): VentaResumen[] {
+export function listarVentas(
+  db: Database.Database,
+  opciones: { mes?: string; limite?: number; desde?: number } = {}
+): VentaResumen[] {
   const filas = db
     .prepare(
       `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado, v.clasificacion_documento, v.tipo_documento,
@@ -482,9 +490,11 @@ export function listarVentas(db: Database.Database): VentaResumen[] {
                   WHERE a.documento_tipo = 'venta' AND a.documento_id = v.id AND t.estado = 'registrado'), 0)
                 - COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
                   WHERE aa.documento_tipo = 'venta' AND aa.documento_id = v.id AND aa.estado = 'registrada'), 0)) AS saldo
-       FROM venta v JOIN contraparte p ON p.id = v.contraparte_id ORDER BY v.id DESC LIMIT 100`
+       FROM venta v JOIN contraparte p ON p.id = v.contraparte_id
+       WHERE (? IS NULL OR v.fecha_operacion LIKE ? || '%')
+       ORDER BY v.id DESC LIMIT ? OFFSET ?`
     )
-    .all() as Array<{
+    .all(opciones.mes ?? null, opciones.mes ?? '', opciones.limite ?? 100, opciones.desde ?? 0) as Array<{
     id: number;
     folio: string;
     fecha_operacion: string;
@@ -541,17 +551,16 @@ export function completarClasificacionDocumento(
   if (doc.estado !== 'registrada') {
     throw new ErrorOperacion(`Solo se clasifican documentos registrados: ${doc.folio}`);
   }
-  const cambiado = db
-    .prepare(`UPDATE ${tabla} SET clasificacion_documento = ?, tipo_documento = ? WHERE id = ?`)
-    .run(entrada.clasificacionDocumento, entrada.tipoDocumento, documentoId);
-  if (cambiado.changes === 0) {
-    throw new ErrorOperacion('No fue posible actualizar la clasificación');
-  }
-  registroEvento(db, entrada.responsable, 'clasificacion_completada', tipo, String(documentoId), {
-    folio: doc.folio,
-    anteriores: { clasificacion: doc.clasificacion_documento, tipo: doc.tipo_documento },
-    nuevos: { clasificacion: entrada.clasificacionDocumento, tipo: entrada.tipoDocumento },
-    motivo: entrada.motivo,
-    nota: 'Acción de metadatos documentales; no altera importes, asiento, aplicaciones, folio ni clave de idempotencia'
+  const tx = db.transaction(() => {
+    db.prepare(`UPDATE ${tabla} SET clasificacion_documento = ?, tipo_documento = ? WHERE id = ?`)
+      .run(entrada.clasificacionDocumento, entrada.tipoDocumento, documentoId);
+    registroEvento(db, entrada.responsable, 'clasificacion_completada', tipo, String(documentoId), {
+      folio: doc.folio,
+      anteriores: { clasificacion: doc.clasificacion_documento, tipo: doc.tipo_documento },
+      nuevos: { clasificacion: entrada.clasificacionDocumento, tipo: entrada.tipoDocumento },
+      motivo: entrada.motivo,
+      nota: 'Acción de metadatos documentales; no altera importes, asiento, aplicaciones, folio ni clave de idempotencia'
+    });
   });
+  tx();
 }
