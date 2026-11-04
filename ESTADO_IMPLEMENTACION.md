@@ -1,6 +1,18 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimoctava revisión del PR #1; hito 5 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimonovena revisión, sin hallazgos; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Bloque 1 — Operación comercial utilizable de principio a fin (implementado y probado)
+
+- **Migración v9 `catalogo_items`**: tabla `item_catalogo` (servicio/material, código único, unidad, descripción, precios de venta y de costo **opcionales** — sin valores inventados) y referencias `item_id` en líneas de cotización y compra.
+- **Catálogo** (`servicios/catalogo.ts` + vista «Catálogo»): crear, editar y desactivar/activar ítems; **nunca se borran** — los documentos que los usan conservan identidad, texto y precios propios (regresión: editar o desactivar un ítem no modifica cotizaciones históricas).
+- **Uso del catálogo**: las líneas de cotización y compra pueden seleccionar un ítem (rellena tipo, descripción y precio si existe) o capturarse libre. Los documentos guardan su propia copia.
+- **Contrapartes**: editar (nombre, NRC, NIT, notas) y desactivar/activar; desactivar se bloquea si hay ventas o compras registradas activas; sin borrar identidades usadas en documentos. Vista con acciones.
+- **Cuentas**: `cuenta:desactivar` con verificación de movimientos (cuenta con asientos no se desactiva).
+- **Documento imprimible de cotizaciones**: `generarHtmlCotizacion` deriva contenido y cifras del **único modelo validado** (las mismas líneas del documento) con encabezado «Documento interno de control administrativo… No es un documento tributario electrónico (DTE)»; sin costos ni márgenes internos. Canal `arkon:pdfCotizacion` genera PDF real vía `printToPDF` de Electron con diálogo de guardado; la versión aprobada queda congelada y el documento de la revisión anterior se conserva.
+- **Prueba de aceptación del bloque** (datos sintéticos, persistencia real): crear cliente e ítem sin valores precargados → cotizar con ítem → cerrar y reabrir la base → crear revisión → aprobar (versión previa conservada íntegra) → generar documento (contenido y cifras correctas, sin costos) → vincular proyecto → compra con ítem → bitácora y registros persistidos tras reinicio.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **114/114 en verde** (22 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: el PDF vía diálogo nativo y el recorrido completo requieren el ejecutable Windows, **pendiente**.
 
 ## Correcciones de la decimoctava revisión (sobre el commit f6753d4) — aplicadas y probadas
 

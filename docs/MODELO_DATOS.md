@@ -1,4 +1,9 @@
-# MODELO DE DATOS (esquema v8)
+# MODELO DE DATOS (esquema v9)
+
+## Migración v9 (`catalogo_items`)
+
+- `item_catalogo`: servicios y materiales con código único, unidad, descripción y precios de venta/costo **opcionales** (sin valores inventados); activo/inactivo, nunca borrado.
+- `cotizacion_linea.item_id` y `compra_linea.item_id`: referencia opcional al ítem; cada documento conserva su propia descripción y precios, por lo que editar o desactivar un ítem no modifica documentos históricos.
 
 ## Migraciones v6–v8 (resumen)
 

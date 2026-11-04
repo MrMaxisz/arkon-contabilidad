@@ -21,10 +21,17 @@
 - Confirmar la ruta efectiva de datos en Windows (`%LOCALAPPDATA%\ARKON Contabilidad`) fuera de OneDrive.
 - Nota de flujo: `dist:win` reconstruye better-sqlite3 contra Electron; ejecutar `npm run rebuild:node` antes de `npm test` (ya incluido en el script `test`).
 
-## Desarrollo por hitos (siguientes)
+## Inventario de pendientes (actualizado contra el codigo)
 
-- Hito 2 — Integridad y recuperación: cubierto con pruebas (importes, partida doble, períodos, idempotencia exigida por la capa de comandos, protección persistente por triggers, bitácora, respaldo/restauración con evento en la base activa); falta respaldo de adjuntos coordinado cuando existan adjuntos, respaldos automáticos/previos a migración, y el cierre contable completo de ejercicio (el cierre actual es de período).
-- Hito 3 — Operación comercial: contrapartes CRUD, catálogo de servicios/materiales (vacío), cotizaciones versionadas, proyectos, compras, CxC/CxP, cobros y pagos con tabla de aplicaciones.
-- Hito 4 — Adaptación salvadoreña: perfil por vigencia, motor fiscal por línea, anticipos, retenciones, libros de IVA y conciliaciones.
-- Hito 5 — Reportes y cierre: estados financieros completos, auxiliares, rentabilidad por proyecto, ajustes y cierre mensual/anual.
-- Hito 6 — Exportaciones e instalación: exportadores fiscales verificados por versión, paquete para el contador, manual, instalador comprobado.
+### Terminado y probado (evidencia en ESTADO_IMPLEMENTACION.md)
+
+- Partida doble, importes exactos, periodos, idempotencia, proteccion persistente, bitacora, respaldo/restauracion con manifiesto y descubrimiento desde disco.
+- Contrapartes (crear, editar, desactivar/activar sin borrar identidad), catalogo de servicios/materiales (crear, editar, desactivar, sin precios inventados), cotizaciones versionadas con congelamiento y documento imprimible, proyectos, ventas, compras, cobros/pagos con aplicaciones y anticipos aplicables, transferencias internas.
+- Vigencias del perfil tributario, IVA incluido/separado, clasificacion documental con completado auditado, libros mensuales, conciliacion por tratamiento, retenciones como control, exportacion interna CSV (pantalla y archivo), estado de resultados mensual, rentabilidad por proyecto coherente con el mayor.
+
+### Pendiente (por bloque, sin dependencias externas salvo las indicadas)
+
+- **Recuperacion y documentos de respaldo**: respaldos automaticos y previos a migraciones; manejo de adjuntos con respaldo coordinado (base + adjuntos + manifiesto); politica de conservacion configurable; restauracion de adjuntos verificada.
+- **Reportes, auxiliares y cierre**: auxiliares de clientes, proveedores y caja/bancos con conciliacion al mayor; saldos de apertura documentados; ajustes; cierre mensual/anual de ejercicio (el bloqueo de periodo actual no es cierre de ejercicio); exportacion de reportes para el contador.
+- **Adaptacion fiscal**: exportadores oficiales verificados contra especificacion vigente (F-07/F-14, libros, F-11); hecho generador fiscal de anticipos (requiere politica del contador; hoy 'pendiente' sin efecto automatico); clasificacion tributaria documental completa.
+- **Instalacion y recorrido Windows**: instalador NSIS, actualizacion, recorrido grafico sin internet (captura, doble envio, anulaciones, varias copias de respaldo, seleccion, restauracion, guardado de CSV y PDF via dialogos nativos). El entorno de desarrollo es Linux: lo que no requiera Windows se completa desde aqui y se entregan scripts y pasos exactos.
