@@ -41,10 +41,12 @@ export default function CobrosPagos() {
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[]));
-    void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo))));
-    void api().invocar('venta:listar').then(r => setVentas((r as VentaResumen[]).filter(v => v.estado === 'registrada')));
-    void api().invocar('compra:listar').then(r => setCompras((r as CompraResumen[]).filter(c => c.estado === 'registrada')));
+    const conError = (err: unknown) =>
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[])).catch(conError);
+    api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo)))).catch(conError);
+    api().invocar('venta:listar').then(r => setVentas((r as VentaResumen[]).filter(v => v.estado === 'registrada'))).catch(conError);
+    api().invocar('compra:listar').then(r => setCompras((r as CompraResumen[]).filter(c => c.estado === 'registrada'))).catch(conError);
   }, []);
 
   useEffect(() => {

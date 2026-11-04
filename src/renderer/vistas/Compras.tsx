@@ -48,20 +48,37 @@ export default function Compras() {
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
-  const cargar = useCallback(() => {
-    void api().invocar('compra:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 }).then(r => setCompras(r as CompraResumen[]));
+  const cargaDocumentosId = useRef(0);
+
+  const cargarCatalogos = useCallback(() => {
     void api().invocar('contraparte:listar').then(r => setProveedores((r as Contraparte[]).filter(c => c.esProveedor)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
     void api().invocar('cuenta:listar').then(r => setCuentas((r as CuentaResumen[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
   }, []);
 
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
+  const cargarDocumentos = useCallback(() => {
+    const id = ++cargaDocumentosId.current;
+    api()
+      .invocar('compra:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 })
+      .then(r => {
+        if (cargaDocumentosId.current === id) {
+          setCompras(r as CompraResumen[]);
+        }
+      })
+      .catch(err => {
+        if (cargaDocumentosId.current === id) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      });
+  }, [mesFiltro, pagina]);
 
   useEffect(() => {
-    setPagina(0);
-  }, [mesFiltro]);
+    cargarCatalogos();
+  }, [cargarCatalogos]);
+
+  useEffect(() => {
+    cargarDocumentos();
+  }, [cargarDocumentos]);
 
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
@@ -87,7 +104,7 @@ export default function Compras() {
       setConcepto('');
       setLineas([{ descripcion: '', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '', tasa: '13', tratamiento: 'gravado', precioConIva: true }]);
       clave.current = nuevaClave();
-      cargar();
+      cargarDocumentos();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -102,7 +119,7 @@ export default function Compras() {
     }
     try {
       await api().invocar('documento:anular', { tipo: 'compra', documentoId: c.id, responsable: responsable.trim(), motivo: `Anulación de ${c.folio} desde la interfaz` });
-      cargar();
+      cargarDocumentos();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
@@ -231,7 +248,7 @@ export default function Compras() {
             });
             setMensaje({ texto: `Clasificación de ${clasificando.folio} completada; acción auditada sin tocar importes ni asiento.`, tipo: 'ok' });
             setClasificando(null);
-            cargar();
+            cargarDocumentos();
           } catch (err) {
             setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
           }

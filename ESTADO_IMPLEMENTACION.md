@@ -1,6 +1,13 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimocuarta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimoquinta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la decimoquinta revisión (sobre el commit 5102847) — aplicadas y probadas
+
+- **[P1] Contrato IPC de listados**: el validador de payloads acepta `undefined`/`null` como objeto vacío (los tipos incorrectos se siguen rechazando); Cobros y pagos vuelve a cargar ventas y compras sin opciones y sus errores de carga ahora son visibles. El despacho de comandos se extrajo a `src/main/comandos.ts` (sin dependencia de Electron), lo que permite probar el **contrato IPC real** con bases SQLite sintéticas: regresión con `venta:listar`/`compra:listar` sin opciones, con objeto vacío, con filtro de mes y con payloads inválidos (texto, arreglo) rechazados.
+- **[P2] Filtros y paginación conectados**: las vistas Ventas y Compras separan la carga de catálogos de la de documentos; `cargarDocumentos` depende de `mesFiltro` y `pagina` y protege respuestas obsoletas por identificador de consulta; Ventas incorpora el filtro de mes y botones Anteriores/Siguientes que faltaban. Regresiones de componente: cambiar de mes genera una consulta con ese mes (y título del listado actualizado), Siguientes consulta con `desde: 100`, y Cobros y pagos consulta sin opciones sin error visible. **Corrección del registro anterior**: la sección de la decimocuarta revisión declaraba controles de la vista Ventas que en realidad no se habían aplicado; ahora existen y están conectados, y la evidencia de servicios se distingue del funcionamiento de la interfaz.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **97/97 en verde** (19 archivos; incluye pruebas del despacho real con base SQLite). **Componentes**: pruebas de vistas reales con IPC simulado. **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Correcciones de la decimocuarta revisión (sobre el commit 727be68) — aplicadas y probadas
 

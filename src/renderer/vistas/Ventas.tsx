@@ -36,19 +36,36 @@ export default function Ventas() {
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
-  const cargar = useCallback(() => {
-    void api().invocar('venta:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 }).then(r => setVentas(r as VentaResumen[]));
+  const cargaDocumentosId = useRef(0);
+
+  const cargarCatalogos = useCallback(() => {
     void api().invocar('contraparte:listar').then(r => setClientes((r as Contraparte[]).filter(c => c.esCliente)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
   }, []);
 
-  useEffect(() => {
-    cargar();
-  }, [cargar]);
+  const cargarDocumentos = useCallback(() => {
+    const id = ++cargaDocumentosId.current;
+    api()
+      .invocar('venta:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 })
+      .then(r => {
+        if (cargaDocumentosId.current === id) {
+          setVentas(r as VentaResumen[]);
+        }
+      })
+      .catch(err => {
+        if (cargaDocumentosId.current === id) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      });
+  }, [mesFiltro, pagina]);
 
   useEffect(() => {
-    setPagina(0);
-  }, [mesFiltro]);
+    cargarCatalogos();
+  }, [cargarCatalogos]);
+
+  useEffect(() => {
+    cargarDocumentos();
+  }, [cargarDocumentos]);
 
   async function registrar(e: React.FormEvent) {
     e.preventDefault();
@@ -75,7 +92,7 @@ export default function Ventas() {
       setConcepto('');
       setBase('');
       clave.current = nuevaClave();
-      cargar();
+      cargarDocumentos();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -90,7 +107,7 @@ export default function Ventas() {
     }
     try {
       await api().invocar('documento:anular', { tipo: 'venta', documentoId: v.id, responsable: responsable.trim(), motivo: `Anulación de ${v.folio}` });
-      cargar();
+      cargarDocumentos();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
@@ -173,7 +190,7 @@ export default function Ventas() {
             });
             setMensaje({ texto: `Clasificación de ${clasificando.folio} completada; acción auditada sin tocar importes ni asiento.`, tipo: 'ok' });
             setClasificando(null);
-            cargar();
+            cargarDocumentos();
           } catch (err) {
             setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
           }
@@ -203,7 +220,12 @@ export default function Ventas() {
           </div>
         </form>
       )}
-      <h2>Ventas recientes</h2>
+      <h2>{mesFiltro ? `Ventas de ${mesFiltro}` : 'Ventas recientes'}</h2>
+      <div className="fila">
+        <label>Filtrar por mes (vacío = recientes)<input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} /></label>
+        <button onClick={() => setPagina(p => Math.max(0, p - 1))} disabled={pagina === 0}>Anteriores</button>
+        <button onClick={() => setPagina(p => p + 1)} disabled={ventas.length < 100}>Siguientes</button>
+      </div>
       {ventas.length === 0 ? (
         <p className="vacio">Sin ventas reconocidas.</p>
       ) : (
