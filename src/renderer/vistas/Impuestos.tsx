@@ -33,9 +33,10 @@ interface Conciliacion {
   mes: string;
   debitoLibroMinor: string;
   debitoMayorMinor: string;
-  creditoLibroMinor: string;
-  creditoMayorMinor: string;
   conciliaDebito: boolean;
+  ivaDocumentadoComprasMinor: string;
+  creditoAcreditableLibroMinor: string;
+  creditoMayorMinor: string;
   conciliaCredito: boolean;
   nota: string;
 }
@@ -74,7 +75,11 @@ export default function Impuestos() {
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
 
   const [desde, setDesde] = useState(fechaLocalElSalvador());
+  const [hasta, setHasta] = useState('');
   const [inscritoIva, setInscritoIva] = useState(false);
+  const [cerrandoId, setCerrandoId] = useState<number | null>(null);
+  const [cierreFecha, setCierreFecha] = useState(fechaLocalElSalvador());
+  const [cierreMotivo, setCierreMotivo] = useState('');
   const [fuente, setFuente] = useState('');
   const [responsable, setResponsable] = useState('');
 
@@ -112,7 +117,7 @@ export default function Impuestos() {
     e.preventDefault();
     setMensaje(null);
     try {
-      await api().invocar('vigencia:crear', { desde, inscritoIva, fuente, responsable });
+      await api().invocar('vigencia:crear', { desde, hasta: hasta || undefined, inscritoIva, fuente, responsable });
       setMensaje({ texto: 'Vigencia registrada. No recalcula el historial ni atribuye operaciones anteriores.', tipo: 'ok' });
       cargar();
     } catch (err) {
@@ -155,6 +160,7 @@ export default function Impuestos() {
         <h2>Vigencias del perfil tributario</h2>
         <div className="fila">
           <label>Vigente desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} required /></label>
+          <label>Hasta (opcional)<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
           <label><input type="checkbox" checked={inscritoIva} onChange={e => setInscritoIva(e.target.checked)} /> Inscrito en IVA desde esa fecha</label>
           <label style={{ flex: 2 }}>Fuente oficial<input value={fuente} onChange={e => setFuente(e.target.value)} placeholder="Referencia de la inscripción" /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
@@ -162,6 +168,27 @@ export default function Impuestos() {
         </div>
         <p className="menor">Una futura inscripción configura una vigencia; no recalcula el historial ni atribuye operaciones anteriores a la nueva entidad.</p>
       </form>
+      {cerrandoId !== null && (
+        <form onSubmit={async e => {
+          e.preventDefault();
+          try {
+            await api().invocar('vigencia:cerrar', { vigenciaId: cerrandoId, hasta: cierreFecha, responsable, motivo: cierreMotivo });
+            setMensaje({ texto: 'Vigencia cerrada; el historial no se recalcula.', tipo: 'ok' });
+            setCerrandoId(null);
+            cargar();
+          } catch (err) {
+            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          }
+        }}>
+          <h2>Cerrar vigencia</h2>
+          <div className="fila">
+            <label>Hasta<input type="date" value={cierreFecha} onChange={e => setCierreFecha(e.target.value)} required /></label>
+            <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={cierreMotivo} onChange={e => setCierreMotivo(e.target.value)} required /></label>
+            <button className="primario" type="submit">Confirmar cierre</button>
+            <button type="button" onClick={() => setCerrandoId(null)}>Cancelar</button>
+          </div>
+        </form>
+      )}
       {vigencias.length === 0 ? (
         <p className="vacio">Sin vigencias registradas: régimen administrativo previo a la constitución.</p>
       ) : (
@@ -171,9 +198,14 @@ export default function Impuestos() {
             {vigencias.map(v => (
               <tr key={v.id}>
                 <td>{v.desde}</td>
-                <td>{v.hasta ?? '—'}</td>
+                <td>{v.hasta ?? 'Abierta'}</td>
                 <td>{v.inscritoIva ? 'Sí' : 'No'}</td>
                 <td>{v.fuente ?? '—'}</td>
+                <td>
+                  {v.hasta === null && (
+                    <button onClick={() => { setCerrandoId(v.id); setCierreMotivo(''); }}>Cerrar vigencia</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -190,7 +222,8 @@ export default function Impuestos() {
             <tr><td>IVA débito según libro de ventas</td><td className="numero">${conciliacion.debitoLibroMinor}</td></tr>
             <tr><td>IVA débito según mayor (2201)</td><td className="numero">${conciliacion.debitoMayorMinor}</td></tr>
             <tr><td>Concilia débito</td><td className="numero">{conciliacion.conciliaDebito ? 'Sí' : 'No'}</td></tr>
-            <tr><td>IVA crédito según libro de compras</td><td className="numero">${conciliacion.creditoLibroMinor}</td></tr>
+            <tr><td>IVA documentado en compras (informativo)</td><td className="numero">${conciliacion.ivaDocumentadoComprasMinor}</td></tr>
+            <tr><td>IVA acreditable según libro de compras</td><td className="numero">${conciliacion.creditoAcreditableLibroMinor}</td></tr>
             <tr><td>IVA crédito según mayor (1203)</td><td className="numero">${conciliacion.creditoMayorMinor}</td></tr>
             <tr><td>Concilia crédito</td><td className="numero">{conciliacion.conciliaCredito ? 'Sí' : 'No'}</td></tr>
           </tbody>

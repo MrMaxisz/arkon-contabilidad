@@ -10,6 +10,7 @@ import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, li
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 import {
   crearVigencia,
+  cerrarVigencia,
   listarVigencias,
   libroVentas,
   libroCompras,
@@ -274,6 +275,11 @@ const comandos: Record<string, Manejador> = {
     };
   },
   'vigencia:listar': ctx => listarVigencias(ctx.db),
+  'vigencia:cerrar': (ctx, payload) => {
+    const p = objeto(payload);
+    cerrarVigencia(ctx.db, entero(p, 'vigenciaId'), texto(p, 'hasta'), texto(p, 'responsable'), texto(p, 'motivo'));
+    return { ok: true };
+  },
   'fiscal:libroVentas': (ctx, payload) => {
     const p = objeto(payload);
     return libroVentas(ctx.db, texto(p, 'mes'));

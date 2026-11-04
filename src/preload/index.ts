@@ -37,6 +37,7 @@ const COMANDOS_PERMITIDOS = new Set([
   'tesoreria:listar',
   'tesoreria:anular',
   'vigencia:crear',
+  'vigencia:cerrar',
   'vigencia:listar',
   'fiscal:libroVentas',
   'fiscal:libroCompras',

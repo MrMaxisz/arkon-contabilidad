@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { parseMontoMinor, parseTasa, desglosarIvaSeparado, desglosarIvaIncluido, minorATexto, multiplicarLinea } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { inscritoIvaEnFecha } from './fiscal';
+import { aplicacionesActivasDocumento } from './saldos';
 import type { ContraparteResumen, ProyectoResumen, VentaResumen, CompraResumen } from '../../shared/contratos';
 import { contabilizarAsiento, anularAsiento, ErrorContable } from './motorAsientos';
 import { registroEvento } from './bitacora';
@@ -221,6 +222,7 @@ export function registrarCompra(
     const destino = creditoFiscal ? l.base : l.total;
     porCuenta.set(l.cuentaId, (porCuenta.get(l.cuentaId) ?? 0n) + destino);
   }
+  const ivaCredito = creditoFiscal ? ivaTotal : 0n;
 
   const lineasAsiento = Array.from(porCuenta.entries()).map(([cuentaId, monto]) => ({
     cuentaId,
@@ -248,8 +250,8 @@ export function registrarCompra(
     const info = db
       .prepare(
         `INSERT INTO compra (folio, contraparte_id, proyecto_id, fecha_operacion, concepto, condicion,
-          base_minor, iva_minor, total_minor, asiento_id, clave_idempotencia, responsable)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          base_minor, iva_minor, iva_credito_minor, total_minor, asiento_id, clave_idempotencia, responsable)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         folio,
@@ -260,6 +262,7 @@ export function registrarCompra(
         entrada.condicion,
         baseTotal,
         ivaTotal,
+        ivaCredito,
         total,
         asiento.asientoId,
         entrada.claveIdempotencia,
@@ -385,28 +388,7 @@ export function registrarVenta(
   return tx();
 }
 
-export function saldoPendienteDocumento(db: Database.Database, tipo: 'venta' | 'compra', documentoId: number): bigint {
-  const tabla = tipo === 'venta' ? 'venta' : 'compra';
-  const doc = db
-    .prepare(`SELECT total_minor, estado FROM ${tabla} WHERE id = ?`)
-    .get(documentoId) as { total_minor: number; estado: string } | undefined;
-  if (!doc) {
-    throw new ErrorOperacion(`No existe el documento ${tipo} ${documentoId}`);
-  }
-  if (doc.estado !== 'registrada') {
-    throw new ErrorOperacion(`El documento ${tipo} ${documentoId} no está registrado`);
-  }
-  const aplicado = (
-    db
-      .prepare(
-        `SELECT COALESCE(SUM(a.monto_minor), 0) AS total
-         FROM aplicacion a JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
-         WHERE a.documento_tipo = ? AND a.documento_id = ? AND t.estado = 'registrado'`
-      )
-      .get(tipo, documentoId) as { total: number }
-  ).total;
-  return BigInt(doc.total_minor) - BigInt(aplicado);
-}
+export { saldoPendienteDocumento, aplicacionesActivasDocumento } from './saldos';
 
 export function anularDocumento(
   db: Database.Database,
@@ -425,14 +407,7 @@ export function anularDocumento(
   if (doc.estado !== 'registrada') {
     throw new ErrorOperacion(`El documento ${doc.folio} no está registrado`);
   }
-  const conAplicaciones = (
-    db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM aplicacion a JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
-         WHERE a.documento_tipo = ? AND a.documento_id = ? AND t.estado = 'registrado'`
-      )
-      .get(tipo, documentoId) as { n: number }
-  ).n;
+  const conAplicaciones = aplicacionesActivasDocumento(db, tipo, documentoId);
   if (conAplicaciones > 0) {
     throw new ErrorOperacion(`El documento ${doc.folio} tiene cobros o pagos aplicados; anúlelos primero`);
   }
@@ -448,9 +423,12 @@ export function listarCompras(db: Database.Database): CompraResumen[] {
   const filas = db
     .prepare(
       `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado,
-              (co.total_minor - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
-                JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
-                WHERE a.documento_tipo = 'compra' AND a.documento_id = co.id AND t.estado = 'registrado'), 0)) AS saldo
+              (co.total_minor
+                - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
+                  JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
+                  WHERE a.documento_tipo = 'compra' AND a.documento_id = co.id AND t.estado = 'registrado'), 0)
+                - COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
+                  WHERE aa.documento_tipo = 'compra' AND aa.documento_id = co.id AND aa.estado = 'registrada'), 0)) AS saldo
        FROM compra co JOIN contraparte p ON p.id = co.contraparte_id ORDER BY co.id DESC LIMIT 100`
     )
     .all() as Array<{
@@ -481,9 +459,12 @@ export function listarVentas(db: Database.Database): VentaResumen[] {
   const filas = db
     .prepare(
       `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado,
-              (v.total_minor - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
-                JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
-                WHERE a.documento_tipo = 'venta' AND a.documento_id = v.id AND t.estado = 'registrado'), 0)) AS saldo
+              (v.total_minor
+                - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
+                  JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
+                  WHERE a.documento_tipo = 'venta' AND a.documento_id = v.id AND t.estado = 'registrado'), 0)
+                - COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
+                  WHERE aa.documento_tipo = 'venta' AND aa.documento_id = v.id AND aa.estado = 'registrada'), 0)) AS saldo
        FROM venta v JOIN contraparte p ON p.id = v.contraparte_id ORDER BY v.id DESC LIMIT 100`
     )
     .all() as Array<{

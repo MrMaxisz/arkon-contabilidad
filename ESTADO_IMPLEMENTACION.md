@@ -1,6 +1,17 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la séptima revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la octava revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Correcciones de la octava revisión (sobre el commit 8ddd406) — aplicadas y probadas
+
+- **[P1] Saldo centralizado**: nuevo `servicios/saldos.ts` con `saldoPendienteDocumento` (descuenta aplicaciones de dinero **y** de anticipos activos) y `aplicacionesActivasDocumento`; operacion, tesorería y fiscal consumen la misma fuente. Los listados de ventas y compras restan ambos tipos de aplicación. Pruebas: anticipo aplicado total y parcial descuenta del saldo y bloquea el cobro/pago por encima del restante.
+- **[P1] Anulación de documento con anticipo aplicado**: `anularDocumento` bloquea con aplicaciones de anticipo vigentes (consistente con cobros/pagos); revertida la aplicación, la anulación autorizada conserva conciliación y devuelve disponibilidad al anticipo.
+- **[P1] Anulación del movimiento que financia anticipos**: `anularMovimiento` valida la bolsa de anticipos por contraparte (excedentes de movimientos activos menos aplicaciones activas); rechaza cuando el excedente del movimiento ya sostiene aplicaciones (clientes y proveedores), con prueba de varias fuentes y cobertura restante.
+- **[P2] Transición de vigencias**: la vista permite `hasta` al crear y **cerrar una vigencia abierta** (`vigencia:cerrar` con fecha, motivo y auditoría; sin solaparse con la siguiente). Prueba: régimen actual cerrado → inscripción futura registrable; consultas antes/después sin recálculo.
+- **[P2] Conciliación por tratamiento**: `compra.iva_credito_minor` (migración v6) registra el IVA acreditable según la política vigente **al registrar cada compra**; la conciliación compara IVA acreditable del libro con el mayor 1203 y muestra el IVA documentado por separado. Cambiar la política no reinterpreta compras históricas. Pruebas con IVA al costo, con crédito activo y mezcla.
+- **Integración gráfica de anticipos**: la vista Cobros y pagos incorpora el modo «Aplicar anticipo existente» (pendiente de la revisión resuelto en interfaz).
+
+Evidencia (Linux): `npm run typecheck` sin errores en ambas capas; `npm test` → **70/70 en verde** (10 archivos); `npm run build` OK. La suite de la octava revisión pasó también en Windows (62/62 en su momento). El hito fiscal sigue **parcial**: faltan tratamiento del hecho generador de anticipos, clasificación tributaria/documental y exportadores verificados contra especificación oficial; la vista mensual no es un conjunto completo de libros o anexos oficiales.
 
 ## Corrección de la séptima revisión (sobre el commit 70e5c9c) — aplicada
 

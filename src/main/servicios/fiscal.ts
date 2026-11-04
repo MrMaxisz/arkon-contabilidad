@@ -3,6 +3,7 @@ import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
+import { saldoPendienteDocumento } from './saldos';
 
 export class ErrorFiscal extends Error {}
 
@@ -60,6 +61,39 @@ export function listarVigencias(db: Database.Database): VigenciaFiscal[] {
     descripcion: f.descripcion,
     fuente: f.fuente
   }));
+}
+
+export function cerrarVigencia(
+  db: Database.Database,
+  vigenciaId: number,
+  hasta: string,
+  responsable: string,
+  motivo: string
+): void {
+  validarFechaCalendario(hasta);
+  if (!motivo?.trim()) {
+    throw new ErrorFiscal('El cierre de vigencia exige motivo');
+  }
+  const vigencia = db
+    .prepare('SELECT id, desde, hasta FROM vigencia_fiscal WHERE id = ?')
+    .get(vigenciaId) as { id: number; desde: string; hasta: string | null } | undefined;
+  if (!vigencia) {
+    throw new ErrorFiscal('Vigencia inexistente');
+  }
+  if (vigencia.hasta !== null) {
+    throw new ErrorFiscal('La vigencia ya está cerrada');
+  }
+  if (hasta < vigencia.desde) {
+    throw new ErrorFiscal('El cierre no puede preceder al inicio de la vigencia');
+  }
+  const siguiente = db
+    .prepare('SELECT desde FROM vigencia_fiscal WHERE desde > ? ORDER BY desde LIMIT 1')
+    .get(vigencia.desde) as { desde: string } | undefined;
+  if (siguiente && hasta >= siguiente.desde) {
+    throw new ErrorFiscal(`El cierre no puede alcanzar la vigencia que inicia en ${siguiente.desde}`);
+  }
+  db.prepare('UPDATE vigencia_fiscal SET hasta = ? WHERE id = ?').run(hasta, vigenciaId);
+  registroEvento(db, responsable, 'vigencia_cerrada', 'vigencia_fiscal', String(vigenciaId), { hasta, motivo });
 }
 
 export function inscritoIvaEnFecha(db: Database.Database, fecha: string): boolean {
@@ -183,9 +217,10 @@ export interface ConciliacionIva {
   mes: string;
   debitoLibroMinor: string;
   debitoMayorMinor: string;
-  creditoLibroMinor: string;
-  creditoMayorMinor: string;
   conciliaDebito: boolean;
+  ivaDocumentadoComprasMinor: string;
+  creditoAcreditableLibroMinor: string;
+  creditoMayorMinor: string;
   conciliaCredito: boolean;
   nota: string;
 }
@@ -210,22 +245,25 @@ export function conciliarIva(db: Database.Database, mes: string): ConciliacionIv
   const debitoMayor = -saldoMayor('2201');
   const creditoMayor = saldoMayor('1203');
   const debitoLibro = parseMontoMinor(ventas.ivaMinor);
-  const creditoLibro = compras.ivaMinor === '0.00' ? 0n : parseMontoMinor(compras.ivaMinor);
-  const creditoFiscalActivo = db
-    .prepare("SELECT valor FROM configuracion WHERE clave = 'iva_compras_credito_fiscal'")
-    .get() as { valor: string } | undefined;
+  const ivaCompras = db
+    .prepare(
+      `SELECT COALESCE(SUM(iva_minor), 0) AS documentado, COALESCE(SUM(iva_credito_minor), 0) AS acreditable
+       FROM compra WHERE fecha_operacion BETWEEN ? AND ? AND estado = 'registrada'`
+    )
+    .get(inicio, fin) as { documentado: number; acreditable: number };
+  const ivaDocumentado = BigInt(ivaCompras.documentado);
+  const creditoAcreditableLibro = BigInt(ivaCompras.acreditable);
   return {
     mes,
     debitoLibroMinor: minorATexto(debitoLibro),
     debitoMayorMinor: minorATexto(debitoMayor),
-    creditoLibroMinor: minorATexto(creditoLibro),
-    creditoMayorMinor: minorATexto(creditoMayor),
     conciliaDebito: debitoLibro === debitoMayor,
-    conciliaCredito: creditoLibro === creditoMayor,
+    ivaDocumentadoComprasMinor: minorATexto(ivaDocumentado),
+    creditoAcreditableLibroMinor: minorATexto(creditoAcreditableLibro),
+    creditoMayorMinor: minorATexto(creditoMayor),
+    conciliaCredito: creditoAcreditableLibro === creditoMayor,
     nota:
-      creditoFiscalActivo?.valor === '1'
-        ? 'El crédito fiscal del mayor corresponde al IVA acreditable con política activa.'
-        : 'Con la política de crédito fiscal inactiva, el IVA de compras va al costo; la conciliación del crédito se limita al IVA registrado en la cuenta 1203.'
+      'El IVA documentado de compras se muestra por separado: solo el IVA acreditable (registrado en la cuenta 1203 según la política vigente al registrar cada compra) se concilia con el mayor. Cambiar la política no reinterpreta compras históricas.'
   };
 }
 
@@ -404,21 +442,7 @@ export function aplicarAnticipo(
   if (monto <= 0n) {
     throw new ErrorFiscal('El monto a aplicar debe ser mayor que cero');
   }
-  const aplicadoPrevio = (
-    db
-      .prepare(
-        `SELECT COALESCE(SUM(monto_minor), 0) AS t FROM (
-           SELECT a.monto_minor FROM aplicacion a JOIN tesoreria_movimiento m ON m.id = a.movimiento_id
-           WHERE a.documento_tipo = ? AND a.documento_id = ? AND m.estado = 'registrado'
-           UNION ALL
-           SELECT aa.monto_minor FROM aplicacion_anticipo aa
-           WHERE aa.documento_tipo = ? AND aa.documento_id = ? AND aa.estado = 'registrada'
-         )`
-      )
-      .get(entrada.documentoTipo, entrada.documentoId, entrada.documentoTipo, entrada.documentoId) as { t: number }
-  ).t;
-  const totalDoc = (db.prepare(`SELECT total_minor FROM ${tabla} WHERE id = ?`).get(entrada.documentoId) as { total_minor: number }).total_minor;
-  const pendiente = BigInt(totalDoc) - BigInt(aplicadoPrevio);
+  const pendiente = saldoPendienteDocumento(db, entrada.documentoTipo, entrada.documentoId);
   if (monto > pendiente) {
     throw new ErrorFiscal(`El anticipo a aplicar (${minorATexto(monto)}) excede el saldo pendiente (${minorATexto(pendiente)})`);
   }

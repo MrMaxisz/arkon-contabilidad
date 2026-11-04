@@ -386,5 +386,12 @@ CREATE TABLE aplicacion_anticipo (
   creado_en TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `
+  },
+  {
+    version: 6,
+    nombre: 'iva_credito_por_compra',
+    sql: `
+ALTER TABLE compra ADD COLUMN iva_credito_minor INTEGER NOT NULL DEFAULT 0;
+`
   }
 ];

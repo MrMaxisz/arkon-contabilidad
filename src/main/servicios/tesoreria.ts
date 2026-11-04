@@ -2,7 +2,9 @@ import type Database from 'better-sqlite3';
 import { parseMontoMinor, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
-import { saldoPendienteDocumento, ErrorOperacion } from './operacion';
+import { ErrorOperacion } from './operacion';
+import { saldoPendienteDocumento } from './saldos';
+import { saldoAnticipo } from './fiscal';
 import { registroEvento } from './bitacora';
 import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 
@@ -369,6 +371,26 @@ export function anularMovimiento(db: Database.Database, movimientoId: number, re
   }
   if (mov.estado !== 'registrado') {
     throw new ErrorTesoreria(`El movimiento ${mov.folio} ya está anulado`);
+  }
+  if (mov.tipo === 'cobro' || mov.tipo === 'pago') {
+    const filaMov = db
+      .prepare('SELECT contraparte_id, monto_minor FROM tesoreria_movimiento WHERE id = ?')
+      .get(movimientoId) as { contraparte_id: number | null; monto_minor: number };
+    if (filaMov.contraparte_id) {
+      const aplicadoMov = (
+        db
+          .prepare('SELECT COALESCE(SUM(monto_minor), 0) AS t FROM aplicacion WHERE movimiento_id = ?')
+          .get(movimientoId) as { t: number }
+      ).t;
+      const excedente = BigInt(filaMov.monto_minor) - BigInt(aplicadoMov);
+      const tipoAnticipo = mov.tipo === 'cobro' ? 'cliente' : 'proveedor';
+      const disponible = saldoAnticipo(db, tipoAnticipo, filaMov.contraparte_id);
+      if (excedente > disponible) {
+        throw new ErrorTesoreria(
+          `Anulación rechazada: el excedente de ${mov.folio} financia anticipos ya aplicados (disponible ${disponible})`
+        );
+      }
+    }
   }
   const tx = db.transaction(() => {
     anularAsiento(db, mov.asiento_id, responsable, `Anulación de ${mov.folio}: ${motivo}`, true);
