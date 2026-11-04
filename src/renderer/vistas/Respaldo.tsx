@@ -79,7 +79,7 @@ export default function Respaldo() {
           </thead>
           <tbody>
             {respaldos.map(r => (
-              <tr key={r.id}>
+              <tr key={r.nombre}>
                 <td>{r.creadoEn}</td>
                 <td>{r.nombre}</td>
                 <td>{r.versionEsquema}</td>
