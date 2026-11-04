@@ -45,7 +45,7 @@ function compraSintetica(id: number, folio: string) {
 }
 
 function baseMock() {
-  invocar.mockImplementation((comando: string) => {
+  invocar.mockImplementation((comando: string, datos?: unknown) => {
     switch (comando) {
       case 'contraparte:listar':
         return Promise.resolve([
@@ -56,8 +56,8 @@ function baseMock() {
       case 'cuenta:listar':
         return Promise.resolve([]);
       case 'venta:listar': {
-        const datos = arguments[1] as { desde?: number } | undefined;
-        const desde = datos?.desde ?? 0;
+        const opciones = datos as { desde?: number } | undefined;
+        const desde = opciones?.desde ?? 0;
         const total: Array<ReturnType<typeof ventaSintetica>> = [];
         for (let i = 1; i <= 101; i++) {
           total.push(ventaSintetica(i, `V-${String(i).padStart(6, '0')}`));
@@ -65,8 +65,8 @@ function baseMock() {
         return Promise.resolve(total.slice(desde, desde + 100));
       }
       case 'compra:listar': {
-        const datos = arguments[1] as { desde?: number } | undefined;
-        const desde = datos?.desde ?? 0;
+        const opciones = datos as { desde?: number } | undefined;
+        const desde = opciones?.desde ?? 0;
         const total: Array<ReturnType<typeof compraSintetica>> = [];
         for (let i = 1; i <= 101; i++) {
           total.push(compraSintetica(i, `CMP-${String(i).padStart(6, '0')}`));
@@ -111,6 +111,22 @@ describe('decimoquinta revisión: filtros y paginación conectados', () => {
     await waitFor(() => expect(llamadasListado('venta:listar').length).toBeGreaterThanOrEqual(3));
     const llamadas2 = llamadasListado('venta:listar');
     expect(llamadas2[llamadas2.length - 1]).toMatchObject({ mes: '2026-09', desde: 100 });
+    await waitFor(() => screen.getByText('V-000101'));
+  });
+
+  it('Ventas: cambiar de mes desde una página avanzada reinicia a la primera página y muestra sus documentos', async () => {
+    render(<Ventas />);
+    await waitFor(() => screen.getByText('V-000100'));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguientes' }));
+    await waitFor(() => screen.getByText('V-000101'));
+
+    const filtroMes = screen.getByLabelText(/Filtrar por mes/) as HTMLInputElement;
+    fireEvent.change(filtroMes, { target: { value: '2026-09' } });
+    const llamadas = llamadasListado('venta:listar');
+    const ultima = llamadas[llamadas.length - 1];
+    expect(ultima).toMatchObject({ mes: '2026-09', desde: 0 });
+    await waitFor(() => screen.getByText('V-000001'));
+    expect(screen.queryByText('V-000101')).toBeNull();
   });
 
   it('Compras: cambiar de mes consulta con ese mes y Siguientes cambia el offset', async () => {
@@ -129,6 +145,22 @@ describe('decimoquinta revisión: filtros y paginación conectados', () => {
     await waitFor(() => expect(llamadasListado('compra:listar').length).toBeGreaterThanOrEqual(3));
     const llamadas2 = llamadasListado('compra:listar');
     expect(llamadas2[llamadas2.length - 1]).toMatchObject({ mes: '2026-09', desde: 100 });
+    await waitFor(() => screen.getByText('CMP-000101'));
+  });
+
+  it('Compras: cambiar de mes desde una página avanzada reinicia a la primera página y muestra sus documentos', async () => {
+    render(<Compras />);
+    await waitFor(() => screen.getByText('CMP-000100'));
+    fireEvent.click(screen.getByRole('button', { name: 'Siguientes' }));
+    await waitFor(() => screen.getByText('CMP-000101'));
+
+    const filtroMes = screen.getByLabelText(/Filtrar por mes/) as HTMLInputElement;
+    fireEvent.change(filtroMes, { target: { value: '2026-09' } });
+    const llamadas = llamadasListado('compra:listar');
+    const ultima = llamadas[llamadas.length - 1];
+    expect(ultima).toMatchObject({ mes: '2026-09', desde: 0 });
+    await waitFor(() => screen.getByText('CMP-000001'));
+    expect(screen.queryByText('CMP-000101')).toBeNull();
   });
 
   it('Cobros y pagos: las consultas sin opciones de venta/compra no fallan y muestran documentos', async () => {

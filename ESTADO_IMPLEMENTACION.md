@@ -1,6 +1,12 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimoquinta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+Actualizado: 4 de noviembre de 2026 (tras la decimosexta revisión del PR #1; hito 4 en curso). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y «Qué falta».
+
+## Corrección de la decimosexta revisión (sobre el commit d1f33ed) — aplicada y probada
+
+- **[P2] Reinicio de página al cambiar el mes**: los manejadores del filtro de mes en Ventas y Compras ahora reinician `pagina` a cero en el mismo evento que cambia `mesFiltro` (React agrupa ambos estados en una sola renderización, sin petición intermedia con mes nuevo y página anterior). El control de respuestas obsoletas se conserva. Regresiones de componente en ambas vistas: avanzar a la segunda página (contenido distinto visible), cambiar a un mes con un documento y verificar que la solicitud usa `desde: 0` y que sus filas aparecen inmediatamente, sin volver atrás. Corregido además el mock de `filtrosComponente` (leía `arguments` de la función envolvente en vez del payload recibido) y las aserciones ahora verifican el contenido visible de la página siguiente, no solo la emisión de la consulta.
+
+Evidencia por nivel (Linux): **Servicios, contrato IPC y componentes**: `npm test` → **99/99 en verde** (19 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico del ejecutable Electron en Windows sin internet **pendiente** y no declarado completado.
 
 ## Correcciones de la decimoquinta revisión (sobre el commit 5102847) — aplicadas y probadas
 

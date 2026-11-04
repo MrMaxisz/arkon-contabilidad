@@ -280,7 +280,7 @@ export default function Compras() {
       )}
       <h2>{mesFiltro ? `Compras de ${mesFiltro}` : 'Compras recientes'}</h2>
       <div className="fila">
-        <label>Filtrar por mes (vacío = recientes)<input type="month" value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} /></label>
+        <label>Filtrar por mes (vacío = recientes)<input type="month" value={mesFiltro} onChange={e => { setMesFiltro(e.target.value); setPagina(0); }} /></label>
         <button onClick={() => setPagina(p => Math.max(0, p - 1))} disabled={pagina === 0}>Anteriores</button>
         <button onClick={() => setPagina(p => p + 1)} disabled={compras.length < 100}>Siguientes</button>
       </div>
