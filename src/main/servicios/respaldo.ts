@@ -75,17 +75,40 @@ export async function crearRespaldo(
   };
 }
 
+interface FilaRespaldo {
+  id: number;
+  creado_en: string;
+  nombre: string;
+  hash_sha256: string;
+  version_app: string;
+  version_esquema: number;
+  estado: string;
+}
+
 export function listarRespaldos(db: Database.Database): InfoRespaldo[] {
-  return db
+  const filas = db
     .prepare('SELECT id, creado_en, nombre, hash_sha256, version_app, version_esquema, estado FROM respaldo ORDER BY id DESC')
-    .all() as InfoRespaldo[];
+    .all() as FilaRespaldo[];
+  return filas.map(f => ({
+    id: f.id,
+    creadoEn: f.creado_en,
+    nombre: f.nombre,
+    hashSha256: f.hash_sha256,
+    versionApp: f.version_app,
+    versionEsquema: f.version_esquema,
+    estado: f.estado
+  }));
+}
+
+export function registrarRestauracion(db: Database.Database, detalle: { respaldo: string; copiaPrevia: string }): void {
+  registroEvento(db, 'sistema', 'restauracion_completada', 'respaldo', detalle.respaldo, detalle);
 }
 
 export function restaurarRespaldo(
   db: Database.Database,
   rutaRespaldo: string,
   rutaBaseActiva: string
-): { ok: boolean; detalle: string } {
+): { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string } {
   if (!fs.existsSync(rutaRespaldo)) {
     throw new ErrorRespaldo(`No existe el respaldo: ${rutaRespaldo}`);
   }
@@ -125,7 +148,12 @@ export function restaurarRespaldo(
   const previa = `${rutaBaseActiva}.antes-restauracion`;
   fs.copyFileSync(rutaBaseActiva, previa);
   fs.renameSync(areaTemporal, rutaBaseActiva);
-  return { ok: true, detalle: `Restaurado ${path.basename(rutaRespaldo)}; copia previa en ${path.basename(previa)}` };
+  return {
+    ok: true,
+    detalle: `Restaurado ${nombreRespaldo}; copia previa en ${path.basename(previa)}`,
+    respaldo: nombreRespaldo,
+    copiaPrevia: path.basename(previa)
+  };
 }
 
 function leerVersionEsquema(rutaDb: string): number {

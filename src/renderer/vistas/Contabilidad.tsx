@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Cuenta {
   id: number;
@@ -36,8 +37,10 @@ interface LineaForm {
   haber: string;
 }
 
-function hoy(): string {
-  return new Date().toISOString().slice(0, 10);
+function nuevaClave(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `op-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
@@ -48,7 +51,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
     movimientos: [],
     saldoMinor: '0.00'
   });
-  const [fecha, setFecha] = useState(hoy());
+  const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [concepto, setConcepto] = useState('');
   const [responsable, setResponsable] = useState('');
   const [lineas, setLineas] = useState<LineaForm[]>([
@@ -56,7 +59,11 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
     { cuentaId: 0, debe: '', haber: '' }
   ]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
-  const [cuentaMayor, setCuentaMayor] = useState<number>(0);
+  const [cuentaMayor, setCuentaMayor] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+  const [anulando, setAnulando] = useState<AsientoResumen | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const claveOperacion = useRef<string>(nuevaClave());
 
   const cargar = useCallback(() => {
     void api().invocar('cuenta:listar').then(r => setCuentas(r as Cuenta[]));
@@ -84,6 +91,10 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
 
   async function contabilizar(e: React.FormEvent) {
     e.preventDefault();
+    if (ocupado) {
+      return;
+    }
+    setOcupado(true);
     setMensaje(null);
     try {
       const resultado = (await api().invocar('asiento:contabilizar', {
@@ -91,6 +102,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
         concepto,
         responsable,
         ambitoId: 'administrativo',
+        claveIdempotencia: claveOperacion.current,
         lineas: lineas.map(l => ({ cuentaId: l.cuentaId, debeMinor: l.debe, haberMinor: l.haber }))
       })) as { folio: string; duplicado: boolean };
       setMensaje({
@@ -104,20 +116,37 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
         { cuentaId: 0, debe: '', haber: '' },
         { cuentaId: 0, debe: '', haber: '' }
       ]);
+      claveOperacion.current = nuevaClave();
       cargar();
       alCambiar();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    } finally {
+      setOcupado(false);
     }
   }
 
-  async function anular(id: number) {
-    const motivo = window.prompt('Motivo de la anulación (obligatorio):');
-    if (!motivo) {
+  function pedirAnulacion(a: AsientoResumen) {
+    setAnulando(a);
+    setMotivoAnular('');
+  }
+
+  async function confirmarAnulacion() {
+    if (!anulando) {
+      return;
+    }
+    if (!motivoAnular.trim() || !responsable.trim()) {
+      setMensaje({ texto: 'La anulación exige motivo y responsable registrados en el formulario.', tipo: 'error' });
       return;
     }
     try {
-      await api().invocar('asiento:anular', { asientoId: id, responsable: responsable || 'responsable', motivo });
+      await api().invocar('asiento:anular', {
+        asientoId: anulando.id,
+        responsable: responsable.trim(),
+        motivo: motivoAnular.trim()
+      });
+      setMensaje({ texto: `Asiento ${anulando.folio} anulado con reverso trazable.`, tipo: 'ok' });
+      setAnulando(null);
       cargar();
       alCambiar();
     } catch (err) {
@@ -174,9 +203,33 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <button type="button" onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
             Agregar línea
           </button>
-          <button className="primario" type="submit">Contabilizar</button>
+          <button className="primario" type="submit" disabled={ocupado}>
+            {ocupado ? 'Contabilizando…' : 'Contabilizar'}
+          </button>
         </div>
       </form>
+
+      {anulando && (
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            void confirmarAnulacion();
+          }}
+        >
+          <h2>Anular asiento {anulando.folio}</h2>
+          <p className="menor">
+            Se creará un asiento reverso trazable; el original se conserva con estado «anulado».
+            Responsable: {responsable.trim() || '(falta registrar responsable arriba)'}.
+          </p>
+          <div className="fila">
+            <label style={{ flex: 2 }}>Motivo (obligatorio)
+              <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
+            </label>
+            <button className="primario" type="submit">Confirmar anulación</button>
+            <button type="button" onClick={() => setAnulando(null)}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       <h2>Asientos recientes</h2>
       {asientos.length === 0 ? (
@@ -194,7 +247,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
                 <td>{a.concepto}</td>
                 <td>{a.estado}</td>
                 <td className="numero">${a.totalMinor}</td>
-                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={() => anular(a.id)}>Anular</button>}</td>
+                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={() => pedirAnulacion(a)}>Anular</button>}</td>
               </tr>
             ))}
           </tbody>

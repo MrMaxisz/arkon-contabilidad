@@ -112,5 +112,63 @@ CREATE TABLE contraparte (
   CHECK (es_proveedor IN (0,1))
 );
 `
+  },
+  {
+    version: 2,
+    nombre: 'anticipos_y_proteccion_asientos',
+    sql: `
+UPDATE cuenta SET tipo = 'pasivo', padre_id = (SELECT id FROM cuenta WHERE codigo = '21'),
+  nombre = 'Anticipos recibidos de clientes'
+WHERE codigo = '1202';
+
+UPDATE cuenta SET tipo = 'activo', padre_id = (SELECT id FROM cuenta WHERE codigo = '12')
+WHERE codigo = '2102';
+
+CREATE TRIGGER trg_asiento_linea_insert BEFORE INSERT ON asiento_linea
+BEGIN
+  SELECT CASE WHEN (SELECT estado FROM asiento WHERE id = NEW.asiento_id) != 'borrador'
+    THEN RAISE(ABORT, 'Un asiento contabilizado no admite líneas nuevas') END;
+END;
+
+CREATE TRIGGER trg_asiento_linea_update BEFORE UPDATE ON asiento_linea
+BEGIN
+  SELECT CASE WHEN (SELECT estado FROM asiento WHERE id = OLD.asiento_id) != 'borrador'
+    THEN RAISE(ABORT, 'Un asiento contabilizado no admite editar sus líneas') END;
+END;
+
+CREATE TRIGGER trg_asiento_linea_delete BEFORE DELETE ON asiento_linea
+BEGIN
+  SELECT CASE WHEN (SELECT estado FROM asiento WHERE id = OLD.asiento_id) != 'borrador'
+    THEN RAISE(ABORT, 'Un asiento contabilizado no admite borrar sus líneas') END;
+END;
+
+CREATE TRIGGER trg_asiento_update BEFORE UPDATE ON asiento
+WHEN OLD.estado != 'borrador'
+BEGIN
+  SELECT CASE
+    WHEN NEW.folio IS NOT OLD.folio
+      OR NEW.fecha_operacion IS NOT OLD.fecha_operacion
+      OR NEW.periodo_id IS NOT OLD.periodo_id
+      OR NEW.ambito_id IS NOT OLD.ambito_id
+      OR NEW.concepto IS NOT OLD.concepto
+      OR NEW.origen_tipo IS NOT OLD.origen_tipo
+      OR NEW.origen_id IS NOT OLD.origen_id
+      OR NEW.clave_idempotencia IS NOT OLD.clave_idempotencia
+      OR NEW.reverso_de_id IS NOT OLD.reverso_de_id
+      OR NEW.responsable IS NOT OLD.responsable
+      OR NEW.fecha_registro IS NOT OLD.fecha_registro
+      OR NEW.contabilizado_en IS NOT OLD.contabilizado_en
+    THEN RAISE(ABORT, 'Un asiento contabilizado no admite cambios de contenido')
+    WHEN NEW.estado = OLD.estado THEN NULL
+    WHEN OLD.estado = 'contabilizado' AND NEW.estado = 'anulado' THEN NULL
+    ELSE RAISE(ABORT, 'Transición de estado no permitida') END;
+END;
+
+CREATE TRIGGER trg_asiento_delete BEFORE DELETE ON asiento
+WHEN OLD.estado != 'borrador'
+BEGIN
+  SELECT RAISE(ABORT, 'Un asiento contabilizado no se borra; use reverso');
+END;
+`
   }
 ];

@@ -1,6 +1,15 @@
-# MODELO DE DATOS (esquema v1)
+# MODELO DE DATOS (esquema v2)
 
-Esquema inicial del núcleo contable. Las migraciones son versionadas (`_migracion`) y se aplican en transacción; cada aplicación registra el evento en bitácora.
+Esquema del núcleo contable. Las migraciones son versionadas (`_migracion`) y se aplican en transacción; cada aplicación registra el evento en bitácora. Nunca se edita una migración ya aplicada; los cambios van en una versión nueva.
+
+## Migración v2 (`anticipos_y_proteccion_asientos`)
+
+- **Reclasificación de anticipos** en bases existentes: `1202` pasa a pasivo («Anticipos recibidos de clientes», bajo el grupo 21) y `2102` a activo («Anticipos a proveedores», bajo el grupo 12). En bases nuevas, la semilla ya crea la clasificación correcta.
+- **Protección persistente de asientos contabilizados** mediante triggers:
+  - `BEFORE INSERT/UPDATE/DELETE` sobre `asiento_linea`: abortan si el asiento padre no está en `borrador`.
+  - `BEFORE UPDATE` sobre `asiento`: aborta cambios de contenido (folio, fechas, período, ámbito, concepto, origen, clave, reverso, responsable) cuando el estado no es `borrador`; solo permite la transición `contabilizado → anulado`.
+  - `BEFORE DELETE` sobre `asiento`: aborta borrar asientos no borrador.
+- El flujo de contabilización es `borrador → inserción de líneas → contabilizado` dentro de la misma transacción, de modo que la protección no impide el alta inicial.
 
 ## Tablas actuales
 
@@ -18,7 +27,7 @@ Esquema inicial del núcleo contable. Las migraciones son versionadas (`_migraci
 
 ## Reglas de integridad
 
-- Claves foráneas activas; los asientos contabilizados no se borran ni editan: la anulación crea un **reverso** (`reverso_de_id`) en la misma transacción que marca el original `anulado`.
+- Claves foráneas activas; los asientos contabilizados no se borran ni editan (reglas más triggers de la migración v2): la anulación crea un **reverso** (`reverso_de_id`) en la misma transacción que marca el original `anulado`. La protección no defiende la base de un administrador del equipo que altere deliberadamente el esquema.
 - El folio del original anulado y su PDF archivado se conservan.
 - Los saldos nunca se almacenan: se derivan de `asiento_linea` (mayor y auxiliares consumen los mismos datos).
 - Aplicaciones de cobros/pagos (tabla `aplicacion`, hito 3) deberán impedir aplicar más que el saldo disponible mediante restricciones y validación transaccional.

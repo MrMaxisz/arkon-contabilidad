@@ -11,7 +11,7 @@
 - **Inicio**: resumen del balance (activo, pasivo, patrimonio, resultado) derivado del mayor, con indicador de cuadre de partida doble. Muestra la advertencia de ámbito administrativo previo a la constitución.
 - **Contabilidad**:
   - *Nuevo asiento manual*: fecha de operación, concepto, responsable y líneas (cuenta de movimiento, importe en Debe **o** Haber). El motor rechaza asientos descuadrados, cuentas de agrupación, cuentas inexistentes o inactivas y períodos cerrados antes de escribir nada.
-  - *Asientos recientes*: lista con folio, estado y total. «Anular» pide motivo y crea un asiento reverso trazable; el original queda conservado como `anulado`.
+  - *Asientos recientes*: lista con folio, estado y total (en unidades monetarias, igual que el mayor y los reportes). «Anular» abre un diálogo propio que exige motivo y responsable; crea un asiento reverso trazable y el original queda conservado como `anulado`. El envío del formulario se bloquea mientras se procesa y cada operación lleva una clave de idempotencia que se conserva entre reintentos, para que un doble clic o un reintento no dupliquen el asiento.
   - *Mayor de cuenta*: movimientos y saldo corrido de la cuenta seleccionada.
 - **Respaldo**: «Crear respaldo ahora» genera una copia consistente (API de respaldo de SQLite), verifica integridad, calcula hash SHA-256 y escribe un manifiesto `.manifest.json`. La restauración verifica hash e integridad, preserva copia del estado anterior y bloquea esquemas futuros incompatibles.
 - **Bitácora**: últimos eventos (contabilizaciones, anulaciones, cierres, respaldos, migraciones).
@@ -24,7 +24,7 @@
 ## Respaldar y restaurar
 
 - Respaldar con regularidad desde la vista Respaldo; las copias quedan en `respaldos\`.
-- Restaurar: usar el comando `respaldo:restaurar` indicando la ruta del archivo de respaldo (interfaz de selección de archivo: hito siguiente). Siempre se conserva una copia `.antes-restauracion` del estado anterior.
+- Restaurar: desde la vista Respaldo, botón «Restaurar» de la copia elegida y confirmación. Se verifica hash e integridad, se conserva copia `.antes-restauracion` del estado anterior y la restauración queda registrada en la bitácora de la base restaurada.
 
 ## Qué NO es esta aplicación todavía
 

@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron';
+import path from 'path';
 import type Database from 'better-sqlite3';
 import type { RutasDatos } from './db/conexion';
 import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerrarPeriodo, reabrirPeriodo } from './servicios/motorAsientos';
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
-import { crearRespaldo, listarRespaldos, restaurarRespaldo } from './servicios/respaldo';
+import { crearRespaldo, listarRespaldos, restaurarRespaldo, registrarRestauracion } from './servicios/respaldo';
 import { listarEventos } from './servicios/bitacora';
 import { abrirBase } from './db/conexion';
 import { aplicarMigraciones } from './db/aplicarMigraciones';
@@ -53,7 +54,7 @@ const comandos: Record<string, Manejador> = {
       lineas: p.lineas as never,
       origenTipo: p.origenTipo ? String(p.origenTipo) : undefined,
       origenId: p.origenId ? String(p.origenId) : undefined,
-      claveIdempotencia: p.claveIdempotencia ? String(p.claveIdempotencia) : undefined,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable'),
       ambitoId: texto(p, 'ambitoId')
     });
@@ -100,8 +101,20 @@ const comandos: Record<string, Manejador> = {
   'respaldo:listar': ctx => listarRespaldos(ctx.db),
   'respaldo:restaurar': (ctx, payload) => {
     const p = objeto(payload);
-    const resultado = restaurarRespaldo(ctx.db, texto(p, 'ruta'), ctx.rutaDb);
+    const nombre = texto(p, 'nombre');
+    const ruta = path.join(ctx.rutas.respaldos, nombre);
+    if (!path.basename(ruta).startsWith('respaldo-')) {
+      throw new ErrorValidacion('Nombre de respaldo inválido');
+    }
+    let resultado: { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string };
+    try {
+      resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb) as typeof resultado;
+    } catch (err) {
+      ctx.reabrirBase();
+      throw err;
+    }
     ctx.reabrirBase();
+    registrarRestauracion(ctx.db, { respaldo: resultado.respaldo, copiaPrevia: resultado.copiaPrevia });
     return resultado;
   },
   'bitacora:listar': (ctx, payload) => {

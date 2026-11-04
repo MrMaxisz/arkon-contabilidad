@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { parseMontoMinor, minorATexto } from '../../shared/dinero';
+import { validarFechaCalendario, fechaDentroDePeriodo } from '../../shared/fechas';
 import type {
   EntradaAsiento,
   ResultadoContabilizacion,
@@ -23,18 +24,25 @@ interface FilaCuenta {
   activa: number;
 }
 
-export function periodoDeFecha(db: Database.Database, fecha: string): { id: number; estado: EstadoPeriodo } {
+export interface PeriodoInfo {
+  id: number;
+  estado: EstadoPeriodo;
+  inicio: string;
+  fin: string;
+}
+
+export function periodoDeFecha(db: Database.Database, fecha: string): PeriodoInfo {
   const mes = fecha.slice(0, 7);
   const inicio = `${mes}-01`;
   const fin = finDeMes(mes);
   const existente = db
-    .prepare('SELECT id, estado FROM periodo WHERE inicio = ? AND fin = ?')
-    .get(inicio, fin) as { id: number; estado: EstadoPeriodo } | undefined;
+    .prepare('SELECT id, estado, inicio, fin FROM periodo WHERE inicio = ? AND fin = ?')
+    .get(inicio, fin) as PeriodoInfo | undefined;
   if (existente) {
     return existente;
   }
   const info = db.prepare('INSERT INTO periodo (inicio, fin) VALUES (?, ?)').run(inicio, fin);
-  return { id: Number(info.lastInsertRowid), estado: 'abierto' };
+  return { id: Number(info.lastInsertRowid), estado: 'abierto', inicio, fin };
 }
 
 function finDeMes(mes: string): string {
@@ -49,9 +57,7 @@ function finDeMes(mes: string): string {
 }
 
 function validarFecha(fecha: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-    throw new ErrorContable(`Fecha inválida: ${fecha}`);
-  }
+  validarFechaCalendario(fecha);
 }
 
 function validarLineas(db: Database.Database, lineas: EntradaAsiento['lineas']): Array<{ cuentaId: number; debe: bigint; haber: bigint }> {
@@ -135,6 +141,10 @@ export function contabilizarAsiento(
     throw new ErrorContable(`Período cerrado: ${entrada.fechaOperacion.slice(0, 7)}`);
   }
 
+  if (!fechaDentroDePeriodo(entrada.fechaOperacion, periodo.inicio, periodo.fin)) {
+    throw new ErrorContable(`La fecha no pertenece al período derivado: ${entrada.fechaOperacion}`);
+  }
+
   const ejecutar = db.transaction((): ResultadoContabilizacion => {
     const siguiente = db
       .prepare('SELECT COUNT(*) AS n FROM asiento WHERE ambito_id = ?')
@@ -145,7 +155,7 @@ export function contabilizarAsiento(
         `INSERT INTO asiento
          (folio, fecha_operacion, periodo_id, ambito_id, concepto, origen_tipo, origen_id,
           clave_idempotencia, estado, responsable)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'contabilizado', ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'borrador', ?)`
       )
       .run(
         folio,
@@ -165,6 +175,9 @@ export function contabilizarAsiento(
     for (const linea of lineas) {
       insertarLinea.run(asientoId, linea.cuentaId, linea.debe, linea.haber);
     }
+    db.prepare(
+      "UPDATE asiento SET estado = 'contabilizado', contabilizado_en = datetime('now') WHERE id = ?"
+    ).run(asientoId);
     registroEvento(db, entrada.responsable, 'contabilizacion', 'asiento', String(asientoId), {
       folio,
       concepto: entrada.concepto,
@@ -233,7 +246,7 @@ export function anularAsiento(
         `INSERT INTO asiento
          (folio, fecha_operacion, periodo_id, ambito_id, concepto, origen_tipo, origen_id,
           estado, reverso_de_id, responsable, motivo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'contabilizado', ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'borrador', ?, ?, ?)`
       )
       .run(
         folio,
@@ -254,6 +267,9 @@ export function anularAsiento(
     for (const linea of lineas) {
       insertarLinea.run(reversoId, linea.cuenta_id, linea.haber_minor, linea.debe_minor);
     }
+    db.prepare(
+      "UPDATE asiento SET estado = 'contabilizado', contabilizado_en = datetime('now') WHERE id = ?"
+    ).run(reversoId);
     db.prepare('UPDATE asiento SET estado = ? WHERE id = ?').run('anulado', asientoId);
     registroEvento(db, responsable, 'anulacion', 'asiento', String(asientoId), {
       reversoId,
@@ -319,7 +335,7 @@ export function listarAsientos(db: Database.Database, limite = 100): AsientoResu
     fechaOperacion: f.fecha_operacion,
     concepto: f.concepto,
     estado: f.estado as AsientoResumen['estado'],
-    totalMinor: String(f.total),
+    totalMinor: minorATexto(BigInt(f.total)),
     reversoDeId: f.reverso_de_id,
     origenTipo: f.origen_tipo,
     origenId: f.origen_id
