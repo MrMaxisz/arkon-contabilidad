@@ -10,7 +10,8 @@
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:renderer",
-    "test": "vitest run",
+    "test": "npm run rebuild:node && vitest run",
+    "rebuild:node": "npm rebuild better-sqlite3",
     "start": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win nsis"
   },
