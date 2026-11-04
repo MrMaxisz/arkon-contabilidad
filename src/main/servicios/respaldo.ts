@@ -104,6 +104,46 @@ export function registrarRestauracion(db: Database.Database, detalle: { respaldo
   registroEvento(db, 'sistema', 'restauracion_completada', 'respaldo', detalle.respaldo, detalle);
 }
 
+export function descubrirRespaldos(dirRespaldos: string): InfoRespaldo[] {
+  if (!fs.existsSync(dirRespaldos)) {
+    return [];
+  }
+  const encontrados: InfoRespaldo[] = [];
+  for (const archivo of fs.readdirSync(dirRespaldos)) {
+    if (!archivo.startsWith('respaldo-') || !archivo.endsWith('.db')) {
+      continue;
+    }
+    const rutaManifiesto = path.join(dirRespaldos, `${archivo}.manifest.json`);
+    if (!fs.existsSync(rutaManifiesto)) {
+      continue;
+    }
+    try {
+      const m = JSON.parse(fs.readFileSync(rutaManifiesto, 'utf8')) as {
+        nombre?: string;
+        hashSha256?: string;
+        versionApp?: string;
+        versionEsquema?: number;
+        creadoEn?: string;
+      };
+      if (m.nombre !== archivo || !m.hashSha256) {
+        continue;
+      }
+      encontrados.push({
+        id: 0,
+        creadoEn: m.creadoEn ?? '',
+        nombre: m.nombre,
+        hashSha256: m.hashSha256,
+        versionApp: m.versionApp ?? '',
+        versionEsquema: m.versionEsquema ?? 0,
+        estado: fs.existsSync(path.join(dirRespaldos, archivo)) ? 'disponible' : 'invalido'
+      });
+    } catch {
+      continue;
+    }
+  }
+  return encontrados.sort((a, b) => b.creadoEn.localeCompare(a.creadoEn));
+}
+
 export function restaurarRespaldo(
   db: Database.Database,
   rutaRespaldo: string,

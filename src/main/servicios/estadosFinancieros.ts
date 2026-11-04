@@ -21,10 +21,11 @@ function saldosCrudos(db: Database.Database): SaldoCrudo[] {
   return db
     .prepare(
       `SELECT c.id, c.codigo, c.nombre, c.tipo,
-              COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+              COALESCE(SUM(CASE WHEN a.estado IN ('contabilizado','anulado')
+                                THEN l.debe_minor - l.haber_minor ELSE 0 END), 0) AS saldo
        FROM cuenta c
        LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
-       LEFT JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       LEFT JOIN asiento a ON a.id = l.asiento_id
        WHERE c.es_grupo = 0
        GROUP BY c.id
        ORDER BY c.codigo`

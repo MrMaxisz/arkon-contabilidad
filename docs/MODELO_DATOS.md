@@ -1,8 +1,13 @@
-# MODELO DE DATOS (esquema v2)
+# MODELO DE DATOS (esquema v3)
 
 Esquema del núcleo contable. Las migraciones son versionadas (`_migracion`) y se aplican en transacción; cada aplicación registra el evento en bitácora. Nunca se edita una migración ya aplicada; los cambios van en una versión nueva.
 
-## Migración v2 (`anticipos_y_proteccion_asientos`)
+## Migración v3 (`catalogo_canonico_y_traslado_lineas`)
+
+- **Catálogo canónico de anticipos**: `1202` = «Anticipos a proveedores» (activo, grupo 12); `2102` = «Anticipos recibidos de clientes» (pasivo, grupo 21). Una base v1 migrada (v2→v3) converge exactamente con una instalación nueva: la cuenta que conservaba los movimientos de anticipos de clientes conserva su `id` e historial y recibe el código canónico `2102`, sin reasignar la operación económica. Prueba de doble recorrido en verde.
+- **Traslado de líneas**: el trigger de UPDATE de `asiento_linea` verifica tanto el asiento de origen (`OLD.asiento_id`) como el destino (`NEW.asiento_id`); una línea no puede trasladarse a un asiento contabilizado o anulado.
+
+## Migración v2 (`anticipos_y_proteccion_asientos` — historial conservado)
 
 - **Reclasificación de anticipos** en bases existentes: `1202` pasa a pasivo («Anticipos recibidos de clientes», bajo el grupo 21) y `2102` a activo («Anticipos a proveedores», bajo el grupo 12). En bases nuevas, la semilla ya crea la clasificación correcta.
 - **Protección persistente de asientos contabilizados** mediante triggers:

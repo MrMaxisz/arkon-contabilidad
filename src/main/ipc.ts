@@ -1,22 +1,10 @@
 import { ipcMain } from 'electron';
-import path from 'path';
-import type Database from 'better-sqlite3';
-import type { RutasDatos } from './db/conexion';
 import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerrarPeriodo, reabrirPeriodo } from './servicios/motorAsientos';
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
-import { crearRespaldo, listarRespaldos, restaurarRespaldo, registrarRestauracion } from './servicios/respaldo';
+import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
+import { manejarRestauracion, type ContextoApp } from './servicios/restauracion';
 import { listarEventos } from './servicios/bitacora';
-import { abrirBase } from './db/conexion';
-import { aplicarMigraciones } from './db/aplicarMigraciones';
-
-export interface ContextoApp {
-  db: Database.Database;
-  rutas: RutasDatos;
-  versionApp: string;
-  rutaDb: string;
-  reabrirBase(): void;
-}
 
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
 
@@ -98,24 +86,10 @@ const comandos: Record<string, Manejador> = {
   'balance:resumen': ctx => balanceResumen(ctx.db),
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
   'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp),
-  'respaldo:listar': ctx => listarRespaldos(ctx.db),
+  'respaldo:listar': ctx => descubrirRespaldos(ctx.rutas.respaldos),
   'respaldo:restaurar': (ctx, payload) => {
     const p = objeto(payload);
-    const nombre = texto(p, 'nombre');
-    const ruta = path.join(ctx.rutas.respaldos, nombre);
-    if (!path.basename(ruta).startsWith('respaldo-')) {
-      throw new ErrorValidacion('Nombre de respaldo inválido');
-    }
-    let resultado: { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string };
-    try {
-      resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb) as typeof resultado;
-    } catch (err) {
-      ctx.reabrirBase();
-      throw err;
-    }
-    ctx.reabrirBase();
-    registrarRestauracion(ctx.db, { respaldo: resultado.respaldo, copiaPrevia: resultado.copiaPrevia });
-    return resultado;
+    return manejarRestauracion(ctx, texto(p, 'nombre'));
   },
   'bitacora:listar': (ctx, payload) => {
     const p = objeto(payload);
@@ -136,17 +110,4 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     }
     return manejador(ctx, p.datos);
   });
-}
-
-export function contextoParaPruebas(db: Database.Database, rutas: RutasDatos): ContextoApp {
-  return {
-    db,
-    rutas,
-    versionApp: 'prueba',
-    rutaDb: rutas.datos,
-    reabrirBase() {
-      this.db = abrirBase(this.rutaDb);
-      aplicarMigraciones(this.db);
-    }
-  };
 }

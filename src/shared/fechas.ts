@@ -29,8 +29,9 @@ export function fechaDentroDePeriodo(fecha: string, inicio: string, fin: string)
   return fecha >= inicio && fecha <= fin;
 }
 
-export function fechaLocalElSalvador(): string {
-  const ahora = new Date();
-  const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
+export const ZONA_EL_SALVADOR_OFFSET_MS = -6 * 3600 * 1000;
+
+export function fechaLocalElSalvador(ahora: Date = new Date()): string {
+  const sv = new Date(ahora.getTime() + ZONA_EL_SALVADOR_OFFSET_MS);
+  return sv.toISOString().slice(0, 10);
 }

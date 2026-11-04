@@ -1,9 +1,9 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
-import { abrirBase, prepararRutasDatos } from './db/conexion';
-import { aplicarMigraciones } from './db/aplicarMigraciones';
+import { prepararRutasDatos } from './db/conexion';
 import { sembrarCatalogoBase } from './servicios/cuentas';
-import { registrarIpc, type ContextoApp } from './ipc';
+import { registrarIpc } from './ipc';
+import { crearContextoBase, type ContextoApp } from './servicios/restauracion';
 
 const RUTA_BASE_DATOS = 'arkon.db';
 
@@ -20,22 +20,12 @@ let ctx: ContextoApp | null = null;
 function crearContexto(): ContextoApp {
   const rutas = prepararRutasDatos(rutaDatosUsuario());
   const rutaDb = path.join(rutas.datos, RUTA_BASE_DATOS);
-  const db = abrirBase(rutaDb);
-  aplicarMigraciones(db);
-  db.prepare(
+  const ctx = crearContextoBase(rutas, rutaDb, app.getVersion());
+  ctx.db.prepare(
     "INSERT OR IGNORE INTO ambito (id, nombre, tipo) VALUES ('administrativo', 'ARKON · control administrativo previo a la constitución', 'administrativo')"
   ).run();
-  sembrarCatalogoBase(db);
-  return {
-    db,
-    rutas,
-    versionApp: app.getVersion(),
-    rutaDb,
-    reabrirBase() {
-      this.db = abrirBase(rutaDb);
-      aplicarMigraciones(this.db);
-    }
-  };
+  sembrarCatalogoBase(ctx.db);
+  return ctx;
 }
 
 const obtuvoUnico = app.requestSingleInstanceLock();

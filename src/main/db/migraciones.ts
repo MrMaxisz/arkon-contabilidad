@@ -170,5 +170,31 @@ BEGIN
   SELECT RAISE(ABORT, 'Un asiento contabilizado no se borra; use reverso');
 END;
 `
+  },
+  {
+    version: 3,
+    nombre: 'catalogo_canonico_y_traslado_lineas',
+    sql: `
+UPDATE cuenta SET codigo = '__tmp_arkon__' WHERE codigo = '1202' AND tipo = 'pasivo';
+
+UPDATE cuenta SET codigo = '1202', nombre = 'Anticipos a proveedores',
+  padre_id = (SELECT id FROM cuenta WHERE codigo = '12')
+WHERE codigo = '2102' AND tipo = 'activo';
+
+UPDATE cuenta SET codigo = '2102', nombre = 'Anticipos recibidos de clientes',
+  padre_id = (SELECT id FROM cuenta WHERE codigo = '21')
+WHERE codigo = '__tmp_arkon__';
+
+DROP TRIGGER IF EXISTS trg_asiento_linea_update;
+
+CREATE TRIGGER trg_asiento_linea_update BEFORE UPDATE ON asiento_linea
+BEGIN
+  SELECT CASE
+    WHEN (SELECT estado FROM asiento WHERE id = OLD.asiento_id) != 'borrador'
+      THEN RAISE(ABORT, 'Un asiento contabilizado no admite editar sus líneas')
+    WHEN (SELECT estado FROM asiento WHERE id = NEW.asiento_id) != 'borrador'
+      THEN RAISE(ABORT, 'Una línea no puede trasladarse a un asiento contabilizado') END;
+END;
+`
   }
 ];
