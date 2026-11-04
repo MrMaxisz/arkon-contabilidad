@@ -13,10 +13,12 @@ import { multiplicarLinea, parseMontoMinor, desglosarIvaSeparado, desglosarIvaIn
 
 let dir: string;
 let rutaDb: string;
+const abiertas: Array<ReturnType<typeof abrirBase>> = [];
 
 function abrir(): ReturnType<typeof abrirBase> {
   const db = abrirBase(rutaDb);
   aplicarMigraciones(db);
+  abiertas.push(db);
   return db;
 }
 
@@ -31,6 +33,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const db of abiertas) {
+    if (db.open) {
+      db.close();
+    }
+  }
+  abiertas.length = 0;
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

@@ -461,6 +461,7 @@ export function listarCompras(db: Database.Database): Array<{
   folio: string;
   fecha: string;
   concepto: string;
+  contraparteId: number;
   contraparteNombre: string;
   totalMinor: string;
   saldoMinor: string;
@@ -468,7 +469,7 @@ export function listarCompras(db: Database.Database): Array<{
 }> {
   const filas = db
     .prepare(
-      `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, p.nombre AS contraparte, co.total_minor, co.estado,
+      `SELECT co.id, co.folio, co.fecha_operacion, co.concepto, co.contraparte_id, p.nombre AS contraparte, co.total_minor, co.estado,
               (co.total_minor - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
                 JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
                 WHERE a.documento_tipo = 'compra' AND a.documento_id = co.id AND t.estado = 'registrado'), 0)) AS saldo
@@ -479,6 +480,7 @@ export function listarCompras(db: Database.Database): Array<{
     folio: string;
     fecha_operacion: string;
     concepto: string;
+    contraparte_id: number;
     contraparte: string;
     total_minor: number;
     saldo: number;
@@ -489,6 +491,7 @@ export function listarCompras(db: Database.Database): Array<{
     folio: f.folio,
     fecha: f.fecha_operacion,
     concepto: f.concepto,
+    contraparteId: f.contraparte_id,
     contraparteNombre: f.contraparte,
     totalMinor: minorATexto(BigInt(f.total_minor)),
     saldoMinor: minorATexto(BigInt(f.saldo)),
@@ -501,6 +504,7 @@ export function listarVentas(db: Database.Database): Array<{
   folio: string;
   fecha: string;
   concepto: string;
+  contraparteId: number;
   contraparteNombre: string;
   totalMinor: string;
   saldoMinor: string;
@@ -508,7 +512,7 @@ export function listarVentas(db: Database.Database): Array<{
 }> {
   const filas = db
     .prepare(
-      `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, p.nombre AS contraparte, v.total_minor, v.estado,
+      `SELECT v.id, v.folio, v.fecha_operacion, v.concepto, v.contraparte_id, p.nombre AS contraparte, v.total_minor, v.estado,
               (v.total_minor - COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
                 JOIN tesoreria_movimiento t ON t.id = a.movimiento_id
                 WHERE a.documento_tipo = 'venta' AND a.documento_id = v.id AND t.estado = 'registrado'), 0)) AS saldo
@@ -519,6 +523,7 @@ export function listarVentas(db: Database.Database): Array<{
     folio: string;
     fecha_operacion: string;
     concepto: string;
+    contraparte_id: number;
     contraparte: string;
     total_minor: number;
     saldo: number;
@@ -529,6 +534,7 @@ export function listarVentas(db: Database.Database): Array<{
     folio: f.folio,
     fecha: f.fecha_operacion,
     concepto: f.concepto,
+    contraparteId: f.contraparte_id,
     contraparteNombre: f.contraparte,
     totalMinor: minorATexto(BigInt(f.total_minor)),
     saldoMinor: minorATexto(BigInt(f.saldo)),

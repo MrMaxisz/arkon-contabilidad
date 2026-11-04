@@ -4,8 +4,8 @@ import { fechaLocalElSalvador } from '../../shared/fechas';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
 interface Cuenta { id: number; nombre: string; codigo: string }
-interface Venta { id: number; folio: string; concepto: string; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
-interface Compra { id: number; folio: string; concepto: string; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
+interface Venta { id: number; folio: string; concepto: string; contraparteId: number; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
+interface Compra { id: number; folio: string; concepto: string; contraparteId: number; contraparteNombre: string; totalMinor: string; saldoMinor: string; estado: string }
 
 function nuevaClave(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -41,9 +41,8 @@ export default function CobrosPagos() {
     cargar();
   }, [cargar]);
 
-  const contraparteSeleccionada = contrapartes.find(c => c.id === contraparteId);
   const documentosFiltrados = (modo === 'cobro' ? ventas : compras).filter(
-    d => contraparteSeleccionada && d.contraparteNombre === contraparteSeleccionada.nombre
+    d => d.contraparteId === contraparteId
   );
 
   async function registrar(e: React.FormEvent) {

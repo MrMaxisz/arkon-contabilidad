@@ -44,6 +44,7 @@ export default function Cotizaciones() {
   ]);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [cargando, setCargando] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [anulando, setAnulando] = useState<Cotizacion | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
@@ -101,6 +102,7 @@ export default function Cotizaciones() {
 
   async function editar(c: Cotizacion) {
     setEditandoId(c.id);
+    setCargando(true);
     setMensaje(null);
     try {
       const lineasGuardadas = (await api().invocar('cotizacion:lineas', { cotizacionId: c.id })) as Array<{
@@ -111,6 +113,9 @@ export default function Cotizaciones() {
         precioConIva: boolean;
         tasaPuntosBase: number;
       }>;
+      setCondiciones(c.condiciones ?? '');
+      setContraparteId(c.contraparteId);
+      setFecha(c.fecha);
       setLineas(
         lineasGuardadas.map(l => ({
           tipo: l.tipo as LineaForm['tipo'],
@@ -123,6 +128,8 @@ export default function Cotizaciones() {
       );
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    } finally {
+      setCargando(false);
     }
   }
 
@@ -148,12 +155,12 @@ export default function Cotizaciones() {
         <h2>{editandoId ? 'Editar borrador de cotización' : 'Nueva cotización'}</h2>
         <div className="fila">
           <label>Cliente
-            <select value={contraparteId} onChange={e => setContraparteId(Number(e.target.value))} required>
+            <select value={contraparteId} onChange={e => setContraparteId(Number(e.target.value))} required disabled={editandoId !== null}>
               <option value={0}>— Seleccione —</option>
               {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
             </select>
           </label>
-          <label>Fecha<input type="date" value={fecha} onChange={e => setFecha(e.target.value)} required /></label>
+          <label>Fecha<input type="date" value={fecha} onChange={e => setFecha(e.target.value)} required disabled={editandoId !== null} /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
         {lineas.map((l, i) => (
@@ -204,7 +211,7 @@ export default function Cotizaciones() {
               setLineas([{ tipo: 'servicio', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }]);
             }}>Cancelar edición</button>
           )}
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear cotización'}</button>
+          <button className="primario" type="submit" disabled={ocupado || cargando}>{ocupado || cargando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear cotización'}</button>
         </div>
         <p className="menor">Si el precio incluye IVA, el desglose conserva el total; base + IVA reconcilian sin aumentarlo.</p>
       </form>
