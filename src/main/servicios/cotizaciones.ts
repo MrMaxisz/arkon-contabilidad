@@ -13,6 +13,7 @@ export interface LineaCotizacionEntrada {
   precioUnitario: string;
   precioConIva: boolean;
   tasa: string;
+  itemId?: number;
 }
 
 export interface LineaCotizacionCalculada {
@@ -117,8 +118,8 @@ export function crearCotizacion(
     const id = Number(info.lastInsertRowid);
     const insertar = db.prepare(
       `INSERT INTO cotizacion_linea
-       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden, item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     entrada.lineas.forEach((l, i) => {
       const c = calculadas[i];
@@ -136,7 +137,8 @@ export function crearCotizacion(
         c.base,
         c.iva,
         c.total,
-        i + 1
+        i + 1,
+        l.itemId ?? null
       );
     });
     registroEvento(db, entrada.responsable, 'cotizacion_creada', 'cotizacion', String(id), { numero });
@@ -208,8 +210,8 @@ export function actualizarCotizacionBorrador(
     db.prepare('DELETE FROM cotizacion_linea WHERE cotizacion_id = ?').run(cotizacionId);
     const insertar = db.prepare(
       `INSERT INTO cotizacion_linea
-       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden, item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     entrada.lineas.forEach((l, i) => {
       const c = calculadas[i];
@@ -227,7 +229,8 @@ export function actualizarCotizacionBorrador(
         c.base,
         c.iva,
         c.total,
-        i + 1
+        i + 1,
+        l.itemId ?? null
       );
     });
     registroEvento(db, entrada.responsable, 'cotizacion_editada', 'cotizacion', String(cotizacionId), { numero: cot.numero });
@@ -293,6 +296,7 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
     base_minor: number;
     iva_minor: number;
     total_minor: number;
+    item_id: number | null;
   }>;
   return filas.map(f => ({
     id: f.id,
@@ -304,6 +308,79 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
     tasaPuntosBase: f.tasa_puntos_base,
     baseMinor: minorATexto(BigInt(f.base_minor)),
     ivaMinor: minorATexto(BigInt(f.iva_minor)),
-    totalMinor: minorATexto(BigInt(f.total_minor))
+    totalMinor: minorATexto(BigInt(f.total_minor)),
+    itemId: f.item_id
   }));
+}
+
+export function generarHtmlCotizacion(db: Database.Database, cotizacionId: number): string {
+  const cot = db
+    .prepare(
+      `SELECT c.numero, c.revision, c.fecha, c.vigencia, c.estado, c.condiciones, p.nombre AS cliente
+       FROM cotizacion c JOIN contraparte p ON p.id = c.contraparte_id WHERE c.id = ?`
+    )
+    .get(cotizacionId) as
+    | {
+        numero: string;
+        revision: number;
+        fecha: string;
+        vigencia: string | null;
+        estado: string;
+        condiciones: string | null;
+        cliente: string;
+      }
+    | undefined;
+  if (!cot) {
+    throw new ErrorCotizacion('Cotización inexistente');
+  }
+  const lineas = lineasDeCotizacion(db, cotizacionId);
+  const escapear = (texto: string): string =>
+    texto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const filas = lineas
+    .map(
+      l => `<tr>
+      <td>${escapear(l.tipo)}</td>
+      <td>${escapear(l.descripcion)}</td>
+      <td class="num">${escapear(l.cantidad)}</td>
+      <td class="num">${escapear(l.precioUnitarioMinor)}</td>
+      <td class="num">${escapear(l.baseMinor)}</td>
+      <td class="num">${escapear(l.ivaMinor)}</td>
+      <td class="num">${escapear(l.totalMinor)}</td>
+    </tr>`
+    )
+    .join('\n');
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Cotización ${escapear(cot.numero)}</title>
+<style>
+  body { font-family: 'IBM Plex Sans', sans-serif; color: #1c2733; margin: 40px; }
+  h1 { font-family: 'Barlow Condensed', sans-serif; color: #0d2c54; margin-bottom: 4px; }
+  .aviso { border-left: 4px solid #1a5fa8; padding: 8px 12px; background: #f4f7fb; font-size: 13px; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+  th, td { border-bottom: 1px solid #d7e0ec; padding: 8px; text-align: left; }
+  th { background: #eaf1f9; color: #0d2c54; }
+  .num { text-align: right; }
+  .totales td { font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Cotización ${escapear(cot.numero)} · revisión ${cot.revision}</h1>
+<p>Cliente: ${escapear(cot.cliente)}</p>
+<p>Fecha: ${escapear(cot.fecha)}${cot.vigencia ? ` · Vigencia: ${escapear(cot.vigencia)}` : ''}</p>
+<p>Estado: ${escapear(cot.estado)}</p>
+<div class="aviso">
+Documento interno de control administrativo emitido por ARKON antes de su constitución e inscripción.
+No es un documento tributario electrónico (DTE) ni ha sido presentado ante el Ministerio de Hacienda.
+</div>
+${cot.condiciones ? `<p><strong>Condiciones:</strong> ${escapear(cot.condiciones)}</p>` : ''}
+<table>
+<thead><tr><th>Tipo</th><th>Descripción</th><th class="num">Cantidad</th><th class="num">Precio unitario</th><th class="num">Base</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+<tbody>
+${filas}
+</tbody>
+</table>
+</body>
+</html>`;
 }

@@ -420,5 +420,26 @@ INSERT INTO configuracion (clave, valor, fuente, vigencia)
 SELECT 'anticipo_hecho_generador', 'pendiente', 'Política pendiente del contador responsable', NULL
 WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'anticipo_hecho_generador');
 `
+  },
+  {
+    version: 9,
+    nombre: 'catalogo_items',
+    sql: `
+CREATE TABLE item_catalogo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipo TEXT NOT NULL CHECK (tipo IN ('servicio','material')),
+  codigo TEXT NOT NULL UNIQUE,
+  nombre TEXT NOT NULL,
+  unidad TEXT,
+  descripcion TEXT,
+  precio_venta_minor INTEGER,
+  precio_costo_minor INTEGER,
+  activo INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+ALTER TABLE cotizacion_linea ADD COLUMN item_id INTEGER REFERENCES item_catalogo(id);
+ALTER TABLE compra_linea ADD COLUMN item_id INTEGER REFERENCES item_catalogo(id);
+`
   }
 ];

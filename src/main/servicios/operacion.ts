@@ -564,3 +564,98 @@ export function completarClasificacionDocumento(
   });
   tx();
 }
+
+export function editarContraparte(
+  db: Database.Database,
+  contraparteId: number,
+  entrada: {
+    nombre?: string;
+    nrc?: string | null;
+    nit?: string | null;
+    clasificacionTributaria?: string | null;
+    notas?: string | null;
+    responsable: string;
+  }
+): void {
+  const actual = db
+    .prepare('SELECT id, nombre FROM contraparte WHERE id = ?')
+    .get(contraparteId) as { id: number; nombre: string } | undefined;
+  if (!actual) {
+    throw new ErrorOperacion('Contraparte inexistente');
+  }
+  const nombre = entrada.nombre !== undefined ? entrada.nombre.trim() : actual.nombre;
+  if (!nombre) {
+    throw new ErrorOperacion('La contraparte requiere nombre');
+  }
+  db.prepare('UPDATE contraparte SET nombre = ?, nrc = COALESCE(?, nrc), nit = COALESCE(?, nit), clasificacion_tributaria = COALESCE(?, clasificacion_tributaria), notas = COALESCE(?, notas) WHERE id = ?')
+    .run(
+      nombre,
+      entrada.nrc === undefined ? null : entrada.nrc?.trim() || null,
+      entrada.nit === undefined ? null : entrada.nit?.trim() || null,
+      entrada.clasificacionTributaria === undefined ? null : entrada.clasificacionTributaria?.trim() || null,
+      entrada.notas === undefined ? null : entrada.notas?.trim() || null,
+      contraparteId
+    );
+  registroEvento(db, entrada.responsable, 'contraparte_editada', 'contraparte', String(contraparteId), { nombre });
+}
+
+export function cambiarEstadoContraparte(db: Database.Database, contraparteId: number, activa: boolean, responsable: string): void {
+  const actual = db
+    .prepare('SELECT id, nombre, activa FROM contraparte WHERE id = ?')
+    .get(contraparteId) as { id: number; nombre: string; activa: number } | undefined;
+  if (!actual) {
+    throw new ErrorOperacion('Contraparte inexistente');
+  }
+  if ((actual.activa === 1) === activa) {
+    throw new ErrorOperacion(`La contraparte ${actual.nombre} ya está ${activa ? 'activa' : 'inactiva'}`);
+  }
+  if (!activa) {
+    const ventasPendientes = (
+      db
+        .prepare("SELECT COUNT(*) AS n FROM venta WHERE contraparte_id = ? AND estado = 'registrada'")
+        .get(contraparteId) as { n: number }
+    ).n;
+    const comprasPendientes = (
+      db
+        .prepare("SELECT COUNT(*) AS n FROM compra WHERE contraparte_id = ? AND estado = 'registrada'")
+        .get(contraparteId) as { n: number }
+    ).n;
+    if (ventasPendientes > 0 || comprasPendientes > 0) {
+      throw new ErrorOperacion(
+        `La contraparte ${actual.nombre} tiene documentos registrados activos; resuélvelos antes de desactivarla`
+      );
+    }
+  }
+  db.prepare('UPDATE contraparte SET activa = ? WHERE id = ?').run(activa ? 1 : 0, contraparteId);
+  registroEvento(db, responsable, activa ? 'contraparte_activada' : 'contraparte_desactivada', 'contraparte', String(contraparteId), {
+    nombre: actual.nombre,
+    nota: 'Sin borrar identidad: los documentos históricos conservan su contraparte'
+  });
+}
+
+export function desactivarCuenta(db: Database.Database, cuentaId: number, responsable: string): void {
+  const cuenta = db
+    .prepare('SELECT id, codigo, nombre, activa FROM cuenta WHERE id = ?')
+    .get(cuentaId) as { id: number; codigo: string; nombre: string; activa: number } | undefined;
+  if (!cuenta) {
+    throw new ErrorOperacion('Cuenta inexistente');
+  }
+  if (cuenta.activa === 0) {
+    throw new ErrorOperacion(`La cuenta ${cuenta.codigo} ya está inactiva`);
+  }
+  const usada = (
+    db
+      .prepare('SELECT COUNT(*) AS n FROM asiento_linea WHERE cuenta_id = ?')
+      .get(cuentaId) as { n: number }
+  ).n;
+  if (usada > 0) {
+    throw new ErrorOperacion(
+      `La cuenta ${cuenta.codigo} ${cuenta.nombre} tiene movimientos contables; no se desactiva para no romper la identidad de los asientos`
+    );
+  }
+  db.prepare('UPDATE cuenta SET activa = 0 WHERE id = ?').run(cuentaId);
+  registroEvento(db, responsable, 'cuenta_desactivada', 'cuenta', String(cuentaId), {
+    codigo: cuenta.codigo,
+    nota: 'Desactivada, no borrada'
+  });
+}

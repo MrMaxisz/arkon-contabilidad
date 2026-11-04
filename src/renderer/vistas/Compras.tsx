@@ -14,6 +14,15 @@ interface LineaForm {
   tasa: string;
   tratamiento: 'gravado' | 'exento' | 'no_sujeto';
   precioConIva: boolean;
+  itemId?: number;
+}
+
+interface Item {
+  id: number;
+  codigo: string;
+  nombre: string;
+  precioCostoMinor: string | null;
+  activo: boolean;
 }
 
 function nuevaClave(): string {
@@ -33,6 +42,7 @@ export default function Compras() {
   const [concepto, setConcepto] = useState('');
   const [condicion, setCondicion] = useState<'credito' | 'contado'>('credito');
   const [clasificacion, setClasificacion] = useState('');
+  const [items, setItems] = useState<Item[]>([]);
   const [tipoDocumento, setTipoDocumento] = useState('');
   const [responsable, setResponsable] = useState('');
   const [lineas, setLineas] = useState<LineaForm[]>([
@@ -54,6 +64,7 @@ export default function Compras() {
     void api().invocar('contraparte:listar').then(r => setProveedores((r as Contraparte[]).filter(c => c.esProveedor)));
     void api().invocar('proyecto:listar').then(r => setProyectos(r as Proyecto[]));
     void api().invocar('cuenta:listar').then(r => setCuentas((r as CuentaResumen[]).filter(c => ['costo', 'gasto', 'activo'].includes(c.tipo) && !c.esGrupo)));
+    void api().invocar('item:listar', { soloActivos: true }).then(r => setItems(r as Item[]));
   }, []);
 
   const cargarDocumentos = useCallback(() => {
@@ -175,6 +186,26 @@ export default function Compras() {
         </div>
         {lineas.map((l, i) => (
           <div className="fila" key={i}>
+            <label>Ítem del catálogo
+              <select
+                value={l.itemId ?? 0}
+                onChange={e => {
+                  const itemId = Number(e.target.value);
+                  const item = items.find(it => it.id === itemId);
+                  const copia = [...lineas];
+                  copia[i] = {
+                    ...l,
+                    itemId: itemId || undefined,
+                    descripcion: item ? item.nombre : l.descripcion,
+                    precioUnitario: item && item.precioCostoMinor ? item.precioCostoMinor : l.precioUnitario
+                  };
+                  setLineas(copia);
+                }}
+              >
+                <option value={0}>— Libre —</option>
+                {items.map(it => <option key={it.id} value={it.id}>{it.codigo} · {it.nombre}</option>)}
+              </select>
+            </label>
             <label style={{ flex: 2 }}>Descripción<input value={l.descripcion} onChange={e => {
               const copia = [...lineas];
               copia[i] = { ...l, descripcion: e.target.value };

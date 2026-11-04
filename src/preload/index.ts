@@ -17,6 +17,15 @@ const COMANDOS_PERMITIDOS = new Set([
   'bitacora:listar',
   'contraparte:crear',
   'contraparte:listar',
+  'contraparte:editar',
+  'contraparte:cambiarEstado',
+  'cuenta:desactivar',
+  'item:crear',
+  'item:editar',
+  'item:desactivar',
+  'item:activar',
+  'item:listar',
+  'cotizacion:html',
   'cotizacion:crear',
   'cotizacion:guardar',
   'cotizacion:revision',
@@ -66,5 +75,11 @@ contextBridge.exposeInMainWorld('arkon', {
       return Promise.reject(new Error('Tipo de libro inválido'));
     }
     return ipcRenderer.invoke('arkon:guardarCsv', { tipo, mes });
+  },
+  pdfCotizacion(cotizacionId: number): Promise<unknown> {
+    if (!Number.isInteger(cotizacionId) || cotizacionId <= 0) {
+      return Promise.reject(new Error('Cotización inválida'));
+    }
+    return ipcRenderer.invoke('arkon:pdfCotizacion', { cotizacionId });
   }
 });

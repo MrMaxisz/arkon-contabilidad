@@ -12,6 +12,16 @@ interface LineaForm {
   precioUnitario: string;
   precioConIva: boolean;
   tasa: string;
+  itemId?: number;
+}
+
+interface Item {
+  id: number;
+  tipo: string;
+  codigo: string;
+  nombre: string;
+  precioVentaMinor: string | null;
+  activo: boolean;
 }
 
 function nuevaClave(): string {
@@ -34,6 +44,7 @@ export default function Cotizaciones() {
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [cargando, setCargando] = useState(false);
+  const [items, setItems] = useState<Item[]>([]);
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [anulando, setAnulando] = useState<CotizacionResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
@@ -46,6 +57,7 @@ export default function Cotizaciones() {
       setContrapartes(lista);
       setClientes(lista.filter(c => c.esCliente));
     });
+    void api().invocar('item:listar', { soloActivos: true }).then(r => setItems(r as Item[]));
   }, []);
 
   useEffect(() => {
@@ -122,6 +134,19 @@ export default function Cotizaciones() {
     }
   }
 
+  async function generarPdf(c: CotizacionResumen) {
+    setMensaje(null);
+    try {
+      const r = (await api().pdfCotizacion(c.id)) as { guardado: boolean; ruta?: string };
+      setMensaje({
+        texto: r.guardado && r.ruta ? `Documento guardado en ${r.ruta}.` : 'Generación cancelada.',
+        tipo: 'ok'
+      });
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
   async function accion(comando: 'cotizacion:aprobar' | 'cotizacion:revision' | 'cotizacion:anular', id: number, extra?: Record<string, string>) {
     if (!responsable.trim()) {
       setMensaje({ texto: 'Registre el responsable antes de aprobar, revisar o anular.', tipo: 'error' });
@@ -154,6 +179,27 @@ export default function Cotizaciones() {
         </div>
         {lineas.map((l, i) => (
           <div className="fila" key={i}>
+            <label>Ítem del catálogo
+              <select
+                value={l.itemId ?? 0}
+                onChange={e => {
+                  const copia = [...lineas];
+                  const itemId = Number(e.target.value);
+                  const item = items.find(it => it.id === itemId);
+                  copia[i] = {
+                    ...l,
+                    itemId: itemId || undefined,
+                    tipo: item ? (item.tipo as 'servicio' | 'material') : l.tipo,
+                    descripcion: item ? item.nombre : l.descripcion,
+                    precioUnitario: item && item.precioVentaMinor ? item.precioVentaMinor : l.precioUnitario
+                  };
+                  setLineas(copia);
+                }}
+              >
+                <option value={0}>— Libre —</option>
+                {items.map(it => <option key={it.id} value={it.id}>{it.codigo} · {it.nombre}</option>)}
+              </select>
+            </label>
             <label>Tipo
               <select value={l.tipo} onChange={e => {
                 const copia = [...lineas];
@@ -231,6 +277,7 @@ export default function Cotizaciones() {
                     <button onClick={() => void accion('cotizacion:revision', c.id)}>Nueva revisión</button>{' '}
                     <button onClick={() => { setAnulando(c); setMotivoAnular(''); }}>Anular</button>
                   </>}
+                  {c.estado !== 'anulada' && <button onClick={() => void generarPdf(c)}>Documento…</button>}
                 </td>
               </tr>
             ))}

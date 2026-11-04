@@ -9,6 +9,13 @@ import type { ContextoApp } from './servicios/restauracion';
 export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import {
+  crearItem,
+  editarItem,
+  desactivarItem,
+  activarItem,
+  listarItems
+} from './servicios/catalogo';
+import {
   crearVigencia,
   cerrarVigencia,
   listarVigencias,
@@ -25,8 +32,8 @@ import {
   estadoResultados,
   rentabilidadProyectos
 } from './servicios/fiscal';
-import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento } from './servicios/operacion';
-import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador } from './servicios/cotizaciones';
+import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento, editarContraparte, cambiarEstadoContraparte, desactivarCuenta } from './servicios/operacion';
+import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador, generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarCobro, registrarPago, registrarTransferencia, listarMovimientos, anularMovimiento } from './servicios/tesoreria';
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
 
@@ -136,6 +143,73 @@ export const comandos: Record<string, Manejador> = {
     };
   },
   'contraparte:listar': ctx => listarContrapartes(ctx.db),
+  'contraparte:editar': (ctx, payload) => {
+    const p = objeto(payload);
+    editarContraparte(ctx.db, entero(p, 'contraparteId'), {
+      nombre: typeof p.nombre === 'string' ? p.nombre : undefined,
+      nrc: typeof p.nrc === 'string' ? p.nrc : undefined,
+      nit: typeof p.nit === 'string' ? p.nit : undefined,
+      clasificacionTributaria: typeof p.clasificacionTributaria === 'string' ? p.clasificacionTributaria : undefined,
+      notas: typeof p.notas === 'string' ? p.notas : undefined,
+      responsable: texto(p, 'responsable')
+    });
+    return { ok: true };
+  },
+  'contraparte:cambiarEstado': (ctx, payload) => {
+    const p = objeto(payload);
+    cambiarEstadoContraparte(ctx.db, entero(p, 'contraparteId'), p.activa === true, texto(p, 'responsable'));
+    return { ok: true };
+  },
+  'cuenta:desactivar': (ctx, payload) => {
+    const p = objeto(payload);
+    desactivarCuenta(ctx.db, entero(p, 'cuentaId'), texto(p, 'responsable'));
+    return { ok: true };
+  },
+  'item:crear': (ctx, payload) => {
+    const p = objeto(payload);
+    return {
+      id: crearItem(ctx.db, {
+        tipo: texto(p, 'tipo') === 'material' ? 'material' : 'servicio',
+        codigo: texto(p, 'codigo'),
+        nombre: texto(p, 'nombre'),
+        unidad: typeof p.unidad === 'string' ? p.unidad : undefined,
+        descripcion: typeof p.descripcion === 'string' ? p.descripcion : undefined,
+        precioVenta: typeof p.precioVenta === 'string' && p.precioVenta ? p.precioVenta : undefined,
+        precioCosto: typeof p.precioCosto === 'string' && p.precioCosto ? p.precioCosto : undefined,
+        responsable: texto(p, 'responsable')
+      })
+    };
+  },
+  'item:editar': (ctx, payload) => {
+    const p = objeto(payload);
+    editarItem(ctx.db, entero(p, 'itemId'), {
+      nombre: typeof p.nombre === 'string' ? p.nombre : undefined,
+      unidad: typeof p.unidad === 'string' ? p.unidad : undefined,
+      descripcion: typeof p.descripcion === 'string' ? p.descripcion : undefined,
+      precioVenta: typeof p.precioVenta === 'string' ? p.precioVenta : undefined,
+      precioCosto: typeof p.precioCosto === 'string' ? p.precioCosto : undefined,
+      responsable: texto(p, 'responsable')
+    });
+    return { ok: true };
+  },
+  'item:desactivar': (ctx, payload) => {
+    const p = objeto(payload);
+    desactivarItem(ctx.db, entero(p, 'itemId'), texto(p, 'responsable'));
+    return { ok: true };
+  },
+  'item:activar': (ctx, payload) => {
+    const p = objeto(payload);
+    activarItem(ctx.db, entero(p, 'itemId'), texto(p, 'responsable'));
+    return { ok: true };
+  },
+  'item:listar': (ctx, payload) => {
+    const p = objeto(payload);
+    return listarItems(ctx.db, p.soloActivos === true);
+  },
+  'cotizacion:html': (ctx, payload) => {
+    const p = objeto(payload);
+    return { html: generarHtmlCotizacion(ctx.db, entero(p, 'cotizacionId')) };
+  },
   'cotizacion:crear': (ctx, payload) => {
     const p = objeto(payload);
     return crearCotizacion(ctx.db, {
