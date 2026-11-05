@@ -79,6 +79,7 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     'Paquete interno de trabajo para el contador responsable. NO es un anexo ni declaración oficial.',
     'ARKON Ingeniería Eléctrica no está constituida como entidad jurídica ni inscrita como contribuyente de IVA; los datos son de control administrativo.',
     'Saldos de cuentas, balance y conciliaciones calculados ACUMULADOS al corte (hasta); movimientos, asientos y resultados calculados del rango exacto desde–hasta.',
+    'ejercicio-anual.csv: soporte del AÑO del corte (resultado ordinario sin la familia de cierre), diferenciado del rango desde–hasta y reconciliado contra el mayor.',
     'Las retenciones y el tratamiento fiscal de anticipos permanecen como control interno pendiente de la política del contador.',
     'Cifras en USD con dos decimales; los importes provienen del mayor contable y de las aplicaciones de documentos.'
   ];
@@ -264,6 +265,36 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     `mayor-2101-al-corte,${minorATexto(mayorProveedores)}`
   ];
   archivos.push({ nombre: 'conciliaciones.csv', contenido: lineasConciliaciones.join('\n') });
+
+  // Soporte anual diferenciado y reconciliado: el año del corte.
+  const anioCorte = Number(hasta.slice(0, 4));
+  const filasAnual = db
+    .prepare(
+      `SELECT c.codigo, c.nombre, c.tipo,
+              COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+                AND NOT EXISTS (
+                  SELECT 1 FROM asiento o
+                  WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
+                     OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
+                ) THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento
+       FROM cuenta c
+       LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
+       LEFT JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       WHERE c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+       GROUP BY c.id, c.codigo, c.nombre, c.tipo
+       HAVING movimiento <> 0
+       ORDER BY c.codigo`
+    )
+    .all(`${anioCorte}-01-01`, hasta) as Array<{ codigo: string; nombre: string; tipo: string; movimiento: number }>;
+  const lineasAnual = ['codigo,nombre,tipo,movimiento_ejercicio_anual'];
+  let anualNeto = 0n;
+  for (const f of filasAnual) {
+    anualNeto += BigInt(f.movimiento);
+    lineasAnual.push(`${escaparCsv(f.codigo)},${escaparCsv(f.nombre)},${f.tipo},${minorATexto(BigInt(f.movimiento))}`);
+  }
+  lineasAnual.push(`TOTAL_ORDINARIO_ANUAL,,,${minorATexto(anualNeto)}`);
+  lineasAnual.push(`NOTA: resultado ordinario del año ${anioCorte} (familia de cierre y sus reversos excluidos); el archivo estado-resultados.csv cubre el RANGO desde-hasta solicitado; ambos alcances son distintos y reconciliados contra el mayor.`);
+  archivos.push({ nombre: 'ejercicio-anual.csv', contenido: lineasAnual.join('\n') });
 
   const leeme = [
     'PAQUETE INTERNO PARA EL CONTADOR — ARKON CONTABILIDAD',

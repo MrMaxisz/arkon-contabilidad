@@ -66,10 +66,12 @@ export default function Reportes() {
     retencionesEfectuadasMinor: string;
     retencionesRecibidasMinor: string;
     conciliacionMayor: { diferenciaMinor: string; concilia: boolean };
-    asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string }>;
+    asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; totalMinor: string; familiaCierre: boolean }>;
     limitaciones: string[];
   } | null>(null);
   const consultaEjercicio = useRef(0);
+  const [ejercicioCargando, setEjercicioCargando] = useState(false);
+  const [ejercicioAnioConfirmado, setEjercicioAnioConfirmado] = useState('');
   const [paqueteHasta, setPaqueteHasta] = useState('');
 
   const cargarDetalle = useCallback(() => {
@@ -118,8 +120,10 @@ export default function Reportes() {
 
   async function consultarEjercicioAnual(anio: string) {
     const numeroConsulta = ++consultaEjercicio.current;
+    setEjercicio(null);
+    setEjercicioCargando(true);
     if (!/^\d{4}$/.test(anio)) {
-      setEjercicio(null);
+      setEjercicioCargando(false);
       return;
     }
     try {
@@ -131,16 +135,22 @@ export default function Reportes() {
         retencionesEfectuadasMinor: string;
         retencionesRecibidasMinor: string;
         conciliacionMayor: { diferenciaMinor: string; concilia: boolean };
-        asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string }>;
+        asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; totalMinor: string; familiaCierre: boolean }>;
         limitaciones: string[];
       };
       if (consultaEjercicio.current === numeroConsulta) {
         setEjercicio(r);
+        setEjercicioAnioConfirmado(anio);
       }
     } catch (err) {
       if (consultaEjercicio.current === numeroConsulta) {
         setEjercicio(null);
+        setEjercicioAnioConfirmado('');
         setMensaje(`Error al consultar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+      }
+    } finally {
+      if (consultaEjercicio.current === numeroConsulta) {
+        setEjercicioCargando(false);
       }
     }
   }
@@ -371,21 +381,43 @@ export default function Reportes() {
           />
         </label>
         <button
-          disabled={!/^\d{4}$/.test(ejercicioAnio)}
+          disabled={!/^\d{4}$/.test(ejercicioAnio) || ejercicioCargando || ejercicioAnioConfirmado !== ejercicioAnio}
           onClick={() => void guardarEjercicio()}
         >
           Guardar soporte del ejercicio…
         </button>
       </div>
+      {ejercicioCargando && <p className="menor">Consultando ejercicio {ejercicioAnio}…</p>}
       {ejercicio && (
         <div>
           <p className="menor">
+            Ejercicio {ejercicioAnioConfirmado} confirmado ·
             Resultado ordinario: ${ejercicio.resultadoOrdinarioMinor} (con cierre: ${ejercicio.resultadoConCierreMinor}) ·
             Ingresos: ${ejercicio.ingresosMinor} · Costos y gastos: ${ejercicio.costosGastosMinor} ·
             Retenciones efectuadas: ${ejercicio.retencionesEfectuadasMinor} · recibidas: ${ejercicio.retencionesRecibidasMinor} ·
             Conciliación con mayor: {ejercicio.conciliacionMayor.concilia ? 'OK' : `DESCUADRE ${ejercicio.conciliacionMayor.diferenciaMinor}`}
           </p>
-          <p className="menor">Asientos del ejercicio: {ejercicio.asientos.length} (el asiento de cierre se excluye del resultado ordinario).</p>
+          <h3>Asientos del ejercicio (trazable)</h3>
+          <table>
+            <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Estado</th><th>Origen</th><th className="numero">Total</th><th>Familia cierre</th></tr></thead>
+            <tbody>
+              {ejercicio.asientos.map(a => (
+                <tr key={a.folio}>
+                  <td>{a.folio}</td>
+                  <td>{a.fecha}</td>
+                  <td>{a.concepto}</td>
+                  <td>{a.estado}</td>
+                  <td>{a.origen}</td>
+                  <td className="numero">${a.totalMinor}</td>
+                  <td>{a.familiaCierre ? 'Sí (excluido del ordinario)' : 'No'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <h3>Límites del soporte</h3>
+          {ejercicio.limitaciones.map(l => (
+            <p key={l} className="menor">- {l}</p>
+          ))}
         </div>
       )}
       <div className="fila">

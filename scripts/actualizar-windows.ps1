@@ -9,8 +9,15 @@ $ErrorActionPreference = 'Stop'
 $raizRepo = Split-Path -Parent $PSScriptRoot
 Set-Location $raizRepo
 
+$envAnteriorRuta = $env:ARKON_RUTA_DATOS
 if (-not $Perfil) {
   $Perfil = Join-Path $env:LOCALAPPDATA ("ARKON-QA-UPD-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+}
+if ($Perfil -like "*OneDrive*") {
+  throw "El perfil QA no puede estar bajo OneDrive: $Perfil"
+}
+if ($Perfil -eq (Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad')) {
+  throw "El perfil QA no puede ser la base operativa: $Perfil"
 }
 New-Item -ItemType Directory -Path $Perfil -Force | Out-Null
 Write-Host "Perfil QA de actualización: $Perfil (la base operativa real NO se toca)"
@@ -29,28 +36,30 @@ try {
   Requiere 'Instalador NSIS (salida en paquete\)' { npm run dist:win }
   Requiere 'Reconstruir dependencias nativas para Electron' { npx electron-builder install-app-deps }
 
-  # Simulación de actualización en perfil QA: arrancar la versión anterior no es necesario aquí;
-  # este script verifica que la NUEVA versión abre el MISMO perfil sin perder datos.
-  $env:ARKON_RUTA_DATOS = $Perfil
-  $proceso = Start-Process -FilePath "node_modules\.bin\electron.cmd" `
-    -ArgumentList ".", "--user-data-dir=$(Join-Path $Perfil 'chromium')" -PassThru
-  Start-Sleep -Seconds 8
-  if ($proceso.HasExited) {
-    throw "La app se cerró durante el arranque tras la actualización (código $($proceso.ExitCode)); revisa $Perfil"
-  }
-  Write-Host "Actualización verificada en el perfil QA: proceso activo (PID $($proceso.Id))."
+  # Este script PREPARA los artefactos. NO ejecuta la actualización real ni la verifica:
+  # la instalación del NSIS y la comparación de datos son PASOS MANUALES PENDIENTES que deben
+  # ejecutarse en Windows con dos versiones y un perfil sintético (ver plan siguiente).
   Write-Host @"
 
-PLAN DE ACEPTACIÓN (manual, ver docs\QA-WINDOWS.md):
- 1) Respaldar desde la app ANTES de actualizar (máquina real) o usar perfil QA sintético.
- 2) Instalar el NSIS de paquete\ sobre la instalación existente (conserva %LOCALAPPDATA%\ARKON Contabilidad).
- 3) Abrir la app: datos previos visibles (contrapartes, documentos, bitácora).
- 4) Registrar una operación de prueba sintética y verificar bitácora + respaldo.
- 5) Cancelar la app y reabrir: la operación persiste.
-IMPORTANTE: ejecuta `npm run rebuild:node` antes de volver a correr la suite.
+ARTESFACTOS LISTOS (PREPARACIÓN COMPLETA; INSTALACIÓN/ACTUALIZACIÓN REAL = PASO MANUAL PENDIENTE):
+ - Instalador NSIS en paquete\ (no ejecutado aquí).
+ - Perfil QA sintético disponible: $Perfil (sembrar datos de prueba sintéticos antes de instalar).
+
+PLAN DE ACEPTACIÓN DE ACTUALIZACIÓN (manual, PENDIENTE de ejecución en Windows):
+ 1) Sembrar el perfil QA con datos sintéticos (contrapartes, venta, adjunto, bitácora) usando la versión ACTUAL.
+ 2) Respaldar desde la app (botón Crear respaldo ahora) y cerrar.
+ 3) Instalar el NSIS de paquete\ en el perfil QA destino (NO el operativo; rechazar rutas bajo OneDrive).
+ 4) Abrir el BINARIO INSTALADO (no electron de desarrollo): datos previos visibles.
+ 5) Registrar una operación sintética nueva, verificar bitácora y adjuntos.
+ 6) Cerrar y reabrir: la operación persiste; comparar respaldo previo.
+ IMPORTANTE tras el QA: ejecutar 'npm run rebuild:node' antes de volver a correr la suite.
 "@
 }
 finally {
-  Remove-Item Env:\ARKON_RUTA_DATOS -ErrorAction SilentlyContinue
-  Write-Host "Variables restauradas. El perfil QA $Perfil NO se elimina automáticamente."
+  if ($envAnteriorRuta) {
+    $env:ARKON_RUTA_DATOS = $envAnteriorRuta
+  } else {
+    Remove-Item Env:\ARKON_RUTA_DATOS -ErrorAction SilentlyContinue
+  }
+  Write-Host "Variable ARKON_RUTA_DATOS restaurada a su valor previo. El perfil QA $Perfil NO se elimina automáticamente."
 }

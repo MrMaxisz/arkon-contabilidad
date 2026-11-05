@@ -8,6 +8,8 @@ import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
 import { despachar } from '../src/main/comandos';
 import { consultarEjercicio, csvEjercicio } from '../src/main/servicios/ejercicioAnual';
 import { cerrarEjercicio, reabrirEjercicio } from '../src/main/servicios/cierre';
+import { anularAsiento } from '../src/main/servicios/motorAsientos';
+import { exportarAnexoRetencionesF14Presentacion } from '../src/main/servicios/anexoF14';
 import { registrarRetencion } from '../src/main/servicios/fiscal';
 import {
   crearContraparte,
@@ -181,6 +183,104 @@ describe('auditoría 43: soporte interno del ejercicio anual', () => {
     expect(informe.version).toBe('ejercicio-anual-interno-v1');
     expect(informe.anio).toBe(2026);
     expect(informe.limitaciones.some(l => l.includes('NO es declaración F-11'))).toBe(true);
+    db.close();
+  });
+});
+
+describe('auditoría 44: familia de cierre anulada no duplica el resultado ordinario', () => {
+  it('cierre→reapertura→anular cierre→ajuste→nuevo cierre→reabrir SQLite: cifras independientes correctas', () => {
+    const db = abrir();
+    const ctx = contexto(db);
+    const cliente = crearContraparte(db, { nombre: 'Cliente Cierre A44', esCliente: true, esProveedor: false, responsable: 'p' });
+    venta(db, cliente, '2026-03-10', '100.00', 'v-a44-cierre');
+
+    // Cierre inicial: ordinario 100, con cierre 0.
+    cerrarEjercicio(db, { anio: 2026, responsable: 'p', motivo: 'cierre sintético uno', referencia: 'soporte sintético', claveIdempotencia: 'ci-a44-1' });
+    const trasCierre = consultarEjercicio(db, 2026);
+    expect(trasCierre.resultadoOrdinarioMinor).toBe('100.00');
+    expect(trasCierre.resultadoConCierreMinor).toBe('0.00');
+
+    // Reapertura y ANULACIÓN del asiento de cierre: el reverso del cierre NO debe duplicar.
+    reabrirEjercicio(db, { anio: 2026, responsable: 'p', motivo: 'reapertura sintética' });
+    const cierreAsiento = db
+      .prepare("SELECT id FROM asiento WHERE origen_tipo = 'cierre' AND estado = 'contabilizado' AND fecha_operacion LIKE '2026%'")
+      .get() as { id: number };
+    anularAsiento(db, cierreAsiento.id, 'p', 'anulación del cierre sintético');
+    const trasAnular = consultarEjercicio(db, 2026);
+    expect(trasAnular.resultadoOrdinarioMinor).toBe('100.00');
+    expect(trasAnular.resultadoConCierreMinor).toBe('100.00');
+    expect(trasAnular.conciliacionMayor.concilia).toBe(true);
+
+    // Ajuste y SEGUNDO cierre: ordinario 110, con cierre 0.
+    despachar(ctx, 'ajuste:registrar', {
+      fechaOperacion: '2026-10-15',
+      concepto: 'ajuste sintético post anulación',
+      lineas: [
+        { cuentaCodigo: '1101', debeMinor: '10.00', haberMinor: '' },
+        { cuentaCodigo: '4101', debeMinor: '', haberMinor: '10.00' }
+      ],
+      referencia: 'soporte sintético',
+      claveIdempotencia: 'aj-a44',
+      responsable: 'p'
+    });
+    cerrarEjercicio(db, { anio: 2026, responsable: 'p', motivo: 'cierre sintético dos', referencia: 'soporte sintético dos', claveIdempotencia: 'ci-a44-2' });
+    const trasSegundo = consultarEjercicio(db, 2026);
+    expect(trasSegundo.resultadoOrdinarioMinor).toBe('110.00');
+    expect(trasSegundo.resultadoConCierreMinor).toBe('0.00');
+    expect(trasSegundo.conciliacionMayor.concilia).toBe(true);
+
+    // Reabrir SQLite: cifras persistentes y archivos coherentes.
+    db.close();
+    const db2 = abrir();
+    const trasReabrir = consultarEjercicio(db2, 2026);
+    expect(trasReabrir.resultadoOrdinarioMinor).toBe('110.00');
+    expect(trasReabrir.resultadoConCierreMinor).toBe('0.00');
+    const archivos = csvEjercicio(trasReabrir);
+    const leeme = archivos.find(a => a.nombre === 'LEEME.txt')!;
+    expect(leeme.contenido).toContain('110.00');
+    const cierreFamilia = trasReabrir.asientos.filter(a => a.familiaCierre);
+    expect(cierreFamilia.length).toBeGreaterThanOrEqual(2);
+    db2.close();
+  });
+});
+
+describe('auditoría 44: códigos F-14 verificados pero no soportados se bloquean', () => {
+  it('código 60 (sin retención) y 80 (laboral) se bloquean en guardar/diagnóstico/exportación', () => {
+    const db = abrir();
+    const ctx = contexto(db);
+    despachar(ctx, 'vigencia:crear', {
+      desde: '2026-01-01', inscritoIva: false, obligacionF14: true,
+      descripcion: 'autorización F-14 sintética', fuente: 'prueba sintética', responsable: 'p'
+    });
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor Codigos A44', esCliente: false, esProveedor: true, responsable: 'p', nit: '0614-666777-101-5' });
+    const ret = registrarRetencion(db, {
+      tipo: 'efectuada', contraparteId: proveedor, fechaOperacion: '2026-11-10',
+      base: '100.00', tasa: '10', regla: 'regla sintética', concepto: 'retención sintética',
+      claveIdempotencia: 'ret-a44-cod', responsable: 'p'
+    });
+
+    const guardar = (codigo: string) =>
+      despachar(ctx, 'fiscal:retencionMetadatosCompletar', {
+        retencionId: ret.id, domiciliado: '1', codigoPais: '9300', nitNif: '0614-666777-101-5',
+        codigoIngreso: codigo, tipoOperacion: '1', clasificacion: '2', sector: '2', tipoCostoGasto: '1',
+        involucraNomina: false, personaNatural: false, responsable: 'p', motivo: 'completitud sintética'
+      });
+
+    expect(() => guardar('60')).toThrow(/gravados sin retención/);
+    expect(() => guardar('80')).toThrow(/código laboral/);
+    expect(() => guardar('05')).toThrow(/sin captura\/reglas suficientes/);
+    expect(() => guardar('42')).not.toThrow();
+    expect(() => guardar('11')).not.toThrow();
+
+    // Registro existente con código bloqueado: diagnóstico y exportación lo rechazan.
+    db.prepare('UPDATE retencion SET codigo_ingreso = ? WHERE id = ?').run('60', ret.id);
+    const diagnostico = despachar(ctx, 'fiscal:anexoRetenciones', { mes: '2026-11' }) as {
+      folios: Array<{ folio: string; faltantes: string[] }>;
+      bloqueado: boolean;
+    };
+    expect(diagnostico.bloqueado).toBe(true);
+    expect(diagnostico.folios[0].faltantes.some(f => f.includes('gravados sin retención'))).toBe(true);
+    expect(() => exportarAnexoRetencionesF14Presentacion(db, '2026-11')).toThrow(/gravados sin retención/);
     db.close();
   });
 });

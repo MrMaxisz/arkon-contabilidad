@@ -43,18 +43,32 @@ const CODIGOS_F14_ACREDITABLES = ['01', '05', '06', '07', '08', '09', '11', '19'
 const CODIGOS_F14_NO_ACREDITABLES = ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '49'];
 const CODIGOS_F14_SIN_RETENCION = ['60', '70', '71', '72'];
 const CODIGOS_INGRESO_F14_V1 = new Set([...CODIGOS_F14_ACREDITABLES, ...CODIGOS_F14_NO_ACREDITABLES, ...CODIGOS_F14_SIN_RETENCION]);
-const CODIGOS_INGRESO_BLOQUEADOS_F14 = new Map<string, string>([
+
+// Subconjunto SOPORTADO con la captura actual (retención sin nómina con S/T/U/V explícitos):
+// 09 y 42 (otras retenciones, grupos distintos), 11 y 21 (servicios sin dependencia laboral,
+// categorías distintas del mismo grupo — NO laborales). El resto del catálogo verificado queda
+// bloqueado hasta que exista captura/reglas: laborales, sin retención y especiales.
+const CODIGOS_INGRESO_SOPORTADOS_F14 = new Set(['09', '11', '21', '42']);
+const MOTIVOS_BLOQUEO_F14 = new Map<string, string>([
   ['01', 'servicios permanentes con subordinación o dependencia laboral: requiere captura de nómina (columnas J-R), sin soporte'],
-  ['47', 'nota especial del art. 123 inciso tercero del Código Tributario (página 18): identidad particular no soportada']
+  ['47', 'nota especial del art. 123 inciso tercero del Código Tributario (página 18): identidad particular no soportada'],
+  ['80', 'código laboral (grupo acreditable, página 17): requiere captura de nómina, sin soporte'],
+  ['60', 'gravados sin retención (página 18): la captura actual registra retenciones, no devengados sin retención'],
+  ['70', 'no gravados (página 18): requiere reglas de devengado no gravado, sin soporte'],
+  ['71', 'no gravados (página 18): requiere reglas de devengado no gravado, sin soporte'],
+  ['72', 'no gravados (página 18): requiere reglas de devengado no gravado, sin soporte']
 ]);
 
 function errorCodigoIngresoF14(codigo: string): string | null {
   if (!CODIGOS_INGRESO_F14_V1.has(codigo)) {
     return `código de ingreso ${codigo} no verificado en el apéndice oficial del F-14 v16 (páginas 17-18); rechazado hasta ampliación documentada del catálogo`;
   }
-  const bloqueado = CODIGOS_INGRESO_BLOQUEADOS_F14.get(codigo);
-  if (bloqueado) {
-    return `código de ingreso ${codigo}: ${bloqueado}`;
+  const motivo = MOTIVOS_BLOQUEO_F14.get(codigo);
+  if (motivo) {
+    return `código de ingreso ${codigo}: ${motivo}`;
+  }
+  if (!CODIGOS_INGRESO_SOPORTADOS_F14.has(codigo)) {
+    return `código de ingreso ${codigo} verificado en el apéndice pero sin captura/reglas suficientes en el sistema; bloqueado hasta soporte documentado`;
   }
   return null;
 }

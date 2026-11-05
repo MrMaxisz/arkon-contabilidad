@@ -658,3 +658,28 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - **Probado en servicio y componente**: anexos F-07 1/2/3 y F-14 (matriz, catálogos, reglas conjuntas, identidad, autorización separada, nómina bloqueada), ejercicio anual (conciliación independiente), paquete del contador v2, cierre de ejercicio, respaldo/restauración, adjuntos, carrera de selecciones con token.
 - **Parcial**: catálogo F-14 con la transcripción del auditor (no certificación; 01/47 bloqueados), QA Windows por scripts preparados pero no ejecutados aquí.
 - **Pendiente Windows real**: instalación/actualización NSIS, recorrido gráfico offline integral, confirmación del arranque del preload empaquetado en Electron real.
+
+## Bloque auditoría 44 (familia de cierre, subconjunto F-14 soportado, UI anual vigente, script honesto y paquete con soporte anual)
+
+### Corregido (hallazgos de la auditoría 44)
+
+- **P1-1 Duplicación tras anular cierre**: el ejercicio anual excluye ahora la FAMILIA de cierre por relaciones persistidas — el asiento con origen 'cierre' Y sus reversos (reverso_de_id → cierre) — sin excluir reversos ordinarios (original anulado + reverso se cancelan en el neto). La consulta de conciliación independiente aplica la misma exclusión. Prueba de aceptación completa: venta 100 → cierre (ordinario 100 / con cierre 0) → reapertura → **anular cierre** (ordinario 100 / con cierre 100, conciliación OK) → ajuste +10 → segundo cierre (ordinario 110 / con cierre 0) → reapertura de SQLite (persistentes) y LEEME con 110.00. Los asientos del informe marcan `familiaCierre` para trazabilidad.
+- **P1-2 Catálogo ≠ soportado**: separado el catálogo verificado del apéndice (transcripción del auditor) del SUBCONJUNTO SOPORTADO {09, 11, 21, 42} (otras retenciones y servicios sin dependencia laboral). Bloqueados con motivo explícito: 01 y 80 (laborales → nómina sin soporte), 60 (gravados sin retención: la captura actual registra retenciones, no devengados sin retención), 70/71/72 (no gravados sin reglas), 47 (especial art. 123), y el resto verificado como 'sin captura/reglas suficientes'. Prueba: 60 y 80 se rechazan al guardar, y un registro existente mutado a 60 bloquea diagnóstico y exportación. Sin cambiar importes ni deducir ceros.
+- **P2-3 Informe anual vigente**: al cambiar de año el informe viejo se limpia inmediatamente, se muestra 'Consultando ejercicio…', el informe identifica el año confirmado y el botón de exportar queda bloqueado hasta que el resultado corresponde al año visible (payload concordante). Prueba de componente: cambio pendiente (80→limpio), respuesta tardía de 2026 ignorada con 2027 visible, error limpia e inhabilita, cancelación no invoca guardado, y `guardarEjercicioAnual(2027)` solo con pantalla 2027.
+- **P2-4 Script sin aprobación falsa**: `actualizar-windows.ps1` ya NO arranca Electron de desarrollo ni imprime 'Actualización verificada'. Prepara artefactos (NSIS en paquete\) e imprime el plan de aceptación MANUAL marcado PENDIENTE (sembrar perfil con versión actual, respaldar, instalar NSIS en perfil QA, abrir BINARIO INSTALADO, operación sintética persistente, comparar respaldo). Rechaza perfiles bajo OneDrive o iguales a la base operativa; guarda y restaura el valor previo de ARKON_RUTA_DATOS.
+
+### Integración anual/paquete
+
+- `generarPaqueteContador` incluye ahora `ejercicio-anual.csv` (resultado ordinario del año del corte, familia de cierre excluida) con NOTA explícita que lo diferencia del `estado-resultados.csv` (rango desde–hasta) y reconcilia ambos contra el mayor; LEEME del paquete lo documenta. La UI anual muestra además el detalle trazable por asiento (folio/fecha/concepto/estado/origen/total/marca familia-cierre) y las limitaciones por registro, no solo totales.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 227/227 (51 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Inventario corregido
+
+- **Servicio**: ejercicio anual (familia de cierre, conciliación independiente, reapertura), códigos F-14 soportados/bloqueados, paquete con ejercicio-anual.csv.
+- **Componente**: UI anual vigente (limpieza/carga/año confirmado/bloqueo de exportación/payload concordante) — pruebas de componente específicas de este bloque.
+- **Pendiente Windows real**: instalación/actualización NSIS según el plan manual del script, recorrido gráfico offline, arranque del preload empaquetado en Electron real.

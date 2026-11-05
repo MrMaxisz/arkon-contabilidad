@@ -21,7 +21,7 @@ export interface InformeEjercicio {
   retencionesRecibidasMinor: string;
   conciliacionMayor: { diferenciaMinor: string; concilia: boolean };
   cuentas: Array<{ codigo: string; nombre: string; tipo: string; movimientoMinor: string; saldoAcumuladoMinor: string }>;
-  asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; totalMinor: string }>;
+  asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; totalMinor: string; familiaCierre: boolean }>;
   retenciones: Array<{ folio: string; fecha: string; contraparte: string; baseMinor: string; montoMinor: string; tipo: string }>;
   limitaciones: string[];
 }
@@ -42,7 +42,11 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
     .prepare(
       `SELECT c.codigo, c.nombre, c.tipo,
               COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-                AND (a.origen_tipo IS NULL OR a.origen_tipo != 'cierre') THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento,
+                AND NOT EXISTS (
+                  SELECT 1 FROM asiento o
+                  WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
+                     OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
+                ) THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento,
               COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ? THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimientoConCierre,
               COALESCE(SUM(CASE WHEN a.fecha_operacion <= ? THEN l.debe_minor - l.haber_minor ELSE 0 END), 0) AS saldoAcumulado
        FROM cuenta c
@@ -79,7 +83,12 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
                                  ELSE 0 END), 0) AS resultado
        FROM asiento_linea l
        JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
-         AND a.fecha_operacion >= ? AND a.fecha_operacion <= ? AND a.origen_tipo IS NOT 'cierre'
+         AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM asiento o
+           WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
+              OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
+         )
        JOIN cuenta c ON c.id = l.cuenta_id AND c.tipo IN ('ingreso','costo','gasto')`
     )
     .get(desde, hasta) as { resultado: number };
@@ -88,12 +97,15 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
   const asientos = db
     .prepare(
       `SELECT a.folio, a.fecha_operacion AS fecha, a.concepto, a.estado, COALESCE(a.origen_tipo, '') AS origen,
-              COALESCE((SELECT SUM(l.debe_minor) FROM asiento_linea l WHERE l.asiento_id = a.id), 0) AS total
+              COALESCE((SELECT SUM(l.debe_minor) FROM asiento_linea l WHERE l.asiento_id = a.id), 0) AS total,
+              CASE WHEN a.origen_tipo = 'cierre' OR EXISTS (
+                SELECT 1 FROM asiento o WHERE o.id = a.reverso_de_id AND o.origen_tipo = 'cierre'
+              ) THEN 1 ELSE 0 END AS familia_cierre
        FROM asiento a
        WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
        ORDER BY a.fecha_operacion, a.id`
     )
-    .all(desde, hasta) as Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; total: number }>;
+    .all(desde, hasta) as Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string; total: number; familia_cierre: number }>;
 
   const retenciones = db
     .prepare(
@@ -146,7 +158,8 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
       concepto: a.concepto,
       estado: a.estado,
       origen: a.origen,
-      totalMinor: minorATexto(BigInt(a.total))
+      totalMinor: minorATexto(BigInt(a.total)),
+      familiaCierre: a.familia_cierre === 1
     })),
     retenciones: retenciones.map(r => ({
       folio: r.folio,
