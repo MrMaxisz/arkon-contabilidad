@@ -31,7 +31,7 @@
 
 ### Pendiente (por bloque, sin dependencias externas salvo las indicadas)
 
-- **Recuperacion y documentos de respaldo**: respaldos automaticos y previos a migraciones; manejo de adjuntos con respaldo coordinado (base + adjuntos + manifiesto); politica de conservacion configurable; restauracion de adjuntos verificada.
+- **Recuperacion y documentos de respaldo**: COMPLETADO a nivel de servicios, contrato IPC e interfaz (adjuntos con dialogo nativo, respaldos automaticos previos a migraciones y periodicos con politica configurable, restauracion coordinada con deteccion de interrupciones, verificacion de hashes e inventario registro por registro, arranque bloqueado ante conjuntos no verificables). Pendiente: recorrido grafico de restauracion en el ejecutable Windows.
 - **Reportes, auxiliares y cierre**: auxiliares de clientes, proveedores y caja/bancos con conciliacion al mayor; saldos de apertura documentados; ajustes; cierre mensual/anual de ejercicio (el bloqueo de periodo actual no es cierre de ejercicio); exportacion de reportes para el contador.
 - **Adaptacion fiscal**: exportadores oficiales verificados contra especificacion vigente (F-07/F-14, libros, F-11); hecho generador fiscal de anticipos (requiere politica del contador; hoy 'pendiente' sin efecto automatico); clasificacion tributaria documental completa.
 - **Instalacion y recorrido Windows**: instalador NSIS, actualizacion, recorrido grafico sin internet (captura, doble envio, anulaciones, varias copias de respaldo, seleccion, restauracion, guardado de CSV y PDF via dialogos nativos). El entorno de desarrollo es Linux: lo que no requiera Windows se completa desde aqui y se entregan scripts y pasos exactos.

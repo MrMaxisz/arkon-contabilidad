@@ -3,7 +3,7 @@ import path from 'path';
 import { prepararRutasDatos } from './db/conexion';
 import { sembrarCatalogoBase } from './servicios/cuentas';
 import { registrarIpc } from './ipc';
-import { crearContextoBase, type ContextoApp } from './servicios/restauracion';
+import { crearContextoBase, type ContextoApp, ErrorRecuperacionPendiente, respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
 
 const RUTA_BASE_DATOS = 'arkon.db';
 
@@ -42,7 +42,25 @@ if (!obtuvoUnico) {
   });
 
   app.whenReady().then(async () => {
-    ctx = await crearContexto();
+    try {
+      ctx = await crearContexto();
+      const resultadoRespaldo = await respaldoPeriodicoSiCorresponde(ctx);
+      void resultadoRespaldo;
+    } catch (err) {
+      if (err instanceof ErrorRecuperacionPendiente) {
+        const { dialog } = require('electron') as typeof import('electron');
+        await dialog.showMessageBox({
+          type: 'error',
+          title: 'ARKON Contabilidad — recuperación pendiente',
+          message: 'La aplicación no puede abrir con garantías mientras exista una restauración sin resolver.',
+          detail: err.message,
+          buttons: ['Cerrar']
+        });
+        app.quit();
+        return;
+      }
+      throw err;
+    }
     const ventana = new BrowserWindow({
       width: 1280,
       height: 800,

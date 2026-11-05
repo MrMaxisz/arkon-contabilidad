@@ -1,10 +1,12 @@
 import path from 'path';
-import type Database from 'better-sqlite3';
 import type { RutasDatos } from '../db/conexion';
 import { abrirBase } from '../db/conexion';
 import { inventarioAdjuntosRegistrado } from './adjuntos';
 import fs from 'fs';
-import { aplicarMigraciones } from '../db/aplicarMigraciones';
+import crypto from 'crypto';
+import Database from 'better-sqlite3';
+import type { Database as TipoDatabase } from 'better-sqlite3';
+import { aplicarMigraciones, versionEsquemaActual } from '../db/aplicarMigraciones';
 import { restaurarRespaldo, registrarRestauracion, ErrorRespaldo } from './respaldo';
 import { restaurarAdjuntosRespaldo, copiarAdjuntosRespaldo, retencionRespaldosAutomaticos } from './adjuntos';
 
@@ -16,8 +18,52 @@ export interface ContextoApp {
   reabrirBase(): void;
 }
 
+export class ErrorRecuperacionPendiente extends Error {
+  constructor(diagnostico: string) {
+    super(diagnostico);
+    this.name = 'ErrorRecuperacionPendiente';
+  }
+}
+
+function baseLegible(rutaDb: string): boolean {
+  if (!fs.existsSync(rutaDb) || fs.statSync(rutaDb).size === 0) {
+    return false;
+  }
+  let db: TipoDatabase | null = null;
+  try {
+    db = new Database(rutaDb, { readonly: true, fileMustExist: true });
+    const integridad = db.pragma('integrity_check');
+    const texto = Array.isArray(integridad)
+      ? integridad.map(r => String(Object.values(r)[0])).join(' ')
+      : String(integridad);
+    if (!texto.includes('ok')) {
+      return false;
+    }
+    const migracion = db
+      .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = '_migracion'")
+      .get() as { x: number } | undefined;
+    if (!migracion) {
+      return false;
+    }
+    const version = (db.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
+    if (version < 1 || version > versionEsquemaActual()) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (db && db.open) {
+      db.close();
+    }
+  }
+}
+
 function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
-  const db = abrirBase(rutaDb);
+  if (!baseLegible(rutaDb)) {
+    return false;
+  }
+  const db = new Database(rutaDb, { readonly: true, fileMustExist: true });
   try {
     const inventario = inventarioAdjuntosRegistrado(db);
     for (const registro of inventario) {
@@ -25,7 +71,6 @@ function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
       if (!fs.existsSync(archivo)) {
         return false;
       }
-      const crypto = require('crypto') as typeof import('crypto');
       const hash = crypto.createHash('sha256').update(fs.readFileSync(archivo)).digest('hex');
       if (hash !== registro.hashSha256) {
         return false;
@@ -81,7 +126,9 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
 
   if (fs.existsSync(basePrevia)) {
     fs.copyFileSync(basePrevia, `${rutaDb}.resolucion-tmp`);
-    if (fs.existsSync(previaAdjuntos) || conjuntoCoherente(`${rutaDb}.resolucion-tmp`, fs.existsSync(previaAdjuntos) ? previaAdjuntos : rutas.adjuntos)) {
+    const dirAdjuntosPrevios = fs.existsSync(previaAdjuntos) ? previaAdjuntos : rutas.adjuntos;
+    if (conjuntoCoherente(`${rutaDb}.resolucion-tmp`, dirAdjuntosPrevios)) {
+      fs.rmSync(rutaDb, { force: true });
       fs.renameSync(`${rutaDb}.resolucion-tmp`, rutaDb);
       if (fs.existsSync(previaAdjuntos)) {
         fs.rmSync(rutas.adjuntos, { recursive: true, force: true });
@@ -99,20 +146,17 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
     }
   }
 
-  fs.writeFileSync(
-    `${marcador}.sin-resolver`,
-    JSON.stringify(
-      {
-        nota: 'Restauración interrumpida sin conjunto coherente verificable; copias preservadas',
-        basePrevia,
-        previaAdjuntos,
-        areaTemporal,
-        creadoEn: new Date().toISOString()
-      },
-      null,
-      2
-    ),
-    'utf8'
+  const diagnostico = {
+    nota: 'Restauración interrumpida sin conjunto coherente verificable; copias preservadas',
+    baseActiva: rutaDb,
+    basePrevia,
+    previaAdjuntos,
+    areaTemporal,
+    creadoEn: new Date().toISOString()
+  };
+  fs.writeFileSync(`${marcador}.sin-resolver`, JSON.stringify(diagnostico, null, 2), 'utf8');
+  throw new ErrorRecuperacionPendiente(
+    `Recuperación pendiente: no se pudo verificar un conjunto coherente de base y adjuntos. Copias preservadas: base anterior en ${basePrevia}, adjuntos anteriores en ${previaAdjuntos}, área temporal en ${areaTemporal}. Diagnóstico completo en ${marcador}.sin-resolver.`
   );
 }
 
@@ -120,6 +164,13 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
   const marcador = path.join(rutas.raiz, 'restauracion-en-curso.json');
   if (fs.existsSync(marcador)) {
     resolverRestauracionInterrumpida(rutas, rutaDb, marcador);
+  }
+  const sinResolver = path.join(rutas.raiz, 'restauracion-en-curso.json.sin-resolver');
+  if (fs.existsSync(sinResolver)) {
+    const diagnostico = JSON.parse(fs.readFileSync(sinResolver, 'utf8')) as { basePrevia?: string; previaAdjuntos?: string };
+    throw new ErrorRecuperacionPendiente(
+      `Recuperación pendiente sin resolver: existe un diagnóstico previo (${sinResolver}). Base anterior preservada en ${diagnostico.basePrevia ?? 'ruta desconocida'}; adjuntos anteriores en ${diagnostico.previaAdjuntos ?? 'ruta desconocida'}. Resuélvelo o elimina el archivo de diagnóstico para continuar sin garantías.`
+    );
   }
   if (fs.existsSync(rutaDb)) {
     const versionPrevio = (() => {
@@ -340,4 +391,65 @@ export function restaurarAdjuntosDesdeRespaldo(
   esperados: Array<{ rutaRelativa: string; hashSha256: string }>
 ): void {
   restaurarAdjuntosRespaldo(`${rutaRespaldo}-adjuntos`, dirAdjuntosDestino, esperados);
+}
+
+export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<{ creado: boolean; nombre?: string; omitidoPor?: string }> {
+  const marcador = path.join(ctx.rutas.raiz, 'restauracion-en-curso.json');
+  if (fs.existsSync(marcador) || fs.existsSync(`${marcador}.sin-resolver`)) {
+    return { creado: false, omitidoPor: 'restauración en curso o pendiente de resolución' };
+  }
+  const fila = ctx.db
+    .prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_intervalo_minutos'")
+    .get() as { valor: string } | undefined;
+  const intervalo = Math.max(0, Number(fila?.valor ?? '0') || 0);
+  if (intervalo === 0) {
+    return { creado: false, omitidoPor: 'respaldo periódico desactivado (intervalo 0)' };
+  }
+  const ultimo = ctx.db
+    .prepare("SELECT MAX(creado_en) AS ultimo FROM respaldo WHERE nombre LIKE 'respaldo-automatico-%'")
+    .get() as { ultimo: string | null };
+  if (ultimo.ultimo) {
+    const fechaUltimo = new Date(ultimo.ultimo.replace(' ', 'T') + 'Z').getTime();
+    const transcurridoMin = (Date.now() - fechaUltimo) / 60000;
+    if (transcurridoMin < intervalo) {
+      return { creado: false, omitidoPor: `último respaldo automático hace ${Math.floor(transcurridoMin)} min (intervalo ${intervalo})` };
+    }
+  }
+  const { crearRespaldo } = await import('./respaldo');
+  const marca = new Date().toISOString().replace(/[:.]/g, '-');
+  const nombreArchivo = `respaldo-automatico-${marca}.db`;
+  const destino = path.join(ctx.rutas.respaldos, nombreArchivo);
+  const temporal = `${destino}.tmp`;
+  await ctx.db.backup(temporal);
+  const { verificarIntegridad } = await import('./respaldo');
+  verificarIntegridad(temporal);
+  const crypto = require('crypto') as typeof import('crypto');
+  const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
+  const { copiarAdjuntosRespaldo } = await import('./adjuntos');
+  const adjuntos = copiarAdjuntosRespaldo(ctx.db, ctx.rutas.adjuntos, `${destino}-adjuntos`);
+  fs.renameSync(temporal, destino);
+  const { versionEsquemaActual } = await import('../db/aplicarMigraciones');
+  fs.writeFileSync(
+    `${destino}.manifest.json`,
+    JSON.stringify(
+      {
+        nombre: nombreArchivo,
+        hashSha256: hash,
+        versionApp: ctx.versionApp,
+        versionEsquema: versionEsquemaActual(),
+        creadoEn: new Date().toISOString(),
+        adjuntos,
+        nota: 'Respaldo automático periódico'
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+  ctx.db
+    .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
+    .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaActual(), 'disponible');
+  const { retencionRespaldosAutomaticos } = await import('./adjuntos');
+  retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
+  return { creado: true, nombre: nombreArchivo };
 }

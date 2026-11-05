@@ -8,14 +8,30 @@ export default function Respaldo() {
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [confirmando, setConfirmando] = useState<InfoRespaldo | null>(null);
+  const [adjuntos, setAdjuntos] = useState<Array<{
+    id: number;
+    entidad: string;
+    entidadId: string;
+    nombreOriginal: string;
+    hashSha256: string;
+    creadoEn: string;
+  }>>([]);
+  const [entidadAdjunto, setEntidadAdjunto] = useState('compra');
+  const [entidadIdAdjunto, setEntidadIdAdjunto] = useState('');
+  const [responsable, setResponsable] = useState('');
 
   const cargar = useCallback(() => {
     void api().invocar('respaldo:listar').then(r => setRespaldos(r as InfoRespaldo[]));
   }, []);
 
+  const cargarAdjuntos = useCallback(() => {
+    void api().invocar('adjunto:listar', {}).then(r => setAdjuntos(r as never));
+  }, []);
+
   useEffect(() => {
     cargar();
-  }, [cargar]);
+    cargarAdjuntos();
+  }, [cargar, cargarAdjuntos]);
 
   async function crear() {
     setOcupado(true);

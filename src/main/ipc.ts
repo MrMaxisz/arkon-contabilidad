@@ -1,8 +1,10 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import fs from 'fs';
+import path from 'path';
 import { despachar, type ContextoApp } from './comandos';
 import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
+import { registrarAdjunto } from './servicios/adjuntos';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -41,6 +43,39 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       return { guardado: false };
     }
     return guardarExportacionArchivo(ctx.db, tipo, mes, destino.filePath);
+  });
+
+  ipcMain.handle('arkon:registrarAdjunto', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const entidad = typeof p.entidad === 'string' ? p.entidad : '';
+    const entidadId = typeof p.entidadId === 'string' ? p.entidadId : '';
+    const responsable = typeof p.responsable === 'string' ? p.responsable : '';
+    if (!entidad || !entidadId || !responsable) {
+      throw new Error('El adjunto requiere entidad, identificador y responsable');
+    }
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opcionesDialogo = {
+      title: 'Seleccionar documento de respaldo',
+      properties: ['openFile'] as ('openFile')[]
+    };
+    const seleccion = ventanaPrincipal
+      ? await dialog.showOpenDialog(ventanaPrincipal, opcionesDialogo)
+      : await dialog.showOpenDialog(opcionesDialogo);
+    if (seleccion.canceled || seleccion.filePaths.length === 0 || !seleccion.filePaths[0]) {
+      return { registrado: false };
+    }
+    const rutaOrigen = seleccion.filePaths[0] as string;
+    const adjunto = registrarAdjunto(ctx.db, ctx.rutas.adjuntos, {
+      entidad,
+      entidadId,
+      nombreOriginal: path.basename(rutaOrigen),
+      rutaOrigen,
+      responsable
+    });
+    return { registrado: true, adjunto };
   });
 
   ipcMain.handle('arkon:pdfCotizacion', async (evento, solicitud) => {

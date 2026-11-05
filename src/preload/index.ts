@@ -26,6 +26,7 @@ const COMANDOS_PERMITIDOS = new Set([
   'item:activar',
   'item:listar',
   'cotizacion:html',
+  'adjunto:listar',
   'cotizacion:crear',
   'cotizacion:guardar',
   'cotizacion:revision',
@@ -81,5 +82,11 @@ contextBridge.exposeInMainWorld('arkon', {
       return Promise.reject(new Error('Cotización inválida'));
     }
     return ipcRenderer.invoke('arkon:pdfCotizacion', { cotizacionId });
+  },
+  registrarAdjunto(entidad: string, entidadId: string, responsable: string): Promise<unknown> {
+    if (!entidad || !entidadId || !responsable) {
+      return Promise.reject(new Error('El adjunto requiere entidad, identificador y responsable'));
+    }
+    return ipcRenderer.invoke('arkon:registrarAdjunto', { entidad, entidadId, responsable });
   }
 });

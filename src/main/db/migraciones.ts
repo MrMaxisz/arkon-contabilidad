@@ -471,5 +471,14 @@ UPDATE cotizacion
 SET cliente_snapshot = (SELECT nombre FROM contraparte WHERE id = cotizacion.contraparte_id)
 WHERE estado = 'aprobada' AND cliente_snapshot IS NULL;
 `
+  },
+  {
+    version: 12,
+    nombre: 'respaldo_periodico',
+    sql: `
+INSERT INTO configuracion (clave, valor, fuente, vigencia)
+SELECT 'respaldo_intervalo_minutos', '0', 'Política operativa editable por el propietario (0 = desactivado)', NULL
+WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'respaldo_intervalo_minutos');
+`
   }
 ];

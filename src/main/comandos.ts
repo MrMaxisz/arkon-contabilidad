@@ -3,6 +3,7 @@ import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerr
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
+import { listarAdjuntos } from './servicios/adjuntos';
 import { manejarRestauracion } from './servicios/restauracion';
 import type { ContextoApp } from './servicios/restauracion';
 

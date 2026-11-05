@@ -1,6 +1,20 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la vigésima cuarta revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 25 de Codex; lote de recuperación completo). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 25 (Codex) — lote de recuperación completo — aplicado y probado
+
+Correcciones de los dos P1:
+- **[P1] Verificador sin efectos secundarios**: `baseLegible` abre con `readonly: true, fileMustExist: true` (no crea la base si falta), verifica `integrity_check` y esquema conocido (`_migracion` con versión ≥ 1 y ≤ actual). Una base ausente, vacía o de esquema desconocido **no** se considera conjunto válido durante una recuperación pendiente; se elige un conjunto válido antes de limpiar copias. Regresión: interrupción tras sustituir SQLite + base activa retirada → arranque restaura el conjunto anterior verificado (base + adjuntos con contenido correcto).
+- **[P1] Arranque bloqueado sin conjunto válido**: `resolverRestauracionInterrumpida` lanza `ErrorRecuperacionPendiente` cuando ninguna combinación es verificable; `crearContextoBase` la propaga (no devuelve contexto escribible); `index.ts` muestra diálogo de error nativo y cierra la aplicación. El archivo `.sin-resolver` persiste y bloquea arranques posteriores hasta resolverse. Regresión: adjuntos temporal y anterior alterados → arranque rechazado con `ErrorRecuperacionPendiente`, copias preservadas, `.sin-resolver` presente.
+
+Interfaz de adjuntos (mismo lote):
+- Comando `adjunto:listar` y canal nativo `arkon:registrarAdjunto` con diálogo de selección de archivo; panel de adjuntos en la vista Respaldo (registro con entidad/folio/responsable, listado con hash y fecha).
+
+Respaldo periódico mientras se trabaja (mismo lote):
+- `respaldoPeriodicoSiCorresponde` (migración v12: `respaldo_intervalo_minutos`, 0 = desactivado por defecto): crea respaldo automático con hash, adjuntos y manifiesto; respeta el intervalo; se omite durante restauración pendiente o en curso; aplica retención de paquetes automáticos. Invocado al arrancar desde `index.ts`. Regresión: desactivado por defecto, activo con intervalo, respeta intervalo, omitido durante restauración.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **135/135 en verde** (27 archivos, con interrupciones en procesos hijos reales, base ausente, adjuntos alterados y respaldo periódico). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente** — incluye diálogos nativos de adjuntos y PDF.
 
 ## Correcciones de la vigésima cuarta revisión — aplicadas y probadas
 
