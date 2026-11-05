@@ -4,13 +4,14 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 
 const invocar = vi.hoisted(() => vi.fn());
+const lecturasDiferidas = vi.hoisted(() => new Map<number, (v: unknown) => void>());
 const guardarAnexo1VentasMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../src/renderer/api', () => ({
   api: () => ({
     invocar: (comando: string, datos?: unknown) => invocar(comando, datos),
     guardarCsv: () => Promise.resolve({ guardado: false }),
-    guardarAnexo1Ventas: (mes: string) => guardarAnexo1VentasMock(mes)
+    guardarAnexoF07: (anexo: number, mes: string) => guardarAnexo1VentasMock(anexo, mes)
   })
 }));
 
@@ -19,7 +20,7 @@ import Impuestos from '../src/renderer/vistas/Impuestos';
 beforeEach(() => {
   invocar.mockReset();
   guardarAnexo1VentasMock.mockReset();
-  invocar.mockImplementation((comando: string) => {
+  invocar.mockImplementation((comando: string, datos?: unknown) => {
     switch (comando) {
       case 'contraparte:listar':
         return Promise.resolve([]);
@@ -55,12 +56,19 @@ beforeEach(() => {
           motivo: 'Hay folios con metadatos fiscales incompletos',
           fuente: 'Manual F-07 v14'
         });
-      case 'fiscal:metadatosLeer':
+      case 'fiscal:metadatosLeer': {
+        const datosLeer = datos as { documentoId: number };
+        if (lecturasDiferidas.has(datosLeer.documentoId)) {
+          return new Promise(resolve => {
+            lecturasDiferidas.set(datosLeer.documentoId, resolve);
+          });
+        }
+        const idLeer = (datos as { documentoId: number }).documentoId;
         return Promise.resolve({
-          id: 7,
-          folio: 'V-000001',
-          fecha: '2026-11-05',
-          contraparte: 'Cliente Sintético A35',
+          id: idLeer,
+          folio: `V-00000${idLeer === 12 ? 2 : 1}`,
+          fecha: idLeer === 12 ? '2026-11-06' : '2026-11-05',
+          contraparte: idLeer === 12 ? 'Cliente Dos Sintético' : 'Cliente Sintético A35',
           clase_documento_fiscal: null,
           numero_resolucion: null,
           serie_documento: null,
@@ -69,9 +77,13 @@ beforeEach(() => {
           tipo_operacion_renta: null,
           tipo_ingreso_renta: null
         });
+      }
       case 'documento:listarVinculos':
         return Promise.resolve({
-          venta: [{ id: 7, folio: 'V-000001', concepto: 'Venta sintética', fecha: '2026-11-05' }],
+          venta: [
+            { id: 7, folio: 'V-000001', concepto: 'Venta sintética', fecha: '2026-11-05' },
+            { id: 12, folio: 'V-000002', concepto: 'Venta dos sintética', fecha: '2026-11-06' }
+          ],
           compra: [],
           cotizacion: [],
           proyecto: []
@@ -86,6 +98,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  lecturasDiferidas.clear();
 });
 
 describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
@@ -106,7 +119,60 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
 
     fireEvent.click(screen.getByText(/Guardar anexo de presentación…/));
     await waitFor(() => screen.getByText(/El anexo de presentación está bloqueado/));
-    expect(guardarAnexo1VentasMock).toHaveBeenCalledWith('2026-11');
+    expect(guardarAnexo1VentasMock).toHaveBeenCalledWith(1, '2026-11');
+  });
+
+  it('una lectura tardía de otra venta no reemplaza la selección vigente y el error limpia el destino', async () => {
+    render(<Impuestos />);
+    await waitFor(() => screen.getByText(/Anexo 1 F-07 v14/));
+
+    const selectorVenta = () =>
+      screen
+        .getAllByRole('combobox')
+        .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === '12')) as HTMLSelectElement;
+
+    lecturasDiferidas.set(7, () => undefined);
+    fireEvent.change(selectorVenta(), { target: { value: '7' } });
+    await waitFor(() => expect(lecturasDiferidas.get(7)).toBeInstanceOf(Function));
+    expect(lecturasDiferidas.has(7)).toBe(true);
+
+    fireEvent.change(selectorVenta(), { target: { value: '12' } });
+    await waitFor(() => screen.getByText(/Documento seleccionado: V-000002/));
+
+    lecturasDiferidas.get(7)?.({
+      id: 7,
+      folio: 'V-000001',
+      fecha: '2026-11-05',
+      contraparte: 'Cliente Sintético A35',
+      clase_documento_fiscal: '1',
+      numero_resolucion: 'ANTIGUA',
+      serie_documento: null,
+      numero_documento_autorizado: null,
+      tratamiento_venta: null,
+      tipo_operacion_renta: null,
+      tipo_ingreso_renta: null
+    });
+    await new Promise(r => setTimeout(r, 20));
+
+    expect(screen.getByText(/Documento seleccionado: V-000002/)).toBeTruthy();
+    expect(screen.queryByText(/V-000001 del/)).toBeNull();
+    const selectorDespues = selectorVenta();
+    expect(selectorDespues.value).toBe('12');
+
+    fireEvent.change(selectorVenta(), { target: { value: '0' } });
+    await waitFor(() => expect(screen.queryByText(/Documento seleccionado/)).toBeNull());
+    expect((screen.getByText(/Registrar metadatos/) as HTMLButtonElement).disabled).toBe(true);
+
+    lecturasDiferidas.set(30, () => undefined);
+    invocar.mockImplementation((comando: string, datos?: unknown) => {
+      if (comando === 'fiscal:metadatosLeer') {
+        return Promise.reject(new Error('fallo sintético de lectura'));
+      }
+      return Promise.resolve([]);
+    });
+    fireEvent.change(selectorVenta(), { target: { value: '12' } });
+    await waitFor(() => screen.getByText(/No se pudo cargar la venta 12/));
+    expect((screen.getByText(/Registrar metadatos|Cargando documento/) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('la vía auditada registra metadatos y refresca el diagnóstico', async () => {

@@ -67,10 +67,13 @@ contextBridge.exposeInMainWorld('arkon', {
     }
     return ipcRenderer.invoke('arkon:guardarPaqueteContador', { desde, hasta });
   },
-  guardarAnexo1Ventas(mes: string): Promise<unknown> {
+  guardarAnexoF07(anexo: 1 | 2 | 3, mes: string): Promise<unknown> {
     if (typeof mes !== 'string' || !/^\d{4}-\d{2}$/.test(mes)) {
       return Promise.reject(new Error('Mes inválido (AAAA-MM)'));
     }
-    return ipcRenderer.invoke('arkon:guardarAnexo1Ventas', { mes });
+    if (![1, 2, 3].includes(anexo)) {
+      return Promise.reject(new Error('Anexo inválido (1-3)'));
+    }
+    return ipcRenderer.invoke('arkon:guardarAnexoF07', { anexo, mes });
   }
 });

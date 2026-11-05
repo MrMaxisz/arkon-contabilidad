@@ -552,4 +552,14 @@ ALTER TABLE compra ADD COLUMN serie_documento TEXT;
 ALTER TABLE compra ADD COLUMN numero_documento_autorizado TEXT;
 `
   },
+  {
+    version: 16,
+    nombre: 'metadatos_fiscales_compras_renta',
+    sql: `
+ALTER TABLE compra ADD COLUMN tipo_operacion_renta TEXT;
+ALTER TABLE compra ADD COLUMN clasificacion_renta TEXT;
+ALTER TABLE compra ADD COLUMN sector TEXT;
+ALTER TABLE compra ADD COLUMN tipo_costo_gasto TEXT;
+`
+  },
 ];

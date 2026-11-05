@@ -22,6 +22,9 @@ export interface EntradaMetadatosFiscales {
   tratamientoVenta?: 'exenta' | 'no_sujeta';
   tipoOperacionRenta: string;
   tipoIngresoRenta: string;
+  clasificacionRenta?: string;
+  sector?: string;
+  tipoCostoGasto?: string;
 }
 
 export function completarMetadatosFiscales(
@@ -81,13 +84,18 @@ export function completarMetadatosFiscales(
       );
     } else {
       db.prepare(
-        `UPDATE compra SET clase_documento_fiscal = ?, numero_resolucion = ?, serie_documento = ?, numero_documento_autorizado = ?
+        `UPDATE compra SET clase_documento_fiscal = ?, numero_resolucion = ?, serie_documento = ?, numero_documento_autorizado = ?,
+         tipo_operacion_renta = ?, clasificacion_renta = ?, sector = ?, tipo_costo_gasto = ?
          WHERE id = ?`
       ).run(
         entrada.claseDocumentoFiscal,
         entrada.numeroResolucion.trim(),
         entrada.serieDocumento.trim(),
         entrada.numeroDocumentoAutorizado.trim(),
+        entrada.tipoOperacionRenta,
+        entrada.clasificacionRenta ?? null,
+        entrada.sector ?? null,
+        entrada.tipoCostoGasto ?? null,
         documentoId
       );
     }
@@ -312,8 +320,11 @@ export function exportarAnexo1VentasPresentacion(db: Database, mes: string): Res
     if (fila.length !== 20) {
       throw new ErrorAnexo(`Fila con columnas incorrectas para ${v.folio}`);
     }
-    if (fila.some(c => c.length > 100)) {
-      throw new ErrorAnexo(`Fila con contenido fuera de límites para ${v.folio}`);
+    const limiteColumna: number[] = [10, 1, 2, 100, 100, 100, 100, 14, Infinity, 10, 10, 10, 10, 10, 10, 10, 9, 2, 2, 1];
+    for (let i = 0; i < fila.length; i++) {
+      if (String(fila[i]).length > (limiteColumna[i] ?? Infinity)) {
+        throw new ErrorAnexo(`Columna ${i + 1} excede el límite del manual para ${v.folio}`);
+      }
     }
     lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
   }
@@ -324,4 +335,341 @@ export function exportarAnexo1VentasPresentacion(db: Database, mes: string): Res
     filas: lineas.length,
     fuente: FUENTE_OFICIAL_ANEXO1
   };
+}
+
+export const FUENTE_OFICIAL_ANEXO2 =
+  'Manual F-07 v14 (DGII, Enero 2025), Anexo 2: Detalle de Ventas a Consumidor Final, columnas A-W';
+export const FUENTE_OFICIAL_ANEXO3 =
+  'Manual F-07 v14 (DGII, Enero 2025), Anexo 3: Detalle de Compras, columnas A-U';
+
+interface VentaConsumidor {
+  id: number;
+  folio: string;
+  fecha: string;
+  base_minor: number;
+  iva_minor: number;
+  total_minor: number;
+  nit: string;
+  nrc: string;
+  nombre: string;
+  tipo_documento: string;
+  clase_documento_fiscal: string | null;
+  numero_resolucion: string | null;
+  serie_documento: string | null;
+  numero_documento_autorizado: string | null;
+  tratamiento_venta: string | null;
+  tipo_operacion_renta: string | null;
+  tipo_ingreso_renta: string | null;
+}
+
+function ventasConsumidorDelMes(db: Database, mes: string): VentaConsumidor[] {
+  validarFechaCalendario(`${mes}-01`);
+  return db
+    .prepare(
+      `SELECT v.id, v.folio, v.fecha_operacion AS fecha, v.base_minor, v.iva_minor, v.total_minor,
+              COALESCE(c.nit, '') AS nit, COALESCE(c.nrc, '') AS nrc, c.nombre,
+              COALESCE(v.tipo_documento, '') AS tipo_documento,
+              v.clase_documento_fiscal, v.numero_resolucion, v.serie_documento,
+              v.numero_documento_autorizado, v.tratamiento_venta,
+              v.tipo_operacion_renta, v.tipo_ingreso_renta
+       FROM venta v
+       JOIN contraparte c ON c.id = v.contraparte_id
+       WHERE v.estado = 'registrada'
+         AND v.clasificacion_documento = 'consumidor_final'
+         AND v.fecha_operacion >= ? AND v.fecha_operacion <= ?
+       ORDER BY v.fecha_operacion, v.id`
+    )
+    .all(`${mes}-01`, `${mes}-31`) as VentaConsumidor[];
+}
+
+function faltantesConsumidor(db: Database, v: VentaConsumidor, mes: string): string[] {
+  const faltantes: string[] = [];
+  if (!v.clase_documento_fiscal || !CLASES_DOCUMENTO.has(v.clase_documento_fiscal)) {
+    faltantes.push('clase de documento (columna B: 1, 2 o 4)');
+  }
+  if (v.tipo_documento !== 'factura') {
+    faltantes.push('tipo de documento (factura de consumidor final)');
+  }
+  if (!v.numero_resolucion || v.numero_resolucion.length > 100) {
+    faltantes.push('número de resolución (columna D)');
+  }
+  if (!v.serie_documento || v.serie_documento.length > 100) {
+    faltantes.push('número de serie (columna E)');
+  }
+  if (!v.numero_documento_autorizado || v.numero_documento_autorizado.length > 100) {
+    faltantes.push('número de documento autorizado (columnas H/I)');
+  }
+  if (v.iva_minor === 0 && !v.tratamiento_venta) {
+    faltantes.push('tratamiento de la venta sin IVA (exenta o no sujeta)');
+  }
+  if (mes >= '2025-01') {
+    if (!v.tipo_operacion_renta || !TIPOS_OPERACION_RENTA.has(v.tipo_operacion_renta)) {
+      faltantes.push('tipo de operación Renta (columna U)');
+    }
+    if (!v.tipo_ingreso_renta || !TIPOS_INGRESO_RENTA.has(v.tipo_ingreso_renta)) {
+      faltantes.push('tipo de ingreso Renta (columna V)');
+    }
+  }
+  const vigencia = db
+    .prepare('SELECT id FROM vigencia_fiscal WHERE inscrito_iva = 1 AND desde <= ? AND (hasta IS NULL OR hasta >= ?)')
+    .get(v.fecha, v.fecha) as { id: number } | undefined;
+  if (!vigencia) {
+    faltantes.push('cobertura de vigencia con IVA inscrito para la fecha del documento');
+  }
+  return faltantes;
+}
+
+export function diagnosticarAnexo2VentasConsumidor(db: Database, mes: string) {
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    throw new ErrorAnexo(`Mes inválido (AAAA-MM): ${mes}`);
+  }
+  const ventas = ventasConsumidorDelMes(db, mes);
+  const folios: Array<{ folio: string; documentoId: number; faltantes: string[] }> = [];
+  const listos: string[] = [];
+  for (const v of ventas) {
+    const f = faltantesConsumidor(db, v, mes);
+    if (f.length > 0) {
+      folios.push({ folio: v.folio, documentoId: v.id, faltantes: f });
+    } else {
+      listos.push(v.folio);
+    }
+  }
+  return {
+    version: 'anexo-f07-v14-anexo2-esquema1',
+    mes,
+    folios,
+    listos,
+    bloqueado: folios.length > 0,
+    motivo: folios.length > 0
+      ? 'Hay ventas a consumidor final con metadatos fiscales incompletos o sin cobertura de vigencia'
+      : '',
+    fuente: FUENTE_OFICIAL_ANEXO2
+  };
+}
+
+export function exportarAnexo2VentasConsumidorPresentacion(db: Database, mes: string) {
+  const diagnostico = diagnosticarAnexo2VentasConsumidor(db, mes);
+  if (diagnostico.bloqueado) {
+    const detalle = diagnostico.folios.map(f => `${f.folio}: ${f.faltantes.join(', ')}`).join('; ');
+    throw new ErrorAnexo(`El anexo 2 de presentación está bloqueado. ${diagnostico.motivo}. Faltantes: ${detalle}`);
+  }
+  const ventas = ventasConsumidorDelMes(db, mes);
+  const lineas: string[] = [];
+  for (const v of ventas) {
+    const revalidacion = faltantesConsumidor(db, v, mes);
+    if (revalidacion.length > 0) {
+      throw new ErrorAnexo(`El folio ${v.folio} dejó de ser válido al exportar: ${revalidacion.join(', ')}`);
+    }
+    const gravada = v.iva_minor > 0;
+    const exentas = !gravada && v.tratamiento_venta === 'exenta' ? v.base_minor : 0;
+    const noSujetas = !gravada && v.tratamiento_venta === 'no_sujeta' ? v.base_minor : 0;
+    const gravadasConIva = gravada ? v.total_minor : 0;
+    const aplicaRenta = mes >= '2025-01';
+    const fila = [
+      fechaDdMmAaaa(v.fecha),
+      v.clase_documento_fiscal ?? '',
+      '01',
+      v.numero_resolucion ?? '',
+      v.serie_documento ?? '',
+      v.folio,
+      v.folio,
+      v.numero_documento_autorizado ?? '',
+      v.numero_documento_autorizado ?? '',
+      '',
+      minorATexto(BigInt(exentas)),
+      '0.00',
+      minorATexto(BigInt(noSujetas)),
+      minorATexto(BigInt(gravadasConIva)),
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      minorATexto(BigInt(v.total_minor)),
+      aplicaRenta ? v.tipo_operacion_renta ?? '' : '0',
+      aplicaRenta ? v.tipo_ingreso_renta ?? '' : '0',
+      '2'
+    ];
+    if (fila.length !== 23) {
+      throw new ErrorAnexo(`Fila con columnas incorrectas para ${v.folio}`);
+    }
+    const limites: number[] = [10, 1, 2, 100, 100, 100, 100, 100, 100, 14, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 2, 2, 1];
+    for (let i = 0; i < fila.length; i++) {
+      if (String(fila[i]).length > (limites[i] ?? Infinity)) {
+        throw new ErrorAnexo(`Columna ${i + 1} excede el límite del manual para ${v.folio}`);
+      }
+    }
+    lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
+  }
+  return { csv: lineas.join('\n'), version: 'anexo-f07-v14-anexo2-esquema1', mes, filas: lineas.length, fuente: FUENTE_OFICIAL_ANEXO2 };
+}
+
+interface CompraAnexo {
+  id: number;
+  folio: string;
+  fecha: string;
+  total_minor: number;
+  nit: string;
+  nrc: string;
+  nombre: string;
+  tipo_documento: string;
+  clase_documento_fiscal: string | null;
+  numero_documento_autorizado: string | null;
+  tipo_operacion_renta: string | null;
+  clasificacion_renta: string | null;
+  sector: string | null;
+  tipo_costo_gasto: string | null;
+}
+
+function comprasDelMes(db: Database, mes: string): CompraAnexo[] {
+  validarFechaCalendario(`${mes}-01`);
+  return db
+    .prepare(
+      `SELECT co.id, co.folio, co.fecha_operacion AS fecha, co.total_minor,
+              COALESCE(c.nit, '') AS nit, COALESCE(c.nrc, '') AS nrc, c.nombre,
+              COALESCE(co.tipo_documento, '') AS tipo_documento,
+              co.clase_documento_fiscal, co.numero_documento_autorizado,
+              co.tipo_operacion_renta, co.clasificacion_renta, co.sector, co.tipo_costo_gasto
+       FROM compra co
+       JOIN contraparte c ON c.id = co.contraparte_id
+       WHERE co.estado = 'registrada'
+         AND co.fecha_operacion >= ? AND co.fecha_operacion <= ?
+       ORDER BY co.fecha_operacion, co.id`
+    )
+    .all(`${mes}-01`, `${mes}-31`) as CompraAnexo[];
+}
+
+function montosCompra(db: Database, compraId: number): { exentasNoSujetas: bigint; gravadas: bigint; credito: bigint } {
+  const f = db
+    .prepare(
+      `SELECT COALESCE(SUM(CASE WHEN l.tratamiento IN ('exento','no_sujeto') THEN l.base_minor ELSE 0 END), 0) AS exentas,
+              COALESCE(SUM(CASE WHEN l.tratamiento = 'gravado' THEN l.base_minor ELSE 0 END), 0) AS gravadas,
+              COALESCE(SUM(l.iva_minor), 0) AS iva
+       FROM compra_linea l WHERE l.compra_id = ?`
+    )
+    .get(compraId) as { exentas: number; gravadas: number; iva: number };
+  return { exentasNoSujetas: BigInt(f.exentas), gravadas: BigInt(f.gravadas), credito: BigInt(f.iva) };
+}
+
+const CLASES_DOCUMENTO_COMPRA = new Set(['1', '2', '3', '4']);
+
+function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
+  const faltantes: string[] = [];
+  const nit = (co.nit || '').replace(/[-|]/g, '');
+  const nrc = (co.nrc || '').replace(/[-|]/g, '');
+  if (!/^\d{14}$/.test(nit) && !/^\d{1,14}$/.test(nrc)) {
+    faltantes.push('NIT (14 dígitos) o NRC válido del proveedor');
+  }
+  if (!co.clase_documento_fiscal || !CLASES_DOCUMENTO_COMPRA.has(co.clase_documento_fiscal)) {
+    faltantes.push('clase de documento (columna B: 1, 2, 3 o 4)');
+  }
+  if (co.tipo_documento !== 'ccf') {
+    faltantes.push('tipo de documento (comprobante de crédito fiscal)');
+  }
+  if (!co.numero_documento_autorizado || co.numero_documento_autorizado.length > 100) {
+    faltantes.push('número de documento del proveedor (columna D)');
+  }
+  if (mes >= '2024-02') {
+    if (!co.tipo_operacion_renta) {
+      faltantes.push('tipo de operación (columna Q)');
+    }
+    if (!co.clasificacion_renta) {
+      faltantes.push('clasificación (columna R)');
+    }
+    if (!co.sector) {
+      faltantes.push('sector (columna S)');
+    }
+    if (!co.tipo_costo_gasto) {
+      faltantes.push('tipo de costo/gasto (columna T)');
+    }
+  }
+  const vigencia = db
+    .prepare('SELECT id FROM vigencia_fiscal WHERE inscrito_iva = 1 AND desde <= ? AND (hasta IS NULL OR hasta >= ?)')
+    .get(co.fecha, co.fecha) as { id: number } | undefined;
+  if (!vigencia) {
+    faltantes.push('cobertura de vigencia con IVA inscrito para la fecha del documento');
+  }
+  return faltantes;
+}
+
+export function diagnosticarAnexo3Compras(db: Database, mes: string) {
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    throw new ErrorAnexo(`Mes inválido (AAAA-MM): ${mes}`);
+  }
+  const compras = comprasDelMes(db, mes);
+  const folios: Array<{ folio: string; documentoId: number; faltantes: string[] }> = [];
+  const listos: string[] = [];
+  for (const co of compras) {
+    const f = faltantesCompra(db, co, mes);
+    if (f.length > 0) {
+      folios.push({ folio: co.folio, documentoId: co.id, faltantes: f });
+    } else {
+      listos.push(co.folio);
+    }
+  }
+  return {
+    version: 'anexo-f07-v14-anexo3-esquema1',
+    mes,
+    folios,
+    listos,
+    bloqueado: folios.length > 0,
+    motivo: folios.length > 0
+      ? 'Hay compras con metadatos fiscales incompletos o sin cobertura de vigencia'
+      : '',
+    fuente: FUENTE_OFICIAL_ANEXO3
+  };
+}
+
+export function exportarAnexo3ComprasPresentacion(db: Database, mes: string) {
+  const diagnostico = diagnosticarAnexo3Compras(db, mes);
+  if (diagnostico.bloqueado) {
+    const detalle = diagnostico.folios.map(f => `${f.folio}: ${f.faltantes.join(', ')}`).join('; ');
+    throw new ErrorAnexo(`El anexo 3 de presentación está bloqueado. ${diagnostico.motivo}. Faltantes: ${detalle}`);
+  }
+  const compras = comprasDelMes(db, mes);
+  const lineas: string[] = [];
+  for (const co of compras) {
+    const revalidacion = faltantesCompra(db, co, mes);
+    if (revalidacion.length > 0) {
+      throw new ErrorAnexo(`El folio ${co.folio} dejó de ser válido al exportar: ${revalidacion.join(', ')}`);
+    }
+    const montos = montosCompra(db, co.id);
+    const aplicaRentas = mes >= '2024-02';
+    const fila = [
+      fechaDdMmAaaa(co.fecha),
+      co.clase_documento_fiscal ?? '',
+      '03',
+      co.numero_documento_autorizado ?? '',
+      /^\d{14}$/.test((co.nit || '').replace(/[-|]/g, ''))
+        ? (co.nit || '').replace(/[-|]/g, '')
+        : (co.nrc || '').replace(/[-|]/g, ''),
+      co.nombre,
+      minorATexto(montos.exentasNoSujetas),
+      '0.00',
+      '0.00',
+      minorATexto(montos.gravadas),
+      '0.00',
+      '0.00',
+      '0.00',
+      minorATexto(montos.credito),
+      minorATexto(BigInt(co.total_minor)),
+      '',
+      aplicaRentas ? co.tipo_operacion_renta ?? '' : '0',
+      aplicaRentas ? co.clasificacion_renta ?? '' : '0',
+      aplicaRentas ? co.sector ?? '' : '0',
+      aplicaRentas ? co.tipo_costo_gasto ?? '' : '0',
+      '3'
+    ];
+    if (fila.length !== 21) {
+      throw new ErrorAnexo(`Fila con columnas incorrectas para ${co.folio}`);
+    }
+    const limites: number[] = [10, 1, 2, 100, 14, Infinity, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9, 1, 1, 1, 1, 1];
+    for (let i = 0; i < fila.length; i++) {
+      if (String(fila[i]).length > (limites[i] ?? Infinity)) {
+        throw new ErrorAnexo(`Columna ${i + 1} excede el límite del manual para ${co.folio}`);
+      }
+    }
+    lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
+  }
+  return { csv: lineas.join('\n'), version: 'anexo-f07-v14-anexo3-esquema1', mes, filas: lineas.length, fuente: FUENTE_OFICIAL_ANEXO3 };
 }

@@ -6,7 +6,11 @@ import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
-import { exportarAnexo1VentasPresentacion } from './servicios/anexosFiscales';
+import {
+  exportarAnexo1VentasPresentacion,
+  exportarAnexo2VentasConsumidorPresentacion,
+  exportarAnexo3ComprasPresentacion
+} from './servicios/anexosFiscales';
 import { registroEvento } from './servicios/bitacora';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
@@ -129,20 +133,26 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     return { guardado: true, ruta: rutaFinal, version: exportacion.version };
   });
 
-  ipcMain.handle('arkon:guardarAnexo1Ventas', async (evento, solicitud) => {
+  ipcMain.handle('arkon:guardarAnexoF07', async (evento, solicitud) => {
     if (evento.sender.id !== ventanaWebContentsId) {
       throw new Error('Remitente no autorizado');
     }
     const p = objetoSolicitud(solicitud);
     const mes = typeof p.mes === 'string' ? p.mes : '';
-    if (!mes) {
-      throw new Error('El anexo requiere mes (AAAA-MM)');
+    const anexo = Number(p.anexo);
+    if (!mes || ![1, 2, 3].includes(anexo)) {
+      throw new Error('El anexo requiere número (1-3) y mes (AAAA-MM)');
     }
-    const anexo = exportarAnexo1VentasPresentacion(ctx.db, mes);
+    const exportacion =
+      anexo === 1
+        ? exportarAnexo1VentasPresentacion(ctx.db, mes)
+        : anexo === 2
+          ? exportarAnexo2VentasConsumidorPresentacion(ctx.db, mes)
+          : exportarAnexo3ComprasPresentacion(ctx.db, mes);
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const opciones = {
-      title: 'Guardar Anexo 1 (Ventas a contribuyentes) F-07 v14',
-      defaultPath: `anexo1-ventas-${mes}.csv`,
+      title: `Guardar Anexo ${anexo} F-07 v14`,
+      defaultPath: `anexo${anexo}-${anexo === 3 ? 'compras' : 'ventas'}-${mes}.csv`,
       filters: [{ name: 'CSV', extensions: ['csv'] }]
     };
     const destino = ventanaPrincipal
@@ -151,19 +161,19 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     if (destino.canceled || !destino.filePath) {
       return { guardado: false };
     }
-    fs.writeFileSync(destino.filePath, `${anexo.csv}\n`, 'utf8');
-    registroEvento(ctx.db, 'sistema', 'anexo_f07_anexo1', 'archivo_csv', destino.filePath, {
+    fs.writeFileSync(destino.filePath, `${exportacion.csv}\n`, 'utf8');
+    registroEvento(ctx.db, 'sistema', `anexo_f07_anexo${anexo}`, 'archivo_csv', destino.filePath, {
       mes,
-      filas: anexo.filas,
-      version: anexo.version,
-      fuente: anexo.fuente
+      filas: exportacion.filas,
+      version: exportacion.version,
+      fuente: exportacion.fuente
     });
     return {
       guardado: true,
       ruta: destino.filePath,
-      version: anexo.version,
-      filas: anexo.filas,
-      fuente: anexo.fuente
+      version: exportacion.version,
+      filas: exportacion.filas,
+      fuente: exportacion.fuente
     };
   });
 

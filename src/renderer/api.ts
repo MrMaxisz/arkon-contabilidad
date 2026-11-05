@@ -11,7 +11,7 @@ export interface ArkonApi {
   }): Promise<unknown>;
   abrirAdjunto(id: number): Promise<unknown>;
   guardarPaqueteContador(desde: string, hasta: string): Promise<unknown>;
-  guardarAnexo1Ventas(mes: string): Promise<unknown>;
+  guardarAnexoF07(anexo: 1 | 2 | 3, mes: string): Promise<unknown>;
 }
 
 export function api(): ArkonApi {

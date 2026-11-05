@@ -39,6 +39,8 @@ export const COMANDOS_PERMITIDOS = new Set([
   'paquete:generar',
   'fiscal:anexo1Ventas',
   'fiscal:anexo1Presentacion',
+  'fiscal:anexo2Ventas',
+  'fiscal:anexo3Compras',
   'fiscal:metadatosCompletar',
   'fiscal:metadatosLeer',
   'auxiliar:efectivo',

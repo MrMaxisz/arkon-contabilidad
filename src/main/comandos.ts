@@ -12,7 +12,15 @@ export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import { generarPaqueteContador } from './servicios/paqueteContador';
-import { diagnosticarAnexo1Ventas, exportarAnexo1VentasPresentacion, completarMetadatosFiscales } from './servicios/anexosFiscales';
+import {
+  diagnosticarAnexo1Ventas,
+  exportarAnexo1VentasPresentacion,
+  diagnosticarAnexo2VentasConsumidor,
+  exportarAnexo2VentasConsumidorPresentacion,
+  diagnosticarAnexo3Compras,
+  exportarAnexo3ComprasPresentacion,
+  completarMetadatosFiscales
+} from './servicios/anexosFiscales';
 import {
   crearItem,
   editarItem,
@@ -716,11 +724,22 @@ export const comandos: Record<string, Manejador> = {
         tratamientoVenta:
           p.tratamientoVenta === 'exenta' || p.tratamientoVenta === 'no_sujeta' ? p.tratamientoVenta : undefined,
         tipoOperacionRenta: texto(p, 'tipoOperacionRenta'),
-        tipoIngresoRenta: texto(p, 'tipoIngresoRenta')
+        tipoIngresoRenta: texto(p, 'tipoIngresoRenta'),
+        clasificacionRenta: typeof p.clasificacionRenta === 'string' ? p.clasificacionRenta : undefined,
+        sector: typeof p.sector === 'string' ? p.sector : undefined,
+        tipoCostoGasto: typeof p.tipoCostoGasto === 'string' ? p.tipoCostoGasto : undefined
       },
       texto(p, 'responsable'),
       texto(p, 'motivo')
     );
+  },
+  'fiscal:anexo2Ventas': (ctx, payload) => {
+    const p = objeto(payload);
+    return diagnosticarAnexo2VentasConsumidor(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:anexo3Compras': (ctx, payload) => {
+    const p = objeto(payload);
+    return diagnosticarAnexo3Compras(ctx.db, texto(p, 'mes'));
   }
 };
 

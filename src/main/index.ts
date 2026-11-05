@@ -8,6 +8,10 @@ import { crearContextoBase, type ContextoApp, ErrorRecuperacionPendiente, respal
 const RUTA_BASE_DATOS = 'arkon.db';
 
 function rutaDatosUsuario(): string {
+  const override = process.env.ARKON_RUTA_DATOS;
+  if (override && path.isAbsolute(override)) {
+    return override;
+  }
   const local = process.env.LOCALAPPDATA;
   if (local && process.platform === 'win32') {
     return path.join(local, 'ARKON Contabilidad');

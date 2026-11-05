@@ -506,3 +506,28 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 
 - Anexos 2/3 del F-07 v14 y F-14/F-11 con la misma fuente oficial y matriz equivalente.
 - Instalador NSIS, manual y QA Windows offline (criterios de instalación/actualización/recuperación).
+
+## Bloque auditoría 37 (carrera de selección, límites por columna, Anexos 2 y 3, preparación QA Windows)
+
+### Corregido (P2 de la auditoría 37)
+
+- **Carrera en selección de documento**: `seleccionarDocumento` usa token de consulta (`consultaMeta`); las lecturas de una selección anterior se ignoran; el destino se limpia al deseleccionar (id 0 → formulario bloqueado); durante la carga el guardado queda deshabilitado y el botón muestra 'Cargando documento…'; el error de lectura limpia el destino y muestra mensaje. Prueba del componente con orden inverso (ID 7 pendiente → seleccionar 12 → llega lectura 7 → el selector y el documento visible siguen en 12), deselección (botón deshabilitado) y error de lectura (mensaje y guardado bloqueado).
+- **Límite genérico eliminado**: el tope `fila.some(c => c.length > 100)` se sustituyó por la matriz POR COLUMNA del manual (A=10, B=1, C=2, D/E/F/G=100, H=14, I=sin límite, J–P=10, Q=9, R/S=2, T=1). Pruebas: nombre de cliente de 125 caracteres se exporta (columna I sin límite, diagnóstico no bloqueado); resolución/serie/número de exactamente 100 pasan y 101 se rechazan por columna.
+
+### Añadido (bloque F-07 completo)
+
+- **Anexo 2 (ventas a consumidor final)**: `diagnosticarAnexo2VentasConsumidor` + `exportarAnexo2VentasConsumidorPresentacion` — 23 columnas A-W del manual, tipo 01, gravadas con IVA incluido, exentas/no sujetas solo con tratamiento explícito, R/S por período 2025-01, límites por columna, vigencia por fecha de documento, bloqueo y revalidación. Prueba: incompleto bloquea con faltantes; completo exporta fila de 23 columnas con 113.00 en gravadas y total.
+- **Anexo 3 (compras)**: migración v16 (tipo_operacion_renta, clasificacion_renta, sector, tipo_costo_gasto en compra); `diagnosticarAnexo3Compras` + `exportarAnexo3ComprasPresentacion` — 21 columnas A-U, montos por línea (exentas/no sujetas de `compra_linea`, gravadas, crédito fiscal = IVA documentado, conciliado con el total), Q/R/S/T explícitos desde 2024-02 ('0' antes), NIT/NRC de proveedor validado, límites por columna, bloqueo y revalidación. `completarMetadatosFiscales` extendido a compras con bitácora. Prueba: compra con línea gravada 100+13 y exenta 50 exporta 50.00/100.00/13.00/163.00 en las columnas correctas.
+- **Canal unificado `arkon:guardarAnexoF07`** (anexo 1/2/3, diálogo nativo, bitácora con versión y fuente); preload `guardarAnexoF07`; secciones Anexo 2 y Anexo 3 en Impuestos con diagnóstico y guardado, compartiendo el bloqueo y la advertencia de activación formal.
+- **Preparación QA Windows**: variable `ARKON_RUTA_DATOS` (solo para perfiles aislados de QA; la ruta operativa sigue siendo `%LOCALAPPDATA%\ARKON Contabilidad`), `scripts/qa-windows.ps1` (npm ci reproducible, typecheck, suite con rebuild de better-sqlite3 para Node, build main+preload+renderer, NSIS opcional con `-ConInstalador`, arranque con perfil temporal exclusivo bajo LOCALAPPDATA fuera de OneDrive) y `docs/QA-WINDOWS.md` con los criterios de aceptación del recorrido (apertura, captura con doble envío, anulaciones, adjuntos con hash, CSV/PDF/paquete/anexos bloqueados, respaldo/restauración/reapertura offline, instalador y actualización que conservan datos).
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 206/206 (46 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido (solo `require("electron")`).
+
+### Pendiente (límites reales)
+
+- F-14 (retenciones) y F-11: requieren verificación independiente del manual OFICIAL de cada formulario (el PDF de F-07 no los especifica); fuente candidata: catálogo normativo de Hacienda (transparencia.mh.gob.sv). No declarar compatibilidad sin esa verificación.
+- Ejecución real de `scripts/qa-windows.ps1` e instalador NSIS en Windows: preparado aquí, no ejecutado desde este entorno Linux.

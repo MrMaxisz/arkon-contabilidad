@@ -92,6 +92,8 @@ export default function Impuestos() {
     motivo: string;
   } | null>(null);
   const [metaDocumentoId, setMetaDocumentoId] = useState(0);
+  const [metaCargando, setMetaCargando] = useState(false);
+  const consultaMeta = useRef(0);
   const [metaBusqueda, setMetaBusqueda] = useState('');
   const [ventasSelector, setVentasSelector] = useState<Array<{ id: number; folio: string; concepto: string; fecha: string }>>([]);
   const [metaActual, setMetaActual] = useState<{ folio: string; fecha: string; contraparte: string; clase_documento_fiscal: string | null } | null>(null);
@@ -581,7 +583,9 @@ export default function Impuestos() {
         <div className="fila">
           <label>Responsable<input value={metaResponsable} onChange={e => setMetaResponsable(e.target.value)} required /></label>
           <label style={{ flex: 2 }}>Motivo<input value={metaMotivo} onChange={e => setMetaMotivo(e.target.value)} required /></label>
-          <button className="primario" type="submit">Registrar metadatos</button>
+          <button className="primario" type="submit" disabled={metaCargando || !metaDocumentoId}>
+            {metaCargando ? 'Cargando documento…' : 'Registrar metadatos'}
+          </button>
         </div>
       </form>
     </div>
@@ -598,11 +602,16 @@ export default function Impuestos() {
   }
 
   async function seleccionarDocumento(documentoId: number) {
+    const numeroConsulta = ++consultaMeta.current;
     if (!documentoId) {
       setMetaDocumentoId(0);
       setMetaActual(null);
+      setMetaCargando(false);
       return;
     }
+    setMetaDocumentoId(documentoId);
+    setMetaActual(null);
+    setMetaCargando(true);
     try {
       const r = (await api().invocar('fiscal:metadatosLeer', { documentoId })) as {
         id: number;
@@ -617,6 +626,9 @@ export default function Impuestos() {
         tipo_operacion_renta: string | null;
         tipo_ingreso_renta: string | null;
       };
+      if (consultaMeta.current !== numeroConsulta) {
+        return;
+      }
       setMetaDocumentoId(r.id);
       setMetaActual(r);
       setMetaClase(r.clase_documento_fiscal ?? '1');
@@ -627,7 +639,14 @@ export default function Impuestos() {
       setMetaOperacionRenta(r.tipo_operacion_renta ?? '');
       setMetaIngresoRenta(r.tipo_ingreso_renta ?? '');
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      if (consultaMeta.current === numeroConsulta) {
+        setMetaDocumentoId(0);
+        setMensaje({ texto: `No se pudo cargar la venta ${documentoId}: ${String(err instanceof Error ? err.message : err)}`, tipo: 'error' });
+      }
+    } finally {
+      if (consultaMeta.current === numeroConsulta) {
+        setMetaCargando(false);
+      }
     }
   }
 
@@ -647,7 +666,7 @@ export default function Impuestos() {
 
   async function guardarAnexo() {
     try {
-      const r = (await api().guardarAnexo1Ventas(anexoMes)) as { guardado: boolean; ruta?: string; filas: number };
+      const r = (await api().guardarAnexoF07(1, anexoMes)) as { guardado: boolean; ruta?: string; filas: number };
       if (r.guardado && r.ruta) {
         setMensaje({ texto: `Anexo guardado en ${r.ruta} (${r.filas} filas).`, tipo: 'ok' });
       } else {
