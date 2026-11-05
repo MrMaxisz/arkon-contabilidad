@@ -21,7 +21,7 @@ export interface EntradaMetadatosFiscales {
   numeroDocumentoAutorizado: string;
   tratamientoVenta?: 'exenta' | 'no_sujeta';
   tipoOperacionRenta: string;
-  tipoIngresoRenta: string;
+  tipoIngresoRenta?: string;
   clasificacionRenta?: string;
   sector?: string;
   tipoCostoGasto?: string;
@@ -47,25 +47,28 @@ export function completarMetadatosFiscales(
   if (!entrada.numeroResolucion?.trim() || !entrada.serieDocumento?.trim() || !entrada.numeroDocumentoAutorizado?.trim()) {
     throw new ErrorAnexo('Los metadatos fiscales exigen resolución, serie y número autorizados');
   }
-  if (entrada.tipoOperacionRenta !== undefined && !TIPOS_OPERACION_RENTA.has(entrada.tipoOperacionRenta)) {
-    throw new ErrorAnexo(`Tipo de operación (Renta) inválido: ${entrada.tipoOperacionRenta}`);
-  }
-  if (!TIPOS_INGRESO_RENTA.has(entrada.tipoIngresoRenta)) {
-    throw new ErrorAnexo(`Tipo de ingreso (Renta) inválido: ${entrada.tipoIngresoRenta}`);
-  }
-  if (entrada.tratamientoVenta !== undefined && !TRATAMIENTOS_VENTA.has(entrada.tratamientoVenta)) {
-    throw new ErrorAnexo(`Tratamiento de venta inválido (exenta o no_sujeta): ${entrada.tratamientoVenta}`);
-  }
-  if (tipo === 'compra') {
-    for (const [campo, valor] of [
-      ['tipoOperacionRenta', entrada.tipoOperacionRenta],
-      ['clasificacionRenta', entrada.clasificacionRenta],
-      ['sector', entrada.sector],
-      ['tipoCostoGasto', entrada.tipoCostoGasto]
-    ] as Array<[string, string | undefined]>) {
-      if (valor !== undefined && !/^[0-9]$/.test(valor)) {
-        throw new ErrorAnexo(`${campo} de compra inválido: numérico de un dígito (manual F-07 v14, columnas Q/R/S/T)`);
-      }
+  if (tipo === 'venta') {
+    if (!TIPOS_OPERACION_RENTA.has(entrada.tipoOperacionRenta ?? '')) {
+      throw new ErrorAnexo(`Tipo de operación (Renta) inválido: ${entrada.tipoOperacionRenta}`);
+    }
+    if (!TIPOS_INGRESO_RENTA.has(entrada.tipoIngresoRenta ?? '')) {
+      throw new ErrorAnexo(`Tipo de ingreso (Renta) inválido: ${entrada.tipoIngresoRenta}`);
+    }
+    if (entrada.tratamientoVenta !== undefined && !TRATAMIENTOS_VENTA.has(entrada.tratamientoVenta)) {
+      throw new ErrorAnexo(`Tratamiento de venta inválido (exenta o no_sujeta): ${entrada.tratamientoVenta}`);
+    }
+  } else {
+    if (!CATALOGO_Q_COMPRA.has(entrada.tipoOperacionRenta)) {
+      throw new ErrorAnexo(`Tipo de operación (columna Q) de compra inválido: catálogo 1-4`);
+    }
+    if (!CATALOGO_R_COMPRA.has(entrada.clasificacionRenta ?? '')) {
+      throw new ErrorAnexo(`Clasificación (columna R) de compra inválida: catálogo 1-2`);
+    }
+    if (!CATALOGO_S_COMPRA.has(entrada.sector ?? '')) {
+      throw new ErrorAnexo(`Sector (columna S) de compra inválido: catálogo 1-4`);
+    }
+    if (!CATALOGO_T_COMPRA.has(entrada.tipoCostoGasto ?? '')) {
+      throw new ErrorAnexo(`Tipo de costo/gasto (columna T) de compra inválido: catálogo 1-7`);
     }
   }
   const tabla = tipo === 'venta' ? 'venta' : 'compra';
@@ -633,6 +636,12 @@ function montosCompra(db: Database, compraId: number): { exentasNoSujetas: bigin
 }
 
 const CLASES_DOCUMENTO_COMPRA = new Set(['1', '2', '3', '4']);
+// Catálogos ordinarios del Anexo 3 (manual F-07 v14, página impresa 20): Q 1-4, R 1-2, S 1-4, T 1-7.
+// Los códigos 8/9 excepcionales no se aceptan hasta verificar el texto exacto de sus reglas en la fuente.
+const CATALOGO_Q_COMPRA = new Set(['1', '2', '3', '4']);
+const CATALOGO_R_COMPRA = new Set(['1', '2']);
+const CATALOGO_S_COMPRA = new Set(['1', '2', '3', '4']);
+const CATALOGO_T_COMPRA = new Set(['1', '2', '3', '4', '5', '6', '7']);
 
 function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
   const faltantes: string[] = [];
@@ -651,17 +660,17 @@ function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
     faltantes.push('número de documento del proveedor (columna D)');
   }
   if (mes >= '2024-02') {
-    if (!/^[0-9]$/.test(co.tipo_operacion_renta ?? '')) {
-      faltantes.push('tipo de operación numérico de un dígito (columna Q)');
+    if (!CATALOGO_Q_COMPRA.has(co.tipo_operacion_renta ?? '')) {
+      faltantes.push('tipo de operación del catálogo 1-4 (columna Q)');
     }
-    if (!/^[0-9]$/.test(co.clasificacion_renta ?? '')) {
-      faltantes.push('clasificación numérica de un dígito (columna R)');
+    if (!CATALOGO_R_COMPRA.has(co.clasificacion_renta ?? '')) {
+      faltantes.push('clasificación del catálogo 1-2 (columna R)');
     }
-    if (!/^[0-9]$/.test(co.sector ?? '')) {
-      faltantes.push('sector numérico de un dígito (columna S)');
+    if (!CATALOGO_S_COMPRA.has(co.sector ?? '')) {
+      faltantes.push('sector del catálogo 1-4 (columna S)');
     }
-    if (!/^[0-9]$/.test(co.tipo_costo_gasto ?? '')) {
-      faltantes.push('tipo de costo/gasto numérico de un dígito (columna T)');
+    if (!CATALOGO_T_COMPRA.has(co.tipo_costo_gasto ?? '')) {
+      faltantes.push('tipo de costo/gasto del catálogo 1-7 (columna T)');
     }
   }
   const vigencia = db

@@ -463,7 +463,7 @@ describe('auditoría 38: reglas por clase del Anexo 2, agrupación DTE y catálo
         sector: 'Y',
         tipoCostoGasto: 'Z'
       }, 'p', 'completitud sintética')
-    ).toThrow(/numérico de un dígito/);
+    ).toThrow(/catálogo 1-2/);
 
     completarMetadatosFiscales(db, 'compra', compra.id, {
       claseDocumentoFiscal: '1',
@@ -490,8 +490,8 @@ describe('auditoría 38: reglas por clase del Anexo 2, agrupación DTE y catálo
       bloqueado: boolean;
     };
     expect(invalido.bloqueado).toBe(true);
-    expect(invalido.folios[0].faltantes.some(f => f.includes('sector numérico'))).toBe(true);
-    expect(() => exportarAnexo3ComprasPresentacion(db, '2026-11')).toThrow(/sector numérico/);
+    expect(invalido.folios[0].faltantes.some(f => f.includes('catálogo 1-4 (columna S)'))).toBe(true);
+    expect(() => exportarAnexo3ComprasPresentacion(db, '2026-11')).toThrow(/catálogo 1-4/);
     db.close();
   });
 });

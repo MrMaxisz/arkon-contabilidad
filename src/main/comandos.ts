@@ -742,7 +742,12 @@ export const comandos: Record<string, Manejador> = {
         tratamientoVenta:
           p.tratamientoVenta === 'exenta' || p.tratamientoVenta === 'no_sujeta' ? p.tratamientoVenta : undefined,
         tipoOperacionRenta: texto(p, 'tipoOperacionRenta'),
-        tipoIngresoRenta: texto(p, 'tipoIngresoRenta'),
+        tipoIngresoRenta:
+          tipo === 'venta'
+            ? texto(p, 'tipoIngresoRenta')
+            : typeof p.tipoIngresoRenta === 'string'
+              ? p.tipoIngresoRenta
+              : undefined,
         clasificacionRenta: typeof p.clasificacionRenta === 'string' ? p.clasificacionRenta : undefined,
         sector: typeof p.sector === 'string' ? p.sector : undefined,
         tipoCostoGasto: typeof p.tipoCostoGasto === 'string' ? p.tipoCostoGasto : undefined

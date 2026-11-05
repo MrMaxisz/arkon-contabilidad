@@ -236,13 +236,37 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
         )
       ).toBe(true)
     );
-    const selectorCompra = dentro
-      .getAllByRole('combobox')
-      .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === '21')) as HTMLSelectElement;
-    fireEvent.change(selectorCompra, { target: { value: '21' } });
+    // Completar desde el diagnóstico 3 debe abrir la COMPRA (tipo explícito), no una venta.
+    fireEvent.click(screen.getByText('Completar…'));
     await waitFor(() => screen.getByText(/Documento seleccionado: CMP-000001 del 2026-11-07 · Proveedor Sintético/));
     expect(invocar.mock.calls.some(c => c[0] === 'fiscal:metadatosLeer' && (c[1] as { tipo: string }).tipo === 'compra')).toBe(true);
-    expect(screen.getByText(/Clasificación \(R\)/)).toBeTruthy();
+
+    // Rellenar y guardar: el payload de compra lleva R/S/T y NO exige tipoIngresoRenta.
+    fireEvent.change(dentro.getByLabelText(/Resolución\n?/) as HTMLInputElement, { target: { value: 'R-SINTETICA' } });
+    fireEvent.change(dentro.getByLabelText(/^Serie\n?/) as HTMLInputElement, { target: { value: 'A' } });
+    fireEvent.change(dentro.getByLabelText(/Número autorizado\n?/) as HTMLInputElement, { target: { value: 'CCF-1' } });
+    fireEvent.change(dentro.getByLabelText(/Clasificación \(R\)\n?/) as HTMLInputElement, { target: { value: '2' } });
+    fireEvent.change(dentro.getByLabelText(/Sector \(S\)\n?/) as HTMLInputElement, { target: { value: '4' } });
+    fireEvent.change(dentro.getByLabelText(/Tipo costo\/gasto \(T\)\n?/) as HTMLInputElement, { target: { value: '7' } });
+    fireEvent.change(dentro.getAllByLabelText(/Responsable\n?/)[0] as HTMLInputElement, { target: { value: 'p' } });
+    fireEvent.change(dentro.getAllByLabelText(/^Motivo\n?/)[0] as HTMLInputElement, { target: { value: 'motivo sintético' } });
+    const selectorQ = dentro.getAllByRole('combobox').find(
+      c => Array.from((c as HTMLSelectElement).options).some(o => o.value === '4') && (c as HTMLSelectElement).options.length === 5
+    ) as HTMLSelectElement;
+    fireEvent.change(selectorQ, { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Registrar metadatos'));
+
+    await waitFor(() => screen.getByText(/Metadatos fiscales registrados en bitácora/));
+    const llamadaGuardar = invocar.mock.calls.find(c => c[0] === 'fiscal:metadatosCompletar');
+    expect(llamadaGuardar).toBeTruthy();
+    const payload = llamadaGuardar![1] as Record<string, unknown>;
+    expect(payload.tipo).toBe('compra');
+    expect(payload.clasificacionRenta).toBe('2');
+    expect(payload.sector).toBe('4');
+    expect(payload.tipoCostoGasto).toBe('7');
+    expect(payload.tipoIngresoRenta).toBeUndefined();
+    // Tras guardar se reconsulta el diagnóstico del ANEXO DE ORIGEN (3), no el 1.
+    expect(invocar.mock.calls.some(c => c[0] === 'fiscal:anexo3Compras')).toBe(true);
   });
 
   it('la vía auditada registra metadatos y refresca el diagnóstico', async () => {

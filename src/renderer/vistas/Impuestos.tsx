@@ -90,6 +90,8 @@ export default function Impuestos() {
     listos: string[];
     bloqueado: boolean;
     motivo: string;
+    anexo: 1 | 2 | 3;
+    tipoDocumento: 'venta' | 'compra';
   } | null>(null);
   const [metaDocumentoId, setMetaDocumentoId] = useState(0);
   const [metaTipo, setMetaTipo] = useState<'venta' | 'compra'>('venta');
@@ -490,7 +492,7 @@ export default function Impuestos() {
           {anexoDiagnostico.folios.map(f => (
             <p key={f.folio} className="menor">
               {f.folio}: {f.faltantes.join(' · ')}{' '}
-              <button type="button" onClick={() => void seleccionarDocumento(f.documentoId)}>Completar…</button>
+              <button type="button" onClick={() => void seleccionarDocumento(f.documentoId, anexoDiagnostico.tipoDocumento)}>Completar…</button>
             </p>
           ))}
         </div>
@@ -507,17 +509,30 @@ export default function Impuestos() {
             numeroResolucion: metaResolucion,
             serieDocumento: metaSerie,
             numeroDocumentoAutorizado: metaNumero,
-            tratamientoVenta: metaTratamiento || undefined,
-            tipoOperacionRenta: metaOperacionRenta,
-            tipoIngresoRenta: metaIngresoRenta,
-            responsable: metaResponsable,
-            motivo: metaMotivo
+            ...(metaTipo === 'venta'
+              ? {
+                  tratamientoVenta: metaTratamiento || undefined,
+                  tipoIngresoRenta: metaIngresoRenta
+                }
+              : {
+                  clasificacionRenta: metaClasificacion || undefined,
+                  sector: metaSector || undefined,
+                  tipoCostoGasto: metaCostoGasto || undefined
+                }),
+            tipoOperacionRenta: metaOperacionRenta
           });
           setMensaje({ texto: 'Metadatos fiscales registrados en bitácora.', tipo: 'ok' });
-          await seleccionarDocumento(metaDocumentoId);
-          cargarVentasSelector(metaBusqueda);
+          await seleccionarDocumento(metaDocumentoId, metaTipo);
+          cargarSelectorPorTipo(metaBusqueda, metaTipo);
           if (/^\d{4}-\d{2}$/.test(anexoMes)) {
-            await diagnosticarAnexo();
+            const origen = anexoDiagnostico?.anexo ?? 1;
+            if (origen === 1) {
+              await diagnosticarAnexo();
+            } else if (origen === 2) {
+              await diagnosticarAnexoGenerico('fiscal:anexo2Ventas', 2, 'venta');
+            } else {
+              await diagnosticarAnexoGenerico('fiscal:anexo3Compras', 3, 'compra');
+            }
           }
         } catch (err) {
           setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
@@ -578,35 +593,51 @@ export default function Impuestos() {
         </div>
         <div className="fila">
           <label>Número autorizado<input value={metaNumero} onChange={e => setMetaNumero(e.target.value)} required /></label>
-          <label>Tratamiento sin IVA
-            <select value={metaTratamiento} onChange={e => setMetaTratamiento(e.target.value)}>
-              <option value="">— Solo si IVA 0 —</option>
-              <option value="exenta">Exenta</option>
-              <option value="no_sujeta">No sujeta</option>
-            </select>
-          </label>
-          <label>Tipo operación Renta (R)
-            <select value={metaOperacionRenta} onChange={e => setMetaOperacionRenta(e.target.value)} required>
-              <option value="">— Seleccione —</option>
-              <option value="1">1 Gravada</option>
-              <option value="2">2 No gravada o exento</option>
-              <option value="3">3 Excluido</option>
-              <option value="4">4 Mixta</option>
-              <option value="12">12 Retenido F910</option>
-              <option value="13">13 Excluido art. 6 LISR</option>
-            </select>
-          </label>
-          <label>Tipo ingreso Renta (S)
-            <select value={metaIngresoRenta} onChange={e => setMetaIngresoRenta(e.target.value)} required>
-              <option value="">— Seleccione —</option>
-              <option value="1">1 Profesiones</option>
-              <option value="2">2 Servicios</option>
-              <option value="3">3 Comerciales</option>
-              <option value="4">4 Industriales</option>
-              <option value="5">5 Agropecuarias</option>
-              <option value="10">10 Otras</option>
-            </select>
-          </label>
+          {metaTipo === 'venta' && (
+            <label>Tratamiento sin IVA
+              <select value={metaTratamiento} onChange={e => setMetaTratamiento(e.target.value)}>
+                <option value="">— Solo si IVA 0 —</option>
+                <option value="exenta">Exenta</option>
+                <option value="no_sujeta">No sujeta</option>
+              </select>
+            </label>
+          )}
+          {metaTipo === 'venta' ? (
+            <>
+              <label>Tipo operación Renta (R)
+                <select value={metaOperacionRenta} onChange={e => setMetaOperacionRenta(e.target.value)} required>
+                  <option value="">— Seleccione —</option>
+                  <option value="1">1 Gravada</option>
+                  <option value="2">2 No gravada o exento</option>
+                  <option value="3">3 Excluido</option>
+                  <option value="4">4 Mixta</option>
+                  <option value="12">12 Retenido F910</option>
+                  <option value="13">13 Excluido art. 6 LISR</option>
+                </select>
+              </label>
+              <label>Tipo ingreso Renta (S)
+                <select value={metaIngresoRenta} onChange={e => setMetaIngresoRenta(e.target.value)} required>
+                  <option value="">— Seleccione —</option>
+                  <option value="1">1 Profesiones</option>
+                  <option value="2">2 Servicios</option>
+                  <option value="3">3 Comerciales</option>
+                  <option value="4">4 Industriales</option>
+                  <option value="5">5 Agropecuarias</option>
+                  <option value="10">10 Otras</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <label>Tipo operación (Q)
+              <select value={metaOperacionRenta} onChange={e => setMetaOperacionRenta(e.target.value)} required>
+                <option value="">— Seleccione —</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </label>
+          )}
         </div>
         {metaTipo === 'compra' && (
           <div className="fila">
@@ -634,7 +665,7 @@ export default function Impuestos() {
         <button
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
-          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo2Ventas')}
+          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo2Ventas', 2, 'venta')}
         >
           Diagnosticar Anexo 2
         </button>
@@ -651,7 +682,7 @@ export default function Impuestos() {
         <button
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
-          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo3Compras')}
+          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo3Compras', 3, 'compra')}
         >
           Diagnosticar Anexo 3
         </button>
@@ -670,7 +701,7 @@ export default function Impuestos() {
     </div>
   );
 
-  async function diagnosticarAnexoGenerico(comando: string) {
+  async function diagnosticarAnexoGenerico(comando: string, anexo: 1 | 2 | 3, tipoDocumento: 'venta' | 'compra') {
     try {
       const r = (await api().invocar(comando, { mes: anexoMes })) as {
         folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
@@ -678,7 +709,7 @@ export default function Impuestos() {
         bloqueado: boolean;
         motivo: string;
       };
-      setAnexoDiagnostico(r);
+      setAnexoDiagnostico({ ...r, anexo, tipoDocumento });
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
@@ -724,7 +755,8 @@ export default function Impuestos() {
       });
   }
 
-  async function seleccionarDocumento(documentoId: number) {
+  async function seleccionarDocumento(documentoId: number, tipoExplicito?: 'venta' | 'compra') {
+    const tipo = tipoExplicito ?? metaTipo;
     const numeroConsulta = ++consultaMeta.current;
     if (!documentoId) {
       setMetaDocumentoId(0);
@@ -732,11 +764,14 @@ export default function Impuestos() {
       setMetaCargando(false);
       return;
     }
+    if (tipoExplicito) {
+      setMetaTipo(tipoExplicito);
+    }
     setMetaDocumentoId(documentoId);
     setMetaActual(null);
     setMetaCargando(true);
     try {
-      const r = (await api().invocar('fiscal:metadatosLeer', { documentoId, tipo: metaTipo })) as {
+      const r = (await api().invocar('fiscal:metadatosLeer', { documentoId, tipo })) as {
         id: number;
         folio: string;
         fecha: string;
@@ -787,7 +822,7 @@ export default function Impuestos() {
         bloqueado: boolean;
         motivo: string;
       };
-      setAnexoDiagnostico(r);
+      setAnexoDiagnostico({ ...r, anexo: 1, tipoDocumento: 'venta' });
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
