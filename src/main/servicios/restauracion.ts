@@ -16,56 +16,104 @@ export interface ContextoApp {
   reabrirBase(): void;
 }
 
+function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
+  const db = abrirBase(rutaDb);
+  try {
+    const inventario = inventarioAdjuntosRegistrado(db);
+    for (const registro of inventario) {
+      const archivo = path.join(dirAdjuntos, registro.rutaRelativa);
+      if (!fs.existsSync(archivo)) {
+        return false;
+      }
+      const crypto = require('crypto') as typeof import('crypto');
+      const hash = crypto.createHash('sha256').update(fs.readFileSync(archivo)).digest('hex');
+      if (hash !== registro.hashSha256) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (db.open) {
+      db.close();
+    }
+  }
+}
+
 function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, marcador: string): void {
   let info: { fase?: string; rutaDb?: string; adjuntos?: string; previaAdjuntos?: string; areaTemporal?: string; respaldo?: string };
   try {
     info = JSON.parse(fs.readFileSync(marcador, 'utf8'));
   } catch {
-    fs.rmSync(marcador, { force: true });
-    return;
+    info = {};
   }
   const areaTemporal = info.areaTemporal ?? `${rutas.adjuntos}.restauracion-tmp`;
   const previaAdjuntos = info.previaAdjuntos ?? `${rutas.adjuntos}.antes-restauracion`;
   const basePrevia = `${rutaDb}.antes-restauracion`;
-  const fase = info.fase ?? 'iniciada';
-  if (fase === 'iniciada') {
-    fs.rmSync(`${rutaDb}.restauracion-tmp`, { force: true });
-    fs.rmSync(areaTemporal, { recursive: true, force: true });
-    fs.rmSync(marcador, { force: true });
-    return;
+  const baseTemporal = `${rutaDb}.restauracion-tmp`;
+
+  if (fs.existsSync(baseTemporal)) {
+    fs.rmSync(baseTemporal, { force: true });
   }
-  if (fase === 'base-activada') {
-    const adjuntosTemporalesExisten = fs.existsSync(areaTemporal) && fs.readdirSync(areaTemporal).length >= 0;
-    if (adjuntosTemporalesExisten) {
-      if (fs.existsSync(rutas.adjuntos)) {
-        fs.rmSync(previaAdjuntos, { recursive: true, force: true });
-        fs.renameSync(rutas.adjuntos, previaAdjuntos);
-      }
-      fs.renameSync(areaTemporal, rutas.adjuntos);
-    }
-    const db = abrirBase(rutaDb);
-    try {
-      const inventario = inventarioAdjuntosRegistrado(db);
-      const faltantes = inventario.filter(r => !fs.existsSync(path.join(rutas.adjuntos, r.rutaRelativa)));
-      if (faltantes.length > 0) {
-        if (fs.existsSync(basePrevia)) {
-          db.close();
-          fs.copyFileSync(basePrevia, rutaDb);
-          if (fs.existsSync(previaAdjuntos)) {
-            fs.rmSync(rutas.adjuntos, { recursive: true, force: true });
-            fs.renameSync(previaAdjuntos, rutas.adjuntos);
-          }
-        }
-      }
-    } finally {
-      if (db.open) {
-        db.close();
-      }
-    }
+
+  if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+    fs.rmSync(areaTemporal, { recursive: true, force: true });
     fs.rmSync(previaAdjuntos, { recursive: true, force: true });
     fs.rmSync(basePrevia, { force: true });
     fs.rmSync(marcador, { force: true });
+    return;
   }
+
+  if (fs.existsSync(areaTemporal) && conjuntoCoherente(rutaDb, areaTemporal)) {
+    fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+    if (fs.existsSync(rutas.adjuntos)) {
+      fs.renameSync(rutas.adjuntos, previaAdjuntos);
+    }
+    fs.renameSync(areaTemporal, rutas.adjuntos);
+    if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+      fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+      fs.rmSync(basePrevia, { force: true });
+      fs.rmSync(marcador, { force: true });
+      return;
+    }
+  }
+
+  if (fs.existsSync(basePrevia)) {
+    fs.copyFileSync(basePrevia, `${rutaDb}.resolucion-tmp`);
+    if (fs.existsSync(previaAdjuntos) || conjuntoCoherente(`${rutaDb}.resolucion-tmp`, fs.existsSync(previaAdjuntos) ? previaAdjuntos : rutas.adjuntos)) {
+      fs.renameSync(`${rutaDb}.resolucion-tmp`, rutaDb);
+      if (fs.existsSync(previaAdjuntos)) {
+        fs.rmSync(rutas.adjuntos, { recursive: true, force: true });
+        fs.renameSync(previaAdjuntos, rutas.adjuntos);
+      }
+      if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+        fs.rmSync(areaTemporal, { recursive: true, force: true });
+        fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+        fs.rmSync(basePrevia, { force: true });
+        fs.rmSync(marcador, { force: true });
+        return;
+      }
+    } else {
+      fs.rmSync(`${rutaDb}.resolucion-tmp`, { force: true });
+    }
+  }
+
+  fs.writeFileSync(
+    `${marcador}.sin-resolver`,
+    JSON.stringify(
+      {
+        nota: 'Restauración interrumpida sin conjunto coherente verificable; copias preservadas',
+        basePrevia,
+        previaAdjuntos,
+        areaTemporal,
+        creadoEn: new Date().toISOString()
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
 }
 
 export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versionApp: string): Promise<ContextoApp> {
@@ -221,6 +269,7 @@ export async function manejarRestauracion(
   );
   let baseSustituida = false;
   let adjuntosPreviosPreservados = false;
+  fs.writeFileSync(marcador, JSON.stringify({ respaldo: nombre, fase: 'sustituyendo-base', rutaDb: ctx.rutaDb, adjuntos: ctx.rutas.adjuntos, previaAdjuntos, areaTemporal: areaAdjuntosTemporal, creadoEn: new Date().toISOString() }, null, 2), 'utf8');
   try {
     resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb);
     baseSustituida = true;

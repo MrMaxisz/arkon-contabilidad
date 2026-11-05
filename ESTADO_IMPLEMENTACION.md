@@ -1,6 +1,14 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la vigésima tercera revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (tras la vigésima cuarta revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Correcciones de la vigésima cuarta revisión — aplicadas y probadas
+
+- **[P1] Marcador atrasado resuelto por contenido**: el marcador se escribe con fase 'sustituyendo-base' **antes** de ejecutar `restaurarRespaldo` (la intención precede al cambio de estado). Al arrancar, `resolverRestauracionInterrumpida` **no confía en la fase**: verifica el conjunto activo por contenido (inventario de la base + existencia y **hash** de cada archivo); si es coherente lo confirma; si no, prueba el área temporal; si tampoco, revierte desde las copias previas verificadas; si nada es verificable, **preserva todas las copias** y escribe un archivo `.sin-resolver` identificándolas. Regresión: interrupción inmediatamente tras sustituir SQLite (marcador en fase anterior) → el arranque resuelve por contenido y completa el conjunto nuevo verificado.
+- **[P1] Hashes verificados al reiniciar**: `conjuntoCoherente` compara el hash SHA-256 de cada archivo contra el registro de la base (no solo existencia); un adjunto temporal alterado hace que el conjunto se rechace y se revierta al conjunto anterior verificado, sin eliminar copias prematuramente. Regresión: adjunto temporal alterado tras la interrupción → arranque revierte a base y adjuntos anteriores con contenido verificado.
+- **[P2] Prueba portátil**: las rutas del proceso hijo se serializan con `JSON.stringify` (válido en Windows); la prueba compila `dist` antes de ejecutar el hijo.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **132/132 en verde** (26 archivos, con interrupciones en procesos hijos reales en dos ventanas distintas y adjunto alterado al reiniciar). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Correcciones de la vigésima tercera revisión — aplicadas y probadas
 
