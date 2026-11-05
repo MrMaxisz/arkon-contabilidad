@@ -19,18 +19,29 @@ export default function Respaldo() {
   const [entidadAdjunto, setEntidadAdjunto] = useState('compra');
   const [entidadIdAdjunto, setEntidadIdAdjunto] = useState('');
   const [responsable, setResponsable] = useState('');
+  const [intervaloMinutos, setIntervaloMinutos] = useState('0');
+  const [retencionMinutos, setRetencionMinutos] = useState('5');
+  const [estadoPeriodico, setEstadoPeriodico] = useState<{ creado: boolean; nombre?: string; omitidoPor?: string } | null>(null);
 
   const cargar = useCallback(() => {
     void api().invocar('respaldo:listar').then(r => setRespaldos(r as InfoRespaldo[]));
   }, []);
 
   const cargarAdjuntos = useCallback(() => {
-    void api().invocar('adjunto:listar', {}).then(r => setAdjuntos(r as never));
+    void api()
+      .invocar('adjunto:listar', {})
+      .then(r => setAdjuntos(r as never))
+      .catch(() => setAdjuntos([]));
   }, []);
 
   useEffect(() => {
     cargar();
     cargarAdjuntos();
+    void api().invocar('config:respaldoPeriodicoLeer').then(r => {
+      const config = r as { intervaloMinutos: number; retencion: number };
+      setIntervaloMinutos(String(config.intervaloMinutos));
+      setRetencionMinutos(String(config.retencion));
+    });
   }, [cargar, cargarAdjuntos]);
 
   async function crear() {
@@ -99,6 +110,94 @@ export default function Respaldo() {
             ))}
           </tbody>
         </table>
+      )}
+      <h2>Adjuntos</h2>
+      <form onSubmit={async e => {
+        e.preventDefault();
+        setMensaje(null);
+        try {
+          const r = (await api().registrarAdjunto(entidadAdjunto, entidadIdAdjunto, responsable)) as {
+            registrado: boolean;
+            adjunto?: { nombreOriginal: string; hashSha256: string };
+          };
+          if (r.registrado && r.adjunto) {
+            setMensaje({
+              texto: `Adjunto ${r.adjunto.nombreOriginal} registrado con hash ${r.adjunto.hashSha256.slice(0, 12)}…`,
+              tipo: 'ok'
+            });
+          } else {
+            setMensaje({ texto: 'Selección de archivo cancelada.', tipo: 'ok' });
+          }
+          cargarAdjuntos();
+        } catch (err) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      }}>
+        <div className="fila">
+          <label>Entidad
+            <select value={entidadAdjunto} onChange={e => setEntidadAdjunto(e.target.value)} required>
+              <option value="compra">Compra</option>
+              <option value="venta">Venta</option>
+              <option value="cotizacion">Cotización</option>
+              <option value="proyecto">Proyecto</option>
+            </select>
+          </label>
+          <label>Identificador del documento (folio)
+            <input value={entidadIdAdjunto} onChange={e => setEntidadIdAdjunto(e.target.value)} required placeholder="CMP-000001" />
+          </label>
+          <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
+          <button className="primario" type="submit">Registrar adjunto…</button>
+        </div>
+      </form>
+      {adjuntos.length === 0 ? (
+        <p className="vacio">Sin adjuntos registrados.</p>
+      ) : (
+        <table>
+          <thead><tr><th>Entidad</th><th>Documento</th><th>Archivo</th><th>Hash</th><th>Registrado</th></tr></thead>
+          <tbody>
+            {adjuntos.map(a => (
+              <tr key={a.id}>
+                <td>{a.entidad}</td>
+                <td>{a.entidadId}</td>
+                <td>{a.nombreOriginal}</td>
+                <td className="menor">{a.hashSha256.slice(0, 16)}…</td>
+                <td>{a.creadoEn}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <h2>Respaldo periódico</h2>
+      <form onSubmit={async e => {
+        e.preventDefault();
+        setMensaje(null);
+        try {
+          await api().invocar('config:respaldoPeriodicoGuardar', {
+            intervaloMinutos: Number(intervaloMinutos) || 0,
+            retencion: Number(retencionMinutos) || 5
+          });
+          setMensaje({ texto: 'Configuración de respaldo periódico guardada.', tipo: 'ok' });
+        } catch (err) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      }}>
+        <div className="fila">
+          <label>Intervalo (minutos, 0 = desactivado)
+            <input type="number" min="0" max="1440" value={intervaloMinutos} onChange={e => setIntervaloMinutos(e.target.value)} required />
+          </label>
+          <label>Retención (respaldos automáticos a conservar)
+            <input type="number" min="1" max="50" value={retencionMinutos} onChange={e => setRetencionMinutos(e.target.value)} required />
+          </label>
+          <button className="primario" type="submit">Guardar configuración</button>
+        </div>
+      </form>
+      {estadoPeriodico && (
+        <p className="menor">
+          {estadoPeriodico.creado
+            ? `Último respaldo automático: ${estadoPeriodico.nombre}.`
+            : `Respaldo periódico: ${estadoPeriodico.omitidoPor ?? 'sin información'}.`}
+        </p>
       )}
       <p className="menor">
         Cada respaldo incluye manifiesto con hash SHA-256; la restauración verifica hash e integridad,

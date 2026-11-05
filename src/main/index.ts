@@ -16,6 +16,21 @@ function rutaDatosUsuario(): string {
 }
 
 let ctx: ContextoApp | null = null;
+let temporizadorRespaldo: NodeJS.Timeout | null = null;
+
+async function respaldoPeriodicoSeguro(contexto: ContextoApp): Promise<void> {
+  try {
+    await respaldoPeriodicoSiCorresponde(contexto);
+  } catch (err) {
+    try {
+      contexto.db
+        .prepare('INSERT INTO bitacora_evento (actor, tipo, entidad, entidad_id, detalle) VALUES (?, ?, ?, ?, ?)')
+        .run('sistema', 'respaldo_periodico_fallo', 'respaldo', 'periodico', JSON.stringify({ error: String(err instanceof Error ? err.message : err) }));
+    } catch {
+      return;
+    }
+  }
+}
 
 async function crearContexto(): Promise<ContextoApp> {
   const rutas = prepararRutasDatos(rutaDatosUsuario());
@@ -44,8 +59,10 @@ if (!obtuvoUnico) {
   app.whenReady().then(async () => {
     try {
       ctx = await crearContexto();
-      const resultadoRespaldo = await respaldoPeriodicoSiCorresponde(ctx);
-      void resultadoRespaldo;
+      const contextoVigente = ctx;
+      temporizadorRespaldo = setInterval(() => {
+        void respaldoPeriodicoSeguro(contextoVigente);
+      }, 60_000);
     } catch (err) {
       if (err instanceof ErrorRecuperacionPendiente) {
         const { dialog } = require('electron') as typeof import('electron');
@@ -84,6 +101,9 @@ if (!obtuvoUnico) {
   });
 
   app.on('before-quit', () => {
+    if (temporizadorRespaldo) {
+      clearInterval(temporizadorRespaldo);
+    }
     ctx?.db.close();
   });
 }

@@ -4,6 +4,7 @@ import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { listarAdjuntos } from './servicios/adjuntos';
+import { respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
 import { manejarRestauracion } from './servicios/restauracion';
 import type { ContextoApp } from './servicios/restauracion';
 
@@ -39,6 +40,12 @@ import { registrarCobro, registrarPago, registrarTransferencia, listarMovimiento
 type Manejador = (ctx: ContextoApp, payload: unknown) => unknown | Promise<unknown>;
 
 export class ErrorValidacion extends Error {}
+
+function registroEventoConfig(ctx: ContextoApp, tipo: string, detalle: unknown): void {
+  ctx.db
+    .prepare('INSERT INTO bitacora_evento (actor, tipo, entidad, entidad_id, detalle) VALUES (?, ?, ?, ?, ?)')
+    .run('sistema', tipo, 'configuracion', tipo, JSON.stringify(detalle));
+}
 
 function objeto(payload: unknown): Record<string, unknown> {
   if (payload === undefined || payload === null) {
@@ -120,6 +127,38 @@ export const comandos: Record<string, Manejador> = {
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
   'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp, ctx.rutas.adjuntos),
   'respaldo:listar': ctx => descubrirRespaldos(ctx.rutas.respaldos),
+  'adjunto:listar': (ctx, payload) => {
+    const p = objeto(payload);
+    if (typeof p.entidad === 'string' && p.entidad) {
+      return listarAdjuntos(ctx.db, p.entidad, typeof p.entidadId === 'string' ? p.entidadId : undefined);
+    }
+    return listarAdjuntos(ctx.db);
+  },
+  'config:respaldoPeriodicoLeer': ctx => {
+    const intervalo = ctx.db.prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_intervalo_minutos'").get() as { valor: string } | undefined;
+    const retencion = ctx.db.prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_retencion_automatica'").get() as { valor: string } | undefined;
+    return {
+      intervaloMinutos: Number(intervalo?.valor ?? '0') || 0,
+      retencion: Number(retencion?.valor ?? '5') || 5
+    };
+  },
+  'config:respaldoPeriodicoGuardar': (ctx, payload) => {
+    const p = objeto(payload);
+    const intervalo = typeof p.intervaloMinutos === 'number' ? p.intervaloMinutos : 0;
+    const retencion = typeof p.retencion === 'number' ? p.retencion : 5;
+    if (!Number.isInteger(intervalo) || intervalo < 0 || intervalo > 1440) {
+      throw new ErrorValidacion('Intervalo inválido (0-1440 minutos)');
+    }
+    if (!Number.isInteger(retencion) || retencion < 1 || retencion > 50) {
+      throw new ErrorValidacion('Retención inválida (1-50 respaldos)');
+    }
+    ctx.db.prepare("UPDATE configuracion SET valor = ? WHERE clave = 'respaldo_intervalo_minutos'").run(String(intervalo));
+    ctx.db.prepare("UPDATE configuracion SET valor = ? WHERE clave = 'respaldo_retencion_automatica'").run(String(retencion));
+    ctx.db.prepare('INSERT INTO bitacora_evento (actor, tipo, entidad, entidad_id, detalle) VALUES (?, ?, ?, ?, ?)')
+      .run('sistema', 'config_respaldo_periodico', 'configuracion', 'config_respaldo_periodico', JSON.stringify({ intervalo, retencion }));
+    return { ok: true };
+  },
+  'respaldo:ejecutarPeriodico': async ctx => respaldoPeriodicoSiCorresponde(ctx),
   'respaldo:restaurar': (ctx, payload) => {
     const p = objeto(payload);
     return manejarRestauracion(ctx, texto(p, 'nombre'));

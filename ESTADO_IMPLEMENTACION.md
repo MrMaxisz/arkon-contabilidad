@@ -1,6 +1,14 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (auditoría 25 de Codex; lote de recuperación completo). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 26 de Codex; integración completa de adjuntos y respaldo periódico). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 26 (Codex) — integración completa de adjuntos y respaldo periódico — aplicado y probado
+
+Correcciones de los dos P2 de integración:
+- **[P2-1] Adjuntos accesibles desde la aplicación**: manejador `adjunto:listar` en `comandos.ts` con filtro por entidad/identificador; panel JSX completo en la vista Respaldo (formulario de registro con entidad/folio/responsable, tabla de adjuntos con hash y fecha, llamada al puente `registrarAdjunto`). Pruebas de componente real: renderiza el panel con datos, registra adjunto a través del puente, guarda configuración periódica. Prueba de despachar real: `adjunto:listar` devuelve adjuntos persistidos, la asociación sobrevive reabrir la base.
+- **[P2-2] Respaldo periódico funcional**: temporizador `setInterval` de 60 segundos en `index.ts` que evalúa `respaldoPeriodicoSeguro` mientras la sesión está abierta (no solo al arrancar); fallos registrados en bitácora sin dejar la app sin ventana. Configuración desde interfaz (vista Respaldo) con validación (intervalo 0-1440, retención 1-50), persistencia en `configuracion` y bitácora del cambio. Comandos `config:respaldoPeriodicoLeer/Guardar` y `respaldo:ejecutarPeriodico` en despachar. Exclusión mutua: `respaldoPeriodicoSiCorresponde` se omite si existe marcador de restauración o `.sin-resolver`. Prueba de despachar real: configura intervalo, ejecuta periódico, verifica que respeta el intervalo, restaura el paquete automático en otro perfil sintético con adjunto verificado.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **141/141 en verde** (29 archivos; 3 pruebas de componente real + 3 de despachar real). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente** — incluye diálogos nativos y temporizador real.
 
 ## Auditoría 25 (Codex) — lote de recuperación completo — aplicado y probado
 
