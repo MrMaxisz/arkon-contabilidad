@@ -28,11 +28,21 @@ const CATALOGO_V_F14 = new Set(['1', '2', '3', '4', '5', '6', '7', '9']);
 const DOMICILIADO_F14 = new Set(['1', '2']);
 
 // Catálogo versionado de códigos de ingreso del F-14 v16 (APÉNDICE, páginas 17-18 del manual oficial).
-// El apéndice es una tabla de imagen no extraíble como texto; este catálogo contiene los códigos
-// verificados contra el manual y las reproducciones del auditor: 01 (servicios permanentes con
-// subordinación — nota página 7), 42 (ordinario) y 47 (nota especial art. 123 inciso tercero, página 18).
-// Cualquier código fuera del catálogo se rechaza como no verificado hasta ampliación documentada.
-const CODIGOS_INGRESO_F14_V1 = new Set(['01', '42', '47']);
+// Fuente: lectura VISUAL verificada del apéndice del PDF oficial F-14 v16 (octubre 2025) por el auditor,
+// páginas 17-18. Grupos (solo alcance documental; la aplicación NUNCA elige código, tasa ni política
+// automáticamente y no activa obligaciones reales):
+// - Acreditable (p17): 01,05,06,07,08,09,11,19,20,21,22,23,24,25,26,27,48,80,81,82,83,84,85
+// - No acreditable (p17): 28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,49
+// - Gravados sin retención (p18): 60. No gravados (p18): 70,71,72
+// 11 y 21 son servicios sin dependencia laboral (categorías distintas del mismo grupo); 09 y 42 son
+// otras retenciones en grupos diferentes. Códigos laborales (01) y el especial 47 permanecen BLOQUEADOS
+// con motivo explícito hasta que exista captura/soporte; el resto se admite solo con captura suficiente
+// (retención sin nómina con S/T/U/V explícitos). Este catálogo es la transcripción de la fuente citada,
+// NO una certificación fiscal: la clasificación real la decide el contador.
+const CODIGOS_F14_ACREDITABLES = ['01', '05', '06', '07', '08', '09', '11', '19', '20', '21', '22', '23', '24', '25', '26', '27', '48', '80', '81', '82', '83', '84', '85'];
+const CODIGOS_F14_NO_ACREDITABLES = ['28', '29', '30', '31', '32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '49'];
+const CODIGOS_F14_SIN_RETENCION = ['60', '70', '71', '72'];
+const CODIGOS_INGRESO_F14_V1 = new Set([...CODIGOS_F14_ACREDITABLES, ...CODIGOS_F14_NO_ACREDITABLES, ...CODIGOS_F14_SIN_RETENCION]);
 const CODIGOS_INGRESO_BLOQUEADOS_F14 = new Map<string, string>([
   ['01', 'servicios permanentes con subordinación o dependencia laboral: requiere captura de nómina (columnas J-R), sin soporte'],
   ['47', 'nota especial del art. 123 inciso tercero del Código Tributario (página 18): identidad particular no soportada']

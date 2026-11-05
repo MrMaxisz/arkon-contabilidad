@@ -637,3 +637,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - Soporte interno anual F-11 (conciliación anual trazable, datos faltantes explícitos, exportación local para el contador) — sin CSV oficial ni tasas inventadas.
 - Manual de usuario e instalación/actualización Windows; QA gráfico/NSIS/offline real.
 - Ampliación del catálogo de códigos de ingreso del F-14 con la verificación visual del apéndice que posee el auditor.
+
+## Bloque auditoría 43 (catálogo F-14 ampliado, soporte anual interno F-11, manual y preparación de actualización Windows)
+
+### Añadido
+
+- **Catálogo F-14 ampliado** con la lectura visual verificada del apéndice (p17-18 del manual v16), registrada por grupo/versión/página: acreditables {01,05,06,07,08,09,11,19-27,48,80-85}, no acreditables {28-47,49}, sin retención {60,70,71,72}. 01 (laboral) y 47 (especial art. 123) permanecen BLOQUEADOS con motivo; el resto se admite solo con captura suficiente. Documentado: la aplicación NUNCA elige código/tasa/política automáticamente y esto no certifica el catálogo íntegro ni activa obligaciones.
+- **Soporte interno del ejercicio anual (F-11)**: `src/main/servicios/ejercicioAnual.ts` con `consultarEjercicio` — movimientos del ejercicio vs saldos acumulados al corte, resultado ordinario (excluyendo el asiento de cierre para no duplicar ni sumarlo como ingreso/gasto) y resultado con cierre, ajustes/anulaciones/reversos por efecto neto, retenciones registradas (efectuadas/recibidas, sin efecto contable automático), y **conciliación con una consulta INDEPENDIENTE del mayor** (tercera consulta directa, no la misma suma). Comando `ejercicio:consultar`, canal nativo `arkon:guardarEjercicioAnual` (carpeta con LEEME/cuentas/asientos/retenciones), preload `guardarEjercicioAnual`, y sección en Reportes con año seleccionable, informe con conciliación visible, token contra respuestas tardías y advertencia permanente de soporte INTERNO (NO declaración F-11, sin deducibilidad ni impuesto, sin convertir desconocidos en 0 ni inventar tasas). Prueba de aceptación: operaciones antes/dentro/después del año, ajuste, anulación con reverso, retención, cierre y reapertura — resultado ordinario 80.00 con cierre 0.00, conciliación OK contra consulta independiente, saldos acumulados incluyen 2025, reapertura mantiene 80.00, archivos con cifras visibles. Bug propio encontrado y corregido durante la prueba: `NOT (origen_tipo = 'cierre')` es NULL para reversos (origen NULL) y los excluía por error — corregido con `IS NULL OR !=`.
+- **Manual de usuario** (`docs/MANUAL-USUARIO.md`): funciones realmente disponibles (inicio administrativo, captura/corrección por anulación, ajustes/apertura, cierre, adjuntos, respaldo/restauración, reportes/paquete/ejercicio anual, impuestos con bloqueos, bitácora), rutas Windows fuera de OneDrive, instalación/actualización conservando datos, y límites sin capacidades inventadas.
+- **Preparación de actualización Windows** (`scripts/actualizar-windows.ps1`): perfil QA sintético externo, npm ci/typecheck/suite/build/NSIS/rebuild ABI por etapa, arranque verificado tras la actualización con el MISMO perfil, plan de aceptación manual (respaldo previo, instalar NSIS de paquete\, datos previos visibles, operación sintética persistente), restauración de variables y aviso de rebuild:node. NO ejecutado en Windows desde este entorno Linux (límite declarado).
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 223/223 (50 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Inventario por capa
+
+- **Probado en servicio y componente**: anexos F-07 1/2/3 y F-14 (matriz, catálogos, reglas conjuntas, identidad, autorización separada, nómina bloqueada), ejercicio anual (conciliación independiente), paquete del contador v2, cierre de ejercicio, respaldo/restauración, adjuntos, carrera de selecciones con token.
+- **Parcial**: catálogo F-14 con la transcripción del auditor (no certificación; 01/47 bloqueados), QA Windows por scripts preparados pero no ejecutados aquí.
+- **Pendiente Windows real**: instalación/actualización NSIS, recorrido gráfico offline integral, confirmación del arranque del preload empaquetado en Electron real.

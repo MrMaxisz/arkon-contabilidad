@@ -12,6 +12,7 @@ export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import { generarPaqueteContador } from './servicios/paqueteContador';
+import { consultarEjercicio } from './servicios/ejercicioAnual';
 import {
   completarMetadatosRetencion,
   diagnosticarAnexoRetencionesF14,
@@ -806,6 +807,10 @@ export const comandos: Record<string, Manejador> = {
   'fiscal:retencionMetadatosLeer': (ctx, payload) => {
     const p = objeto(payload);
     return leerMetadatosRetencion(ctx.db, entero(p, 'retencionId'));
+  },
+  'ejercicio:consultar': (ctx, payload) => {
+    const p = objeto(payload);
+    return consultarEjercicio(ctx.db, entero(p, 'anio'));
   }
 };
 

@@ -6,6 +6,7 @@ import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
+import { consultarEjercicio, csvEjercicio } from './servicios/ejercicioAnual';
 import { exportarAnexoRetencionesF14Presentacion } from './servicios/anexoF14';
 import {
   exportarAnexo1VentasPresentacion,
@@ -208,6 +209,53 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       fuente: anexo.fuente
     });
     return { guardado: true, ruta: destino.filePath, version: anexo.version, filas: anexo.filas, fuente: anexo.fuente };
+  });
+
+  ipcMain.handle('arkon:guardarEjercicioAnual', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const anio = Number(p.anio);
+    if (!Number.isInteger(anio) || anio < 1900 || anio > 2999) {
+      throw new Error('El ejercicio requiere un año válido');
+    }
+    const informe = consultarEjercicio(ctx.db, anio);
+    const archivos = csvEjercicio(informe);
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opciones = {
+      title: 'Guardar soporte interno del ejercicio',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+      buttonLabel: 'Guardar ejercicio aquí'
+    };
+    const destino = ventanaPrincipal
+      ? await dialog.showOpenDialog(ventanaPrincipal, opciones)
+      : await dialog.showOpenDialog(opciones);
+    const carpetaBase = destino.canceled ? undefined : destino.filePaths?.[0];
+    if (!carpetaBase) {
+      return { guardado: false };
+    }
+    const carpeta = path.join(carpetaBase, `ejercicio-interno-${anio}`);
+    fs.mkdirSync(carpeta, { recursive: true });
+    for (const archivo of archivos) {
+      fs.writeFileSync(path.join(carpeta, archivo.nombre), `${archivo.contenido}\n`, 'utf8');
+    }
+    registroEvento(ctx.db, 'sistema', 'ejercicio_anual_interno', 'archivo_csv', carpeta, {
+      anio,
+      archivos: archivos.length,
+      version: informe.version
+    });
+    return {
+      guardado: true,
+      ruta: carpeta,
+      version: informe.version,
+      archivos: archivos.map(a => a.nombre),
+      informe: {
+        resultadoOrdinarioMinor: informe.resultadoOrdinarioMinor,
+        resultadoConCierreMinor: informe.resultadoConCierreMinor,
+        concilia: informe.conciliacionMayor.concilia
+      }
+    };
   });
 
   ipcMain.handle('arkon:guardarPaqueteContador', async (evento, solicitud) => {

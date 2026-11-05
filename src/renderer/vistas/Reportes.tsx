@@ -57,6 +57,19 @@ export default function Reportes() {
   const [detalle, setDetalle] = useState<DetalleContraparte | null>(null);
   const consultaDetalle = useRef(0);
   const [paqueteDesde, setPaqueteDesde] = useState('');
+  const [ejercicioAnio, setEjercicioAnio] = useState('');
+  const [ejercicio, setEjercicio] = useState<{
+    resultadoOrdinarioMinor: string;
+    resultadoConCierreMinor: string;
+    ingresosMinor: string;
+    costosGastosMinor: string;
+    retencionesEfectuadasMinor: string;
+    retencionesRecibidasMinor: string;
+    conciliacionMayor: { diferenciaMinor: string; concilia: boolean };
+    asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string }>;
+    limitaciones: string[];
+  } | null>(null);
+  const consultaEjercicio = useRef(0);
   const [paqueteHasta, setPaqueteHasta] = useState('');
 
   const cargarDetalle = useCallback(() => {
@@ -100,6 +113,53 @@ export default function Reportes() {
       setMensaje(r.guardado && r.ruta ? `Auxiliar guardado en ${r.ruta}.` : 'Guardado cancelado.');
     } catch (err) {
       setMensaje(`Error al guardar: ${String(err instanceof Error ? err.message : err)}`);
+    }
+  }
+
+  async function consultarEjercicioAnual(anio: string) {
+    const numeroConsulta = ++consultaEjercicio.current;
+    if (!/^\d{4}$/.test(anio)) {
+      setEjercicio(null);
+      return;
+    }
+    try {
+      const r = (await api().invocar('ejercicio:consultar', { anio: Number(anio) })) as {
+        resultadoOrdinarioMinor: string;
+        resultadoConCierreMinor: string;
+        ingresosMinor: string;
+        costosGastosMinor: string;
+        retencionesEfectuadasMinor: string;
+        retencionesRecibidasMinor: string;
+        conciliacionMayor: { diferenciaMinor: string; concilia: boolean };
+        asientos: Array<{ folio: string; fecha: string; concepto: string; estado: string; origen: string }>;
+        limitaciones: string[];
+      };
+      if (consultaEjercicio.current === numeroConsulta) {
+        setEjercicio(r);
+      }
+    } catch (err) {
+      if (consultaEjercicio.current === numeroConsulta) {
+        setEjercicio(null);
+        setMensaje(`Error al consultar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+      }
+    }
+  }
+
+  async function guardarEjercicio() {
+    setMensaje(null);
+    try {
+      const r = (await api().guardarEjercicioAnual(Number(ejercicioAnio))) as {
+        guardado: boolean;
+        ruta?: string;
+        archivos?: string[];
+      };
+      setMensaje(
+        r.guardado && r.ruta
+          ? `Soporte del ejercicio guardado en ${r.ruta} (${r.archivos?.length ?? 0} archivos).`
+          : 'Guardado del ejercicio cancelado.'
+      );
+    } catch (err) {
+      setMensaje(`Error al guardar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
     }
   }
 
@@ -291,6 +351,43 @@ export default function Reportes() {
           Guardar paquete para el contador…
         </button>
       </div>
+      <h2>Ejercicio anual (soporte interno F-11)</h2>
+      <p className="aviso error">
+        Soporte INTERNO para el contador: NO es declaración F-11 ni anexo oficial. Sin deducibilidad ni
+        impuesto determinado; las clasificaciones y tasas quedan como decisiones del contador.
+      </p>
+      <div className="fila">
+        <label>Año del ejercicio
+          <input
+            type="number"
+            value={ejercicioAnio}
+            min={1900}
+            max={2999}
+            onChange={e => {
+              setEjercicioAnio(e.target.value);
+              void consultarEjercicioAnual(e.target.value);
+            }}
+            placeholder="2026"
+          />
+        </label>
+        <button
+          disabled={!/^\d{4}$/.test(ejercicioAnio)}
+          onClick={() => void guardarEjercicio()}
+        >
+          Guardar soporte del ejercicio…
+        </button>
+      </div>
+      {ejercicio && (
+        <div>
+          <p className="menor">
+            Resultado ordinario: ${ejercicio.resultadoOrdinarioMinor} (con cierre: ${ejercicio.resultadoConCierreMinor}) ·
+            Ingresos: ${ejercicio.ingresosMinor} · Costos y gastos: ${ejercicio.costosGastosMinor} ·
+            Retenciones efectuadas: ${ejercicio.retencionesEfectuadasMinor} · recibidas: ${ejercicio.retencionesRecibidasMinor} ·
+            Conciliación con mayor: {ejercicio.conciliacionMayor.concilia ? 'OK' : `DESCUADRE ${ejercicio.conciliacionMayor.diferenciaMinor}`}
+          </p>
+          <p className="menor">Asientos del ejercicio: {ejercicio.asientos.length} (el asiento de cierre se excluye del resultado ordinario).</p>
+        </div>
+      )}
       <div className="fila">
         <button onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</button>
         <button onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</button>
