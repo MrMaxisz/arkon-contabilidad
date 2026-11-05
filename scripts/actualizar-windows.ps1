@@ -16,10 +16,26 @@ if (-not $Perfil) {
 if ($Perfil -like "*OneDrive*") {
   throw "El perfil QA no puede estar bajo OneDrive: $Perfil"
 }
-if ($Perfil -eq (Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad')) {
-  throw "El perfil QA no puede ser la base operativa: $Perfil"
-}
+$operativo = Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad'
+$perfilLower = $Perfil.ToLowerInvariant().TrimEnd('\') + '\'
+$operativoLower = [System.IO.Path]::GetFullPath($operativo).ToLowerInvariant().TrimEnd('\') + '\'
+if ($perfilLower -eq $operativoLower) { throw "El perfil QA no puede ser la base operativa: $Perfil" }
+if ($perfilLower.StartsWith($operativoLower)) { throw "El perfil QA no puede ser subruta de la base operativa: $Perfil" }
 New-Item -ItemType Directory -Path $Perfil -Force | Out-Null
+# Marcador QA único alineado con el CLI: solo en perfil nuevo vacío.
+$marcador = Join-Path $Perfil 'QA-MARCADOR-ARKON.txt'
+if (Test-Path $marcador) {
+  $contenido = Get-Content $marcador -Raw -ErrorAction SilentlyContinue
+  if (-not $contenido -or -not $contenido.Contains('Perfil QA de ARKON Contabilidad')) {
+    throw "Marcador QA inválido en $marcador; el perfil existe pero no es un perfil QA válido."
+  }
+} else {
+  $existentes = @(Get-ChildItem $Perfil -ErrorAction SilentlyContinue)
+  if ($existentes.Count -gt 0) {
+    throw "El perfil $Perfil ya existe con contenido y sin marcador QA; rechazado para no tocar datos desconocidos."
+  }
+  Set-Content -Path $marcador -Value "Perfil QA de ARKON Contabilidad; semilla sintética; $(Get-Date -Format o)" -Encoding UTF8
+}
 Write-Host "Perfil QA de actualización: $Perfil (la base operativa real NO se toca)"
 
 function Requiere([string]$paso, [scriptblock]$bloque) {
@@ -33,10 +49,15 @@ try {
   Requiere 'Typecheck de las tres capas' { npm run typecheck }
   Requiere 'Suite con ABI de Node' { npm test }
   Requiere 'Build main + preload + renderer' { npm run build }
-  Requiere 'Instalador NSIS (salida en paquete\)' { npm run dist:win }
-  Requiere 'Reconstruir dependencias nativas para Electron' { npx electron-builder install-app-deps }
+  Requiere 'Pipeline ABI completo (rebuild→probe→build→NSIS→verificación)' { npm run dist:win:qa }
+  $nsis = Get-ChildItem -Path (Join-Path $raizRepo 'paquete') -Filter '*.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if (-not $nsis) {
+    throw 'FALLO: dist:win:qa terminó pero no se encontró el instalador NSIS en paquete\. Sin artefacto no hay éxito.'
+  }
+  $hash = (Get-FileHash $nsis.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  Write-Host "Instalador generado y verificado: $($nsis.FullName) SHA256: $hash"
 
-  # Este script PREPARA los artefactos. NO ejecuta la actualización real ni la verifica:
+  # Este script PREPARA los artefactos con pipeline verificado. NO ejecuta la actualización real:
   # la instalación del NSIS y la comparación de datos son PASOS MANUALES PENDIENTES que deben
   # ejecutarse en Windows con dos versiones y un perfil sintético (ver plan siguiente).
   Write-Host @"

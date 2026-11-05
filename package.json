@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.scripts.json",
     "typecheck:renderer": "tsc --noEmit -p tsconfig.renderer.json",
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
@@ -43,6 +43,5 @@
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
-  },
-  "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.scripts.json"
+  }
 }

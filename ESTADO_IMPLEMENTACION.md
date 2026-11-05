@@ -786,3 +786,23 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Sandbox Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El harness .cjs+JSON está listo para tu verificación en Windows con `npm run dist:win:qa`. La instalación 45 (Electron130, ya abre) no debe reinstalarse con artefactos sin verificar.
+
+## Bloque auditoría 48 (harness de prueba CJS/JSON, cero escritura en verificar, scripts PowerShell conectados al pipeline real y typecheck ejecutable)
+
+### Corregido (hallazgos de la auditoría 48)
+
+1. **prueba del probe reescrita con harness CJS/JSON**: el test antiguo (`electron -e` sin timeout, aceptando PROBE_ABI_FALLA como aprobado) fue SUSTITUIDO. El nuevo harness genera un archivo .cjs en directorio temporal externo (os.tmpdir), detecta runtime (Electron en Windows con `app.setPath`/`whenReady`; Node en Linux por bibliotecas gráficas ausentes), carga el módulo por ruta absoluta, SQLite :memory: con INSERT/SELECT, escribe resultado en JSON y cierra con timeout garantizado. Pruebas separadas: **POSITIVO** (módulo real → ok:true con ABI y versión reportados) y **NEGATIVO** (binario .node sintético → ok:false con error, salida controlada). Sin atribuir avisos del propietario sin evidencia.
+2. **Cero escritura en verificar**: eliminada la última llamada a `prepararRutasDatos` (que hace mkdir de raiz/datos/adjuntos/respaldos/registros); las rutas se calculan a mano. Prueba ejecutable del repro del auditor: retirar registros/respaldos vacíos de un perfil sembrado → verificar PASA exit 0 y **el árbol no se modifica** (carpetas NO recreadas, listado idéntico antes/después).
+3. **Scripts PowerShell conectados al pipeline real**: `qa-windows.ps1 -ConInstalador` y `actualizar-windows.ps1` ahora ejecutan `npm run dist:win:qa` (rebuild→probe→build→NSIS→verificación de artefacto) y **exigen el artefacto NSIS con hash SHA-256** antes de anunciar éxito — si dist:win:qa termina sin instalador en paquete\, terminan con error inequívoco. El camino de desarrollo usa `rebuild-electron.mjs` + `probe-electron-abi.mjs` verificados (no install-app-deps suelto; eliminado el paso redundante de actualizar-windows). `actualizar-windows.ps1` audita guardas/marcador igual que qa-windows (case-insensitive, operativo+descendientes, marcador único solo en perfil nuevo vacío).
+4. **Typecheck ejecutable**: la propiedad raíz `typecheck` (no ejecutable) fue eliminada; `scripts.typecheck` ahora incluye los 4 proyectos (node/preload/renderer/scripts). Prueba de suite verifica `pkg.typecheck === undefined` y `scripts.typecheck` contiene tsconfig.scripts.json.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos, entrada ejecutable) → sin errores.
+- `npx vitest run` → 242/242 (53 archivos).
+- `npm run build` → OK; CLI compilado incluido.
+- CLI ejecutado real: verificar con registros/respaldos retirados → PASA exit 0 sin recrear carpetas.
+
+### Límites exactos
+
+- Sandbox Linux: el harness de prueba valida el mecanismo CJS/JSON con Node (ABI 127); el POSITIVO con Electron real se ejecuta en Windows (donde el producto probe ya pasó según tu verificación). Instalación/actualización/recorrido offline Windows siguen pendientes de tu QA real de dos versiones.

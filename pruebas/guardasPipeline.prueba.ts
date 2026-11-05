@@ -108,6 +108,22 @@ describe('auditoría 46: guardas del CLI semilla-qa contra fixtures', () => {
     expect(conAdicional.salida).toContain('bitacora-conserva');
   });
 
+  it('verificar es CERO ESCRITURA: carpetas retiradas no se recrean y el árbol no se modifica', () => {
+    const perfil = path.join(dir, 'perfil-cero-escritura');
+    const manifiesto = path.join(dir, 'm.json');
+    expect(cli('sembrar', perfil, manifiesto).status).toBe(0);
+    // Retirar carpetas vacías registros/respaldos (repro del auditor).
+    fs.rmdirSync(path.join(perfil, 'registros'));
+    fs.rmdirSync(path.join(perfil, 'respaldos'));
+    const antes = fs.readdirSync(perfil).sort().join(',');
+    const r = cli('verificar', perfil, manifiesto);
+    expect(r.status).toBe(0);
+    const despues = fs.readdirSync(perfil).sort().join(',');
+    expect(despues).toBe(antes);
+    expect(fs.existsSync(path.join(perfil, 'registros'))).toBe(false);
+    expect(fs.existsSync(path.join(perfil, 'respaldos'))).toBe(false);
+  });
+
   it('ruta relativa y base operativa (case-insensitive) se rechazan antes de abrir SQLite', () => {
     const rRelativa = cli('sembrar', 'relativa', path.join(dir, 'm.json'));
     expect(rRelativa.status).not.toBe(0);

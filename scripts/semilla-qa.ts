@@ -191,7 +191,9 @@ async function verificar(perfil: string, manifiestoRuta: string): Promise<void> 
   }
   const Database = (await import('better-sqlite3')).default;
   const db = new Database(rutaDb, { readonly: true, fileMustExist: true });
-  const rutas = prepararRutasDatos(perfil);
+  // Rutas calculadas SIN mkdir: la verificación es de LECTURA y no debe crear/reparar nada
+  // (prepararRutasDatos hace mkdirSync de raiz/datos/adjuntos/respaldos/registros).
+  const rutas = { raiz: perfil, datos: rutaDatos, adjuntos: path.join(perfil, 'adjuntos'), respaldos: path.join(perfil, 'respaldos'), registros: path.join(perfil, 'registros') };
   let estado: 'PASA' | 'FALLA' = 'PASA' as 'PASA' | 'FALLA';
   const comprobar = (nombre: string, ok: boolean, detalle: string) => {
     console.log(`${ok ? 'PASA' : 'FALLA'} ${nombre}: ${detalle}`);

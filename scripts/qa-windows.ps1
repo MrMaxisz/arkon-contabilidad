@@ -66,12 +66,20 @@ try {
   }
   Requiere 'Build main + preload empaquetado + renderer' { npm run build }
   if ($ConInstalador) {
-    # electron-builder reconstruye las dependencias nativas para Electron y genera el NSIS en paquete\.
-    Requiere 'Instalador NSIS (salida en paquete\)' { npm run dist:win }
-    Write-Host "Instalador generado en paquete\ (ver paquete\*.exe)"
+    # Pipeline REAL completo: rebuild explícito → probe con Electron → build → NSIS → verificación de artefacto.
+    # Exige artefacto y hash verificados antes de anunciar éxito; falla con error inequívoco en caso contrario.
+    Requiere 'Pipeline ABI completo (rebuild→probe→build→NSIS→verificación)' { npm run dist:win:qa }
+    $nsis = Get-ChildItem -Path (Join-Path $raizRepo 'paquete') -Filter '*.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $nsis) {
+      throw 'FALLO: dist:win:qa terminó pero no se encontró el instalador NSIS en paquete\. Sin artefacto no hay éxito.'
+    }
+    $hash = (Get-FileHash $nsis.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Host "Instalador generado y verificado: $($nsis.FullName)"
+    Write-Host "SHA256: $hash"
   } else {
-    # Reconstruir better-sqlite3 contra el ABI de Electron antes de abrir la app de desarrollo.
-    Requiere 'Reconstruir dependencias nativas para Electron (ABI 130)' { npx electron-builder install-app-deps }
+    # Camino de DESARROLLO: rebuild explícito + probe verificado (NO install-app-deps suelto).
+    Requiere 'Reconstruir better-sqlite3 para Electron (ABI explícito)' { node scripts/rebuild-electron.mjs }
+    Requiere 'Probe de ABI con Electron real' { node scripts/probe-electron-abi.mjs }
   }
   Requiere 'Arrancar la app con el perfil aislado (datos contables y Chromium separados)' {
     $env:ARKON_RUTA_DATOS = $Perfil

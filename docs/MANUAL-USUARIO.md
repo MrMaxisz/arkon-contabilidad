@@ -10,7 +10,7 @@ que decida el contador responsable.
 - Los datos se guardan en `%LOCALAPPDATA%\ARKON Contabilidad\` (fuera de OneDrive): `datos\` (base
   SQLite), `adjuntos\`, `respaldos\` y `registros\`. Para QA existe la variable `ARKON_RUTA_DATOS`
   que redirige SOLO el perfil de pruebas (ver `docs/QA-WINDOWS.md`).
-- Instalación: ejecutar el instalador NSIS generado en `paquete\` (`npm run dist:win`). La
+- Instalación: ejecutar el instalador NSIS generado en `paquete\` (`npm run dist:win:qa`). La
   actualización instala sobre la versión anterior **conservando los datos** del perfil; se recomienda
   crear un respaldo manual antes (botón "Crear respaldo ahora" en la vista Respaldo).
 - Sin internet: todas las funciones son locales; no hay telemetría ni servicios en línea.
