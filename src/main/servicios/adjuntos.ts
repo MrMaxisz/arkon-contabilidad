@@ -137,19 +137,20 @@ export function retencionRespaldosAutomaticos(db: Database.Database, dirRespaldo
   if (!fs.existsSync(dirRespaldos)) {
     return { conservados: 0, depurados: 0 };
   }
-  const automaticos = fs
+  const bases = fs
     .readdirSync(dirRespaldos)
-    .filter(f => f.startsWith('respaldo-previo-migracion-') || f.startsWith('respaldo-automatico-'))
+    .filter(f => (f.startsWith('respaldo-previo-migracion-') || f.startsWith('respaldo-automatico-')) && f.endsWith('.db'))
     .sort()
     .reverse();
-  const aConservar = new Set(automaticos.slice(0, retencion));
+  const aConservar = new Set(bases.slice(0, retencion));
   let depurados = 0;
-  for (const archivo of automaticos) {
-    if (aConservar.has(archivo)) {
+  for (const base of bases) {
+    if (aConservar.has(base)) {
       continue;
     }
-    fs.rmSync(path.join(dirRespaldos, archivo), { force: true });
-    fs.rmSync(path.join(dirRespaldos, `${archivo}.manifest.json`), { force: true });
+    fs.rmSync(path.join(dirRespaldos, base), { force: true });
+    fs.rmSync(path.join(dirRespaldos, `${base}.manifest.json`), { force: true });
+    fs.rmSync(path.join(dirRespaldos, `${base}-adjuntos`), { recursive: true, force: true });
     depurados++;
   }
   return { conservados: aConservar.size, depurados };

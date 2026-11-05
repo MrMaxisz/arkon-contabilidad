@@ -14,7 +14,7 @@ function hashArchivo(ruta: string): string {
   return crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
 }
 
-function verificarIntegridad(rutaDb: string): void {
+export function verificarIntegridad(rutaDb: string): void {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3');
   const copia = new Database(rutaDb, { readonly: true });
   try {

@@ -1,6 +1,18 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la vigésima revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (tras la vigésima primera revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Correcciones de la vigésima primera revisión — aplicadas y probadas (desde los flujos reales)
+
+- **[P1] Copia previa a migración con contrato completo**: manifiesto con `hashSha256`, verificación de integridad antes de renombrar, adjuntos incluidos en el paquete, versión de esquema de la copia anterior (no la destino). Regresión: base v9 con datos → copia previa → **se descubre por `descubrirRespaldos` y se restaura por `manejarRestauracion`** recuperando los datos.
+- **[P1] Respaldo/restauración coordinan adjuntos**: `respaldo:crear` pasa la carpeta de adjuntos (regresión desde el comando real: manifiesto con 1 adjunto); `manejarRestauracion` valida y copia los adjuntos a un área temporal **antes** de sustituir la base, preserva copia previa de adjuntos y rechaza paquetes alterados sin modificar base ni adjuntos activos. Regresiones: recuperación completa en perfil limpio (base + adjunto + contenido verificado) y paquete alterado rechazado íntegro.
+- **[P2] Editor conserva itemId**: el tipo de `lineasGuardadas` en `editar` declara `itemId` y el mapeo lo transporta (ya se corrigió el mapeo en la entrega anterior; el tipo faltante se completa).
+- **[P2] Aprobadas heredadas** (migración v11): las cotizaciones aprobadas antes de v10 reciben `cliente_snapshot` fijado con la mejor evidencia disponible al migrar (nombre vigente del cliente en ese momento); posteriores ediciones del maestro ya no cambian su documento. Limitación documentada: esa instantánea proviene de la migración, no del momento original de aprobación (no existe evidencia previa). Regresión de migración incluida.
+- **[P2] Retención por paquetes**: cuenta respaldos por archivo base válido y depura el paquete completo (base + manifiesto + adjuntos); integrada en el flujo de arranque tras la copia previa. Regresión: 4 paquetes con retención 2 → se conservan los más recientes completos.
+
+Pendiente del bloque 2: interfaz de adjuntos, respaldos periódicos al trabajar y recorrido gráfico de restauración en el ejecutable Windows.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **124/124 en verde** (24 archivos, con regresiones desde los comandos y flujos reales). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Correcciones de la vigésima revisión + Bloque 2 (recuperación y adjuntos) — aplicados y probados
 

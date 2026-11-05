@@ -462,5 +462,14 @@ INSERT INTO configuracion (clave, valor, fuente, vigencia)
 SELECT 'respaldo_retencion_automatica', '5', 'Política operativa editable por el propietario', NULL
 WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'respaldo_retencion_automatica');
 `
+  },
+  {
+    version: 11,
+    nombre: 'snapshot_aprobadas_heredadas',
+    sql: `
+UPDATE cotizacion
+SET cliente_snapshot = (SELECT nombre FROM contraparte WHERE id = cotizacion.contraparte_id)
+WHERE estado = 'aprobada' AND cliente_snapshot IS NULL;
+`
   }
 ];

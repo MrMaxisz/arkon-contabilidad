@@ -117,7 +117,7 @@ export const comandos: Record<string, Manejador> = {
   },
   'balance:resumen': ctx => balanceResumen(ctx.db),
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
-  'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp),
+  'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp, ctx.rutas.adjuntos),
   'respaldo:listar': ctx => descubrirRespaldos(ctx.rutas.respaldos),
   'respaldo:restaurar': (ctx, payload) => {
     const p = objeto(payload);

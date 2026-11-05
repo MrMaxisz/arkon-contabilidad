@@ -113,6 +113,7 @@ export default function Cotizaciones() {
         precioUnitarioMinor: string;
         precioConIva: boolean;
         tasaPuntosBase: number;
+        itemId: number | null;
       }>;
       setCondiciones(c.condiciones ?? '');
       setContraparteId(c.contraparteId);
