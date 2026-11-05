@@ -596,3 +596,23 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (main + preload + renderer) → sin errores.
 - `npx vitest run` → 215/215 (48 archivos).
 - `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+## Bloque auditoría 41 (F-14 completo: separador, reglas propias, autorización separada del IVA y formulario sin contaminación)
+
+### Corregido (hallazgos de la auditoría 41)
+
+- **P1-1 CSV multi-retención**: el separador era la secuencia literal barra+n; corregido a LF real. Prueba con DOS retenciones de sujetos distintos: el CSV tiene DOS filas físicas de 23 campos, sin '\n' literal, devengados sumando 3000.00 y retenidos 300.00 conciliados; cancelación y error probados por el handler con diálogo.
+- **P1-2 Validación semántica propia del F-14 v16** (páginas 5-6 del manual, sin trasladar reglas del F-07): domiciliado restringido a 1/2; NIT/NIF y DUI exclusivos ('no ambos'); S ampliado al catálogo real 1-4 (1 Gravada, 2 No Gravada, 3 Excluido/No Constituye Renta, 4 Mixta) más el 9; T 1-2 más 9; U 1-4 más 9; V 1-7 más 9; **nota 9 = los cuatro campos S/T/U/V en 9 juntos** (mezclas rechazadas); **matriz T/U/V** (página 6): T2 → V1-3 con cualquier U; T1+U1 → V4-7; T1+U2/3/4 → V4-5. Reglas compartidas en vía auditada, diagnóstico y exportación. Pruebas corregidas según tu corrección: S=3 y S=4 ahora válidos; 9/9/9/9 aceptado como nota 9 con DUI; 9 mezclado rechazado; matriz verificada en ambos sentidos. **Nómina**: declaración explícita obligatoria en la vía auditada; una retención que involucra nómina queda BLOQUEADA en diagnóstico y exportación ('sin captura de aguinaldos/deducciones J-R') en lugar de exportar 0.00 en importes desconocidos.
+- **P2-3 Autorización F-14 separada del IVA**: migración v18 con `obligacion_f14` en vigencia_fiscal; el diagnóstico/exportación del F-14 exige cobertura de esa autorización (ya no inscrito_iva), coherente con la nota 9 que contempla sujetos no inscritos en IVA. `vigencia:crear` acepta `obligacionF14`. Casos probados: administrativo sin autorización → bloqueado con mensaje explícito; hipotético autorizado sin IVA → exportable. La presentación real de ARKON sigue bloqueada hasta configuración profesional explícita (no se activa nada).
+- **P2-4 Formulario sin contaminación**: `fiscal:retencionMetadatosLeer` + carga al seleccionar con token contra respuestas tardías; al alternar retención los campos se recargan del sujeto correspondiente (el NIT de A no persiste en B); sin clasificaciones preseleccionadas (selectores vacíos con '— Seleccione —'); submit deshabilitado durante la carga; recarga de retención y diagnóstico F-14 tras guardar. Pruebas de componente: alternancia 31→32 con NITS distintos, guardado con contrato real (responsable/motivo/involucraNomina), y `guardarAnexoF14('2026-11')` por diálogo nativo.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 217/217 (49 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Pendiente (límites reales)
+
+- Apéndice de códigos de ingreso del F-14 (página 17-18 del PDF de imágenes): se valida formato de 2 dígitos; la lista oficial de códigos queda como verificación pendiente antes de cualquier uso real.
+- Soporte interno anual F-11/paquete del contador, manual de usuario e instalación/actualización Windows.

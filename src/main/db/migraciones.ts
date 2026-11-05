@@ -577,4 +577,12 @@ ALTER TABLE retencion ADD COLUMN sector_f14 TEXT;
 ALTER TABLE retencion ADD COLUMN tipo_costo_gasto_f14 TEXT;
 `
   },
+  {
+    version: 18,
+    nombre: 'obligacion_f14_y_nomina',
+    sql: `
+ALTER TABLE vigencia_fiscal ADD COLUMN obligacion_f14 INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE retencion ADD COLUMN involucra_nomina INTEGER;
+`
+  },
 ];

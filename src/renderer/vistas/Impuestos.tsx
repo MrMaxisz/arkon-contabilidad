@@ -104,15 +104,18 @@ export default function Impuestos() {
   } | null>(null);
   const [retencionesF14, setRetencionesF14] = useState<Array<{ id: number; folio: string; contraparteNombre: string; fecha: string }>>([]);
   const [f14Id, setF14Id] = useState(0);
-  const [f14Domiciliado, setF14Domiciliado] = useState('1');
-  const [f14Pais, setF14Pais] = useState('9300');
+  const [f14Domiciliado, setF14Domiciliado] = useState('');
+  const [f14Pais, setF14Pais] = useState('');
   const [f14Nit, setF14Nit] = useState('');
   const [f14Dui, setF14Dui] = useState('');
   const [f14Codigo, setF14Codigo] = useState('');
-  const [f14TipoOp, setF14TipoOp] = useState('1');
-  const [f14Clasificacion, setF14Clasificacion] = useState('2');
-  const [f14Sector, setF14Sector] = useState('2');
-  const [f14CostoGasto, setF14CostoGasto] = useState('1');
+  const [f14TipoOp, setF14TipoOp] = useState('');
+  const [f14Clasificacion, setF14Clasificacion] = useState('');
+  const [f14Sector, setF14Sector] = useState('');
+  const [f14CostoGasto, setF14CostoGasto] = useState('');
+  const [f14Nomina, setF14Nomina] = useState('');
+  const [f14Cargando, setF14Cargando] = useState(false);
+  const consultaF14 = useRef(0);
   const [f14Responsable, setF14Responsable] = useState('');
   const [f14Motivo, setF14Motivo] = useState('');
   const [metaSector, setMetaSector] = useState('');
@@ -761,10 +764,12 @@ export default function Impuestos() {
             clasificacion: f14Clasificacion,
             sector: f14Sector,
             tipoCostoGasto: f14CostoGasto,
+            involucraNomina: f14Nomina === 'si',
             responsable: f14Responsable,
             motivo: f14Motivo
           });
           setMensaje({ texto: 'Metadatos F-14 registrados en bitácora.', tipo: 'ok' });
+          await seleccionarRetencion(f14Id);
           await diagnosticarF14();
         } catch (err) {
           setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
@@ -772,7 +777,7 @@ export default function Impuestos() {
       }}>
         <div className="fila">
           <label>Retención
-            <select value={String(f14Id)} onChange={e => setF14Id(Number(e.target.value))} required>
+            <select value={String(f14Id)} onChange={e => void seleccionarRetencion(Number(e.target.value))} required>
               <option value="0">— Seleccione retención —</option>
               {retencionesF14.map(r => (
                 <option key={r.id} value={String(r.id)}>{r.folio} · {r.contraparteNombre} ({r.fecha})</option>
@@ -780,7 +785,8 @@ export default function Impuestos() {
             </select>
           </label>
           <label>Domiciliado (A)
-            <select value={f14Domiciliado} onChange={e => setF14Domiciliado(e.target.value)}>
+            <select value={f14Domiciliado} onChange={e => setF14Domiciliado(e.target.value)} required>
+              <option value="">— Seleccione —</option>
               <option value="1">1 Domiciliado</option>
               <option value="2">2 No domiciliado</option>
             </select>
@@ -792,14 +798,18 @@ export default function Impuestos() {
         <div className="fila">
           <label>Código ingreso (F)<input value={f14Codigo} onChange={e => setF14Codigo(e.target.value)} maxLength={2} required placeholder="2 dígitos" /></label>
           <label>Tipo operación (S)
-            <select value={f14TipoOp} onChange={e => setF14TipoOp(e.target.value)}>
+            <select value={f14TipoOp} onChange={e => setF14TipoOp(e.target.value)} required>
+              <option value="">— Seleccione —</option>
               <option value="1">1 Gravada</option>
               <option value="2">2 No gravada</option>
+              <option value="3">3 Excluido/No constituye renta</option>
+              <option value="4">4 Mixta</option>
               <option value="9">9 Nota 9</option>
             </select>
           </label>
           <label>Clasificación (T)
-            <select value={f14Clasificacion} onChange={e => setF14Clasificacion(e.target.value)}>
+            <select value={f14Clasificacion} onChange={e => setF14Clasificacion(e.target.value)} required>
+              <option value="">— Seleccione —</option>
               <option value="1">1 Costo</option>
               <option value="2">2 Gasto</option>
               <option value="9">9 Nota 9</option>
@@ -809,9 +819,18 @@ export default function Impuestos() {
           <label>Tipo costo/gasto (V)<input value={f14CostoGasto} onChange={e => setF14CostoGasto(e.target.value)} maxLength={1} required /></label>
         </div>
         <div className="fila">
+          <label>¿Involucra nómina? (J-R)
+            <select value={f14Nomina} onChange={e => setF14Nomina(e.target.value)} required>
+              <option value="">— Seleccione —</option>
+              <option value="no">No (columnas J-R en 0.00)</option>
+              <option value="si">Sí (bloqueado: sin captura de nómina)</option>
+            </select>
+          </label>
           <label>Responsable<input value={f14Responsable} onChange={e => setF14Responsable(e.target.value)} required /></label>
           <label style={{ flex: 2 }}>Motivo<input value={f14Motivo} onChange={e => setF14Motivo(e.target.value)} required /></label>
-          <button className="primario" type="submit" disabled={!f14Id}>Registrar metadatos F-14</button>
+          <button className="primario" type="submit" disabled={!f14Id || f14Cargando}>
+            {f14Cargando ? 'Cargando retención…' : 'Registrar metadatos F-14'}
+          </button>
         </div>
       </form>
       <p className="aviso error">
@@ -844,6 +863,53 @@ export default function Impuestos() {
         setRetencionesF14(filas ?? []);
       })
       .catch(() => setRetencionesF14([]));
+  }
+
+  async function seleccionarRetencion(retencionId: number) {
+    const numeroConsulta = ++consultaF14.current;
+    if (!retencionId) {
+      setF14Id(0);
+      setF14Cargando(false);
+      return;
+    }
+    setF14Id(retencionId);
+    setF14Cargando(true);
+    try {
+      const r = (await api().invocar('fiscal:retencionMetadatosLeer', { retencionId })) as {
+        domiciliado: string | null;
+        codigo_pais: string | null;
+        nit_nif: string | null;
+        dui: string | null;
+        codigo_ingreso: string | null;
+        tipo_operacion_f14: string | null;
+        clasificacion_f14: string | null;
+        sector_f14: string | null;
+        tipo_costo_gasto_f14: string | null;
+        involucra_nomina: number | null;
+      };
+      if (consultaF14.current !== numeroConsulta) {
+        return;
+      }
+      setF14Domiciliado(r.domiciliado ?? '');
+      setF14Pais(r.codigo_pais ?? '');
+      setF14Nit(r.nit_nif ?? '');
+      setF14Dui(r.dui ?? '');
+      setF14Codigo(r.codigo_ingreso ?? '');
+      setF14TipoOp(r.tipo_operacion_f14 ?? '');
+      setF14Clasificacion(r.clasificacion_f14 ?? '');
+      setF14Sector(r.sector_f14 ?? '');
+      setF14CostoGasto(r.tipo_costo_gasto_f14 ?? '');
+      setF14Nomina(r.involucra_nomina === null ? '' : r.involucra_nomina === 1 ? 'si' : 'no');
+    } catch (err) {
+      if (consultaF14.current === numeroConsulta) {
+        setF14Id(0);
+        setMensaje({ texto: `No se pudo cargar la retención ${retencionId}: ${String(err instanceof Error ? err.message : err)}`, tipo: 'error' });
+      }
+    } finally {
+      if (consultaF14.current === numeroConsulta) {
+        setF14Cargando(false);
+      }
+    }
   }
 
   async function diagnosticarF14() {

@@ -20,7 +20,7 @@ export interface VigenciaFiscal {
 
 export function crearVigencia(
   db: Database.Database,
-  entrada: { desde: string; hasta?: string; inscritoIva: boolean; descripcion?: string; fuente?: string; responsable: string }
+  entrada: { desde: string; hasta?: string; inscritoIva: boolean; obligacionF14?: boolean; descripcion?: string; fuente?: string; responsable: string }
 ): number {
   validarFechaCalendario(entrada.desde);
   if (entrada.hasta) {
@@ -38,11 +38,12 @@ export function crearVigencia(
     throw new ErrorFiscal('La vigencia se solapa con una existente; las vigencias no se superponen');
   }
   const info = db
-    .prepare('INSERT INTO vigencia_fiscal (desde, hasta, inscrito_iva, descripcion, fuente, responsable) VALUES (?, ?, ?, ?, ?, ?)')
+    .prepare('INSERT INTO vigencia_fiscal (desde, hasta, inscrito_iva, obligacion_f14, descripcion, fuente, responsable) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .run(
       entrada.desde,
       entrada.hasta ?? null,
       entrada.inscritoIva ? 1 : 0,
+      entrada.obligacionF14 ? 1 : 0,
       entrada.descripcion?.trim() ?? null,
       entrada.fuente?.trim() ?? null,
       entrada.responsable.trim()

@@ -14,7 +14,8 @@ import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio }
 import { generarPaqueteContador } from './servicios/paqueteContador';
 import {
   completarMetadatosRetencion,
-  diagnosticarAnexoRetencionesF14
+  diagnosticarAnexoRetencionesF14,
+  leerMetadatosRetencion
 } from './servicios/anexoF14';
 import {
   diagnosticarAnexo1Ventas,
@@ -511,6 +512,7 @@ export const comandos: Record<string, Manejador> = {
         desde: texto(p, 'desde'),
         hasta: typeof p.hasta === 'string' && p.hasta ? p.hasta : undefined,
         inscritoIva: p.inscritoIva === true,
+        obligacionF14: p.obligacionF14 === true,
         descripcion: typeof p.descripcion === 'string' ? p.descripcion : undefined,
         fuente: typeof p.fuente === 'string' ? p.fuente : undefined,
         responsable: texto(p, 'responsable')
@@ -786,11 +788,16 @@ export const comandos: Record<string, Manejador> = {
         tipoOperacion: texto(p, 'tipoOperacion'),
         clasificacion: texto(p, 'clasificacion'),
         sector: texto(p, 'sector'),
-        tipoCostoGasto: texto(p, 'tipoCostoGasto')
+        tipoCostoGasto: texto(p, 'tipoCostoGasto'),
+        involucraNomina: p.involucraNomina === true
       },
       texto(p, 'responsable'),
       texto(p, 'motivo')
     );
+  },
+  'fiscal:retencionMetadatosLeer': (ctx, payload) => {
+    const p = objeto(payload);
+    return leerMetadatosRetencion(ctx.db, entero(p, 'retencionId'));
   }
 };
 
