@@ -88,36 +88,35 @@ describe('auditoría 27: P1 intercalación determinista de copia con uso concurr
 
     const dbReal = ctx.db;
     const backupOriginal = dbReal.backup.bind(dbReal);
-    let backupResuelto = false;
+    let instantaneaProducida = false;
+    let adjuntoConcurrenteRegistrado = false;
     (dbReal as unknown as { backup: (ruta: string) => Promise<void> }).backup = async (rutaDestino: string) => {
       const promesa = backupOriginal(rutaDestino);
-      await new Promise(resolve => setTimeout(resolve, 50));
-      backupResuelto = true;
-      return promesa;
+      await promesa;
+      instantaneaProducida = true;
+      await new Promise(resolve => setTimeout(resolve, 30));
+      registrarAdjunto(dbReal, rutas.adjuntos, {
+        entidad: 'compra',
+        entidadId: 'CMP-000001',
+        nombreOriginal: 'concurrente.txt',
+        rutaOrigen: origenConcurrente,
+        responsable: 'p'
+      });
+      adjuntoConcurrenteRegistrado = true;
     };
 
     const origenConcurrente = path.join(dir, 'concurrente.txt');
     fs.writeFileSync(origenConcurrente, 'adjunto concurrente a27', 'utf8');
-    setTimeout(() => {
-      if (backupResuelto) {
-        registrarAdjunto(dbReal, rutas.adjuntos, {
-          entidad: 'compra',
-          entidadId: 'CMP-000001',
-          nombreOriginal: 'concurrente.txt',
-          rutaOrigen: origenConcurrente,
-          responsable: 'p'
-        });
-      }
-    }, 25);
 
     const resultado = await respaldoPeriodicoSiCorresponde(ctx);
     (dbReal as unknown as { backup: (ruta: string) => Promise<void> }).backup = backupOriginal;
 
+    expect(adjuntoConcurrenteRegistrado).toBe(true);
     expect(resultado.creado).toBe(true);
     const manifiesto = JSON.parse(
       fs.readFileSync(path.join(rutas.respaldos, `${resultado.nombre}.manifest.json`), 'utf8')
     ) as { adjuntos: Array<{ rutaRelativa: string }> };
-    expect(manifiesto.adjuntos.length).toBeGreaterThanOrEqual(1);
+    expect(manifiesto.adjuntos.length).toBe(1);
     ctx.db.close();
     const idx = abiertas.findIndex(d => !d.open);
     if (idx >= 0) {

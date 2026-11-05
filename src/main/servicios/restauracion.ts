@@ -431,42 +431,42 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     verificarIntegridad(temporal);
     const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
     const dbTemporal = new Database(temporal, { readonly: true, fileMustExist: true });
+    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }>;
+    let versionEsquemaCopia: number;
     try {
-      const { inventarioAdjuntosRegistrado, copiarAdjuntosRespaldo } = await import('./adjuntos');
-      const adjuntos = copiarAdjuntosRespaldo(dbTemporal, ctx.rutas.adjuntos, `${destino}-adjuntos`);
-      const versionEsquemaCopia = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
-      if (!fs.existsSync(temporal)) {
-        return { creado: false, omitidoPor: 'la copia temporal desapareció durante el respaldo' };
-      }
-      fs.renameSync(temporal, destino);
-      fs.writeFileSync(
-        `${destino}.manifest.json`,
-        JSON.stringify(
-          {
-            nombre: nombreArchivo,
-            hashSha256: hash,
-            versionApp: ctx.versionApp,
-            versionEsquema: versionEsquemaCopia,
-            creadoEn: new Date().toISOString(),
-            adjuntos,
-            nota: 'Respaldo automático periódico'
-          },
-          null,
-          2
-        ),
-        'utf8'
-      );
-      ctx.db
-        .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
-        .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
-      const { retencionRespaldosAutomaticos } = await import('./adjuntos');
-      retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
-      return { creado: true, nombre: nombreArchivo };
+      const { copiarAdjuntosRespaldo } = await import('./adjuntos');
+      adjuntos = copiarAdjuntosRespaldo(dbTemporal, ctx.rutas.adjuntos, `${destino}-adjuntos`);
+      versionEsquemaCopia = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
     } finally {
-      if (dbTemporal.open) {
-        dbTemporal.close();
-      }
+      dbTemporal.close();
     }
+    if (!fs.existsSync(temporal)) {
+      return { creado: false, omitidoPor: 'la copia temporal desapareció durante el respaldo' };
+    }
+    fs.renameSync(temporal, destino);
+    fs.writeFileSync(
+      `${destino}.manifest.json`,
+      JSON.stringify(
+        {
+          nombre: nombreArchivo,
+          hashSha256: hash,
+          versionApp: ctx.versionApp,
+          versionEsquema: versionEsquemaCopia,
+          creadoEn: new Date().toISOString(),
+          adjuntos,
+          nota: 'Respaldo automático periódico'
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    ctx.db
+      .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
+      .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
+    const { retencionRespaldosAutomaticos } = await import('./adjuntos');
+    retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
+    return { creado: true, nombre: nombreArchivo };
   } finally {
     operacionEnCurso = false;
   }

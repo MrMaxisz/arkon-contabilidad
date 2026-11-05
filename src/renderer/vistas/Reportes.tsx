@@ -34,8 +34,14 @@ export default function Reportes() {
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
-    void api().invocar('auxiliar:contrapartes').then(r => setAuxiliarContrapartes(r as AuxiliarContrapartes));
-    void api().invocar('auxiliar:efectivo').then(r => setAuxiliarEfectivo(r as AuxiliarEfectivo));
+    void api()
+      .invocar('auxiliar:contrapartes')
+      .then(r => setAuxiliarContrapartes(r as AuxiliarContrapartes))
+      .catch(err => setMensaje(`Error al consultar auxiliar de contrapartes: ${String(err instanceof Error ? err.message : err)}`));
+    void api()
+      .invocar('auxiliar:efectivo')
+      .then(r => setAuxiliarEfectivo(r as AuxiliarEfectivo))
+      .catch(err => setMensaje(`Error al consultar auxiliar de efectivo: ${String(err instanceof Error ? err.message : err)}`));
   }, []);
 
   useEffect(() => {

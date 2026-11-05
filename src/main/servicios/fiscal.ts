@@ -867,10 +867,11 @@ export function auxiliarEfectivo(db: Database.Database): AuxiliarEfectivo {
   const filas = db
     .prepare(
       `SELECT c.id, c.codigo, c.nombre,
-              COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+              COALESCE(SUM(CASE WHEN a.estado IN ('contabilizado','anulado')
+                                THEN l.debe_minor - l.haber_minor ELSE 0 END), 0) AS saldo
        FROM cuenta c
        LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
-       LEFT JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       LEFT JOIN asiento a ON a.id = l.asiento_id
        WHERE c.es_efectivo = 1 AND c.activa = 1
        GROUP BY c.id, c.codigo, c.nombre
        ORDER BY c.codigo`

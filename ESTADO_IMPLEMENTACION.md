@@ -1,6 +1,16 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (auditoría 27 de Codex; lote de recuperación + inicio del bloque 3 de auxiliares). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 28 de Codex; integridad Windows + auxiliares completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 28 (Codex) — integridad Windows + auxiliares completos — aplicado y probado
+
+Correcciones:
+- **[P1] EBUSY Windows**: `dbTemporal` se cierra ANTES de `renameSync` en `respaldoPeriodicoSiCorresponde` (restauracion.ts); `crearRespaldo` manual también cierra antes de renombrar. Los lectores readonly se cierran antes de publicar/depurar.
+- **[P1] crearRespaldo manual usa instantánea**: `crearRespaldo` abre la base temporal tras el backup para derivar inventario y versión; mutex `operacionRespaldoEnCurso` compartido impide copias/restauraciones simultáneas. Regresión de intercalación corregida: señal explíta de instantánea producida, operación concurrente ejecutada y afirmada, manifiesto refleja la instantánea.
+- **[P1] auxiliarEfectivo filtra borradores**: la suma usa `CASE WHEN a.estado IN ('contabilizado','anulado')` en lugar de LEFT JOIN con filtro en el JOIN (que no excluía líneas de borradores). Regresión: borrador → 0.00; contabilizado → 1.23; reverso → 1.23; concilia en cada paso.
+- **[P2] Preload añade auxiliares**: `auxiliar:contrapartes` y `auxiliar:efectivo` en `COMANDOS_PERMITIDOS`; Reportes captura errores y muestra mensajes en lugar de estados vacíos ante rechazo.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **148/148 en verde** (31 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Auditoría 27 (Codex) — lote de recuperación + bloque 3 (auxiliares) — aplicado y probado
 

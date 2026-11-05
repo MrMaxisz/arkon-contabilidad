@@ -30,55 +30,77 @@ export function verificarIntegridad(rutaDb: string): void {
   }
 }
 
+let operacionRespaldoEnCurso = false;
+
+export function operacionRespaldoDisponible(): boolean {
+  return !operacionRespaldoEnCurso;
+}
+
 export async function crearRespaldo(
   db: Database.Database,
   dirRespaldos: string,
   versionApp: string,
   dirAdjuntos?: string
 ): Promise<InfoRespaldo> {
-  fs.mkdirSync(dirRespaldos, { recursive: true });
-  const marca = new Date().toISOString().replace(/[:.]/g, '-');
-  const nombre = `respaldo-${marca}.db`;
-  const destino = path.join(dirRespaldos, nombre);
-  const temporal = `${destino}.tmp`;
-  await db.backup(temporal);
-  verificarIntegridad(temporal);
-  const hash = hashArchivo(temporal);
-  fs.renameSync(temporal, destino);
-  const version = versionEsquemaActual();
-  const adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(db, dirAdjuntos, `${destino}-adjuntos`) : [];
-  fs.writeFileSync(
-    `${destino}.manifest.json`,
-    JSON.stringify(
-      {
-        nombre,
-        hashSha256: hash,
-        versionApp,
-        versionEsquema: version,
-        creadoEn: new Date().toISOString(),
-        adjuntos
-      },
-      null,
-      2
-    ),
-    'utf8'
-  );
-  const info = db
-    .prepare(
-      'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
-    )
-    .run(nombre, hash, versionApp, version, 'disponible');
-  const id = Number(info.lastInsertRowid);
-  registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(id), { nombre, hash });
-  return {
-    id,
-    creadoEn: new Date().toISOString(),
-    nombre,
-    hashSha256: hash,
-    versionApp,
-    versionEsquema: version,
-    estado: 'disponible'
-  };
+  if (operacionRespaldoEnCurso) {
+    throw new ErrorRespaldo('Otra operación de respaldo/restauración está en curso');
+  }
+  operacionRespaldoEnCurso = true;
+  try {
+    fs.mkdirSync(dirRespaldos, { recursive: true });
+    const marca = new Date().toISOString().replace(/[:.]/g, '-');
+    const nombre = `respaldo-${marca}.db`;
+    const destino = path.join(dirRespaldos, nombre);
+    const temporal = `${destino}.tmp`;
+    await db.backup(temporal);
+    verificarIntegridad(temporal);
+    const hash = hashArchivo(temporal);
+    const Database = require('better-sqlite3') as typeof import('better-sqlite3');
+    const dbTemporal = new Database(temporal, { readonly: true, fileMustExist: true });
+    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
+    let version: number;
+    try {
+      version = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
+      adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(dbTemporal, dirAdjuntos, `${destino}-adjuntos`) : [];
+    } finally {
+      dbTemporal.close();
+    }
+    fs.renameSync(temporal, destino);
+    fs.writeFileSync(
+      `${destino}.manifest.json`,
+      JSON.stringify(
+        {
+          nombre,
+          hashSha256: hash,
+          versionApp,
+          versionEsquema: version,
+          creadoEn: new Date().toISOString(),
+          adjuntos
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    const info = db
+      .prepare(
+        'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(nombre, hash, versionApp, version, 'disponible');
+    const id = Number(info.lastInsertRowid);
+    registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(id), { nombre, hash });
+    return {
+      id,
+      creadoEn: new Date().toISOString(),
+      nombre,
+      hashSha256: hash,
+      versionApp,
+      versionEsquema: version,
+      estado: 'disponible'
+    };
+  } finally {
+    operacionRespaldoEnCurso = false;
+  }
 }
 
 interface FilaRespaldo {

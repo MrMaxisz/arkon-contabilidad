@@ -8,6 +8,7 @@ import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
 import { crearContraparte, registrarVenta, registrarCompra, anularDocumento } from '../src/main/servicios/operacion';
 import { registrarCobro, registrarPago, registrarTransferencia } from '../src/main/servicios/tesoreria';
 import { auxiliarContrapartes, auxiliarEfectivo } from '../src/main/servicios/fiscal';
+import { contabilizarAsiento, anularAsiento } from '../src/main/servicios/motorAsientos';
 import { despachar } from '../src/main/comandos';
 
 let dir: string;
@@ -221,6 +222,58 @@ describe('bloque 3: auxiliares conciliados con documentos, aplicaciones y mayor'
     const idx2 = abiertas.findIndex(d => !d.open);
     if (idx2 >= 0) {
       abiertas.splice(idx2, 1);
+    }
+  });
+});
+
+describe('auditoría 28: auxiliar de efectivo filtra borradores', () => {
+  it('un asiento en borrador no afecta el auxiliar; contabilizado y reverso sí', () => {
+    const ctx = contexto();
+    const id1101 = idCuenta(ctx.db, '1101');
+    const id3101 = idCuenta(ctx.db, '3101');
+
+    ctx.db.prepare("INSERT OR IGNORE INTO periodo (inicio, fin) VALUES ('2026-12-01', '2026-12-31')").run();
+    const periodoId = (ctx.db.prepare("SELECT id FROM periodo WHERE inicio = '2026-12-01'").get() as { id: number }).id;
+    const infoBorrador = ctx.db
+      .prepare(
+        "INSERT INTO asiento (folio, fecha_operacion, periodo_id, ambito_id, concepto, estado, responsable, clave_idempotencia) VALUES ('B-000001', '2026-12-01', ?, 'administrativo', 'Borrador sintético', 'borrador', 'p', 'as-borrador-a28')"
+      )
+      .run(periodoId);
+    const borradorId = Number(infoBorrador.lastInsertRowid);
+    ctx.db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(borradorId, id1101, 123, 0);
+    ctx.db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(borradorId, id3101, 0, 123);
+
+    const auxiliarBorrador = auxiliarEfectivo(ctx.db);
+    const cajaBorrador = auxiliarBorrador.cuentas.find(c => c.codigo === '1101');
+    expect(cajaBorrador?.saldoMinor).toBe('0.00');
+    expect(auxiliarBorrador.conciliaMayor).toBe(true);
+
+    ctx.db.prepare("UPDATE asiento SET estado = 'contabilizado', contabilizado_en = datetime('now') WHERE id = ?").run(borradorId);
+    const auxiliarContabilizado = auxiliarEfectivo(ctx.db);
+    const cajaContabilizado = auxiliarContabilizado.cuentas.find(c => c.codigo === '1101');
+    expect(cajaContabilizado?.saldoMinor).toBe('1.23');
+    expect(auxiliarContabilizado.conciliaMayor).toBe(true);
+
+    const asiento = contabilizarAsiento(ctx.db, {
+      fechaOperacion: '2026-12-05',
+      concepto: 'Asiento a reversar',
+      lineas: [
+        { cuentaId: id1101, debeMinor: '10.00', haberMinor: '' },
+        { cuentaId: id3101, debeMinor: '', haberMinor: '10.00' }
+      ],
+      claveIdempotencia: 'as-rev-a28',
+      responsable: 'p',
+      ambitoId: 'administrativo'
+    });
+    anularAsiento(ctx.db, asiento.asientoId, 'p', 'reverso sintético', true);
+    const auxiliarReverso = auxiliarEfectivo(ctx.db);
+    const cajaReverso = auxiliarReverso.cuentas.find(c => c.codigo === '1101');
+    expect(cajaReverso?.saldoMinor).toBe('1.23');
+    expect(auxiliarReverso.conciliaMayor).toBe(true);
+    ctx.db.close();
+    const idx = abiertas.findIndex(d => !d.open);
+    if (idx >= 0) {
+      abiertas.splice(idx, 1);
     }
   });
 });
