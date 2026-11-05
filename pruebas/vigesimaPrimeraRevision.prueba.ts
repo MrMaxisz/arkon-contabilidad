@@ -61,6 +61,7 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
     expect(manifiesto.hashSha256).toHaveLength(64);
     expect(manifiesto.versionEsquema).toBe(9);
 
+    ctx.db.close();
     const ctxRestauracion = await crearContextoBase(rutas, ruta, 'prueba');
     const resultado = manejarRestauracion(ctxRestauracion, previa!.nombre);
     expect(resultado.ok).toBe(true);
@@ -69,7 +70,6 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
       .get() as { n: number };
     expect(compraPrevia.n).toBe(1);
     ctxRestauracion.db.close();
-    ctx.db.close();
   });
 
   it('el comando respaldo:crear incluye adjuntos y manejarRestauracion recupera base y adjuntos; paquete alterado se rechaza íntegro', async () => {

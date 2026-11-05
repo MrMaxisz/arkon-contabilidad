@@ -40,7 +40,7 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
         verificarIntegridad(temporal);
         const crypto = await import('crypto');
         const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
-        const adjuntos = copiarAdjuntosRespaldo(rutas.adjuntos, `${destino}-adjuntos`);
+        const adjuntos = copiarAdjuntosRespaldo(dbPrevia, rutas.adjuntos, `${destino}-adjuntos`);
         fs.renameSync(temporal, destino);
         fs.writeFileSync(
           `${destino}.manifest.json`,
@@ -113,23 +113,66 @@ export function manejarRestauracion(ctx: ContextoApp, nombre: string): {
   fs.mkdirSync(areaAdjuntosTemporal, { recursive: true });
   restaurarAdjuntosRespaldo(`${ruta}-adjuntos`, areaAdjuntosTemporal, adjuntosEsperados);
   let resultado: { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string };
+  const previaAdjuntos = `${ctx.rutas.adjuntos}.antes-restauracion`;
+  let baseSustituida = false;
+  let adjuntosPreviosPreservados = false;
   try {
     resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb);
+    baseSustituida = true;
+    fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+    if (fs.existsSync(ctx.rutas.adjuntos)) {
+      fs.renameSync(ctx.rutas.adjuntos, previaAdjuntos);
+      adjuntosPreviosPreservados = true;
+    }
+    fs.renameSync(areaAdjuntosTemporal, ctx.rutas.adjuntos);
+    ctx.reabrirBase();
+    const inventarioRestaurado = ctx.db
+      .prepare('SELECT COUNT(*) AS n FROM adjunto')
+      .get() as { n: number };
+    if (inventarioRestaurado.n !== adjuntosEsperados.length) {
+      throw new ErrorRespaldo(
+        `Inventario inconsistente tras restaurar: ${inventarioRestaurado.n} adjunto(s) registrados y ${adjuntosEsperados.length} en el paquete`
+      );
+    }
   } catch (err) {
+    const fallos: string[] = [];
+    if (baseSustituida) {
+      try {
+        const basePrevia = `${ctx.rutaDb}.antes-restauracion`;
+        if (fs.existsSync(basePrevia)) {
+          if (ctx.db.open) {
+            ctx.db.close();
+          }
+          fs.copyFileSync(basePrevia, ctx.rutaDb);
+        }
+      } catch (errBase) {
+        fallos.push(`base: ${String(errBase instanceof Error ? errBase.message : errBase)}`);
+      }
+    }
+    if (adjuntosPreviosPreservados && fs.existsSync(previaAdjuntos)) {
+      try {
+        fs.rmSync(ctx.rutas.adjuntos, { recursive: true, force: true });
+        fs.renameSync(previaAdjuntos, ctx.rutas.adjuntos);
+      } catch (errAdj) {
+        fallos.push(`adjuntos: ${String(errAdj instanceof Error ? errAdj.message : errAdj)}`);
+      }
+    }
+    try {
+      if (!ctx.db.open) {
+        ctx.reabrirBase();
+      }
+    } catch (errRe) {
+      fallos.push(`reapertura: ${String(errRe instanceof Error ? errRe.message : errRe)}`);
+    }
     fs.rmSync(areaAdjuntosTemporal, { recursive: true, force: true });
-    if (!ctx.db.open) {
-      ctx.reabrirBase();
+    if (fallos.length > 0) {
+      throw new ErrorRespaldo(
+        `Restauración fallida y recuperación incompleta (${fallos.join('; ')}); copias previas preservadas en ${previaAdjuntos} y ${ctx.rutaDb}.antes-restauracion`
+      );
     }
     throw err;
   }
-  const previaAdjuntos = `${ctx.rutas.adjuntos}.antes-restauracion`;
   fs.rmSync(previaAdjuntos, { recursive: true, force: true });
-  if (fs.existsSync(ctx.rutas.adjuntos)) {
-    fs.renameSync(ctx.rutas.adjuntos, previaAdjuntos);
-  }
-  fs.renameSync(areaAdjuntosTemporal, ctx.rutas.adjuntos);
-  fs.rmSync(previaAdjuntos, { recursive: true, force: true });
-  ctx.reabrirBase();
   registrarRestauracion(ctx.db, { respaldo: resultado.respaldo, copiaPrevia: resultado.copiaPrevia });
   return resultado;
 }

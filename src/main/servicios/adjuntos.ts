@@ -91,21 +91,52 @@ export function listarAdjuntos(db: Database.Database, entidad?: string, entidadI
   }));
 }
 
-export function copiarAdjuntosRespaldo(dirAdjuntos: string, dirDestino: string): Array<{ rutaRelativa: string; hashSha256: string }> {
-  if (!fs.existsSync(dirAdjuntos)) {
+export function inventarioAdjuntosRegistrado(db: Database.Database): Array<{ rutaRelativa: string; hashSha256: string; nombreOriginal: string }> {
+  const tablaExiste = db
+    .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'adjunto'")
+    .get() as { x: number } | undefined;
+  if (!tablaExiste) {
     return [];
   }
-  fs.mkdirSync(dirDestino, { recursive: true });
-  const registrados: Array<{ rutaRelativa: string; hashSha256: string }> = [];
-  for (const archivo of fs.readdirSync(dirAdjuntos)) {
-    const origen = path.join(dirAdjuntos, archivo);
-    fs.copyFileSync(origen, path.join(dirDestino, archivo));
-    registrados.push({
-      rutaRelativa: archivo,
-      hashSha256: crypto.createHash('sha256').update(fs.readFileSync(origen)).digest('hex')
-    });
+  const filas = db
+    .prepare('SELECT ruta_relativa, hash_sha256, nombre_original FROM adjunto ORDER BY id')
+    .all() as Array<{ ruta_relativa: string; hash_sha256: string; nombre_original: string }>;
+  return filas.map(f => ({
+    rutaRelativa: f.ruta_relativa,
+    hashSha256: f.hash_sha256,
+    nombreOriginal: f.nombre_original
+  }));
+}
+
+export function copiarAdjuntosRespaldo(
+  db: Database.Database,
+  dirAdjuntos: string,
+  dirDestino: string
+): Array<{ rutaRelativa: string; hashSha256: string }> {
+  const inventario = inventarioAdjuntosRegistrado(db);
+  if (inventario.length === 0) {
+    return [];
   }
-  return registrados;
+  if (!fs.existsSync(dirAdjuntos)) {
+    throw new ErrorAdjunto(`La carpeta de adjuntos no existe y hay ${inventario.length} adjunto(s) registrado(s)`);
+  }
+  fs.mkdirSync(dirDestino, { recursive: true });
+  const copiados: Array<{ rutaRelativa: string; hashSha256: string }> = [];
+  for (const registro of inventario) {
+    const origen = path.join(dirAdjuntos, registro.rutaRelativa);
+    if (!fs.existsSync(origen)) {
+      throw new ErrorAdjunto(`Falta el archivo del adjunto registrado: ${registro.nombreOriginal} (${registro.rutaRelativa})`);
+    }
+    const hashActual = crypto.createHash('sha256').update(fs.readFileSync(origen)).digest('hex');
+    if (hashActual !== registro.hashSha256) {
+      throw new ErrorAdjunto(
+        `El adjunto registrado ${registro.nombreOriginal} no coincide con su hash documentado; respaldo rechazado`
+      );
+    }
+    fs.copyFileSync(origen, path.join(dirDestino, registro.rutaRelativa));
+    copiados.push({ rutaRelativa: registro.rutaRelativa, hashSha256: registro.hashSha256 });
+  }
+  return copiados;
 }
 
 export function restaurarAdjuntosRespaldo(dirAdjuntosOrigen: string, dirAdjuntosDestino: string, esperados: Array<{ rutaRelativa: string; hashSha256: string }>): void {

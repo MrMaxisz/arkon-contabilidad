@@ -1,6 +1,15 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la vigésima primera revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (tras la vigésima segunda revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Correcciones de la vigésima segunda revisión — aplicadas y probadas
+
+- **[P1] Recuperación coordinada ante fallos**: `manejarRestauracion` protege toda la sustitución con secuencia de recuperación: conserva la copia previa de base y adjuntos hasta abrir y validar el conjunto nuevo (inventario de adjuntos contrastado); ante fallo de cualquier paso restaura base y adjuntos anteriores y deja conexión utilizable; si la compensación falla, lo informa identificando las copias preservadas. Regresión: fallo inducido al activar adjuntos → base y adjuntos anteriores restaurados, conexión abierta, sin éxito parcial.
+- **[P1] Inventario de adjuntos desde la base**: `copiarAdjuntosRespaldo` enumera desde la tabla `adjunto` de la instantánea SQLite (no desde la carpeta); verifica existencia y hash documentado de cada registro y **rechaza** faltantes o alterados con mensajes que identifican el registro. Política explícita para esquemas sin tabla de adjuntos (inventario vacío). Regresiones: archivo registrado ausente y archivo alterado al crear copia → respaldo rechazado sin paquete; esquema sin tabla → inventario vacío.
+- **[P2] Editor conserva itemId**: el mapeo de `editar` copia `itemId` al estado de cada línea (además del tipo corregido antes).
+- **[P2] Prueba de recuperación cierra conexiones**: la prueba de la copia previa cierra la conexión anterior antes de crear el contexto de restauración (compatible con Windows) y el cierre de todos los contextos queda garantizado.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **128/128 en verde** (25 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Correcciones de la vigésima primera revisión — aplicadas y probadas (desde los flujos reales)
 

@@ -125,7 +125,8 @@ export default function Cotizaciones() {
           cantidad: l.cantidad,
           precioUnitario: l.precioUnitarioMinor,
           precioConIva: l.precioConIva,
-          tasa: String(l.tasaPuntosBase / 100)
+          tasa: String(l.tasaPuntosBase / 100),
+          itemId: l.itemId ?? undefined
         }))
       );
     } catch (err) {

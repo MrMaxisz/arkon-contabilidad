@@ -46,7 +46,7 @@ export async function crearRespaldo(
   const hash = hashArchivo(temporal);
   fs.renameSync(temporal, destino);
   const version = versionEsquemaActual();
-  const adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(dirAdjuntos, `${destino}-adjuntos`) : [];
+  const adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(db, dirAdjuntos, `${destino}-adjuntos`) : [];
   fs.writeFileSync(
     `${destino}.manifest.json`,
     JSON.stringify(
