@@ -9,6 +9,7 @@ export interface ArkonApi {
     contraparteId?: number;
     hastaFecha?: string;
   }): Promise<unknown>;
+  abrirAdjunto(id: number): Promise<unknown>;
 }
 
 export function api(): ArkonApi {

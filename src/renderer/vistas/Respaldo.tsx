@@ -21,7 +21,13 @@ export default function Respaldo() {
   const [responsable, setResponsable] = useState('');
   const [intervaloMinutos, setIntervaloMinutos] = useState('0');
   const [retencionMinutos, setRetencionMinutos] = useState('5');
-  const [estadoPeriodico, setEstadoPeriodico] = useState<{ creado: boolean; nombre?: string; omitidoPor?: string } | null>(null);
+  const [vinculos, setVinculos] = useState<Record<string, Array<{ folio: string; concepto: string; fecha: string }>>>({ venta: [], compra: [], cotizacion: [], proyecto: [] });
+  const [estadoPeriodico, setEstadoPeriodico] = useState<{
+    intervaloMinutos: number;
+    ultimoRespaldo: { creadoEn: string; nombre: string } | null;
+    ultimoFallo: { creadoEn: string; detalle: string } | null;
+    proximaEjecucion: string | null;
+  } | null>(null);
 
   const cargar = useCallback(() => {
     void api().invocar('respaldo:listar').then(r => setRespaldos(r as InfoRespaldo[]));
@@ -34,32 +40,31 @@ export default function Respaldo() {
       .catch(() => setAdjuntos([]));
   }, []);
 
+  const cargarVinculos = useCallback(() => {
+    void api()
+      .invocar('documento:listarVinculos', {})
+      .then(r => setVinculos(r as Record<string, Array<{ folio: string; concepto: string; fecha: string }>>))
+      .catch(() => setVinculos({ venta: [], compra: [], cotizacion: [], proyecto: [] }));
+  }, []);
+
+  const cargarEstadoPeriodico = useCallback(() => {
+    void api()
+      .invocar('respaldo:estadoPeriodico')
+      .then(r => setEstadoPeriodico(r as never))
+      .catch(() => setEstadoPeriodico(null));
+  }, []);
+
   useEffect(() => {
     cargar();
     cargarAdjuntos();
+    cargarVinculos();
     void api().invocar('config:respaldoPeriodicoLeer').then(r => {
       const config = r as { intervaloMinutos: number; retencion: number };
       setIntervaloMinutos(String(config.intervaloMinutos));
       setRetencionMinutos(String(config.retencion));
     });
-    void api().invocar('respaldo:estadoPeriodico').then(r => {
-      const estado = r as {
-        intervaloMinutos: number;
-        ultimoRespaldo: { creadoEn: string; nombre: string } | null;
-        ultimoFallo: { creadoEn: string; detalle: string } | null;
-        proximaEjecucion: string | null;
-      };
-      if (estado.ultimoRespaldo) {
-        setEstadoPeriodico({ creado: true, nombre: estado.ultimoRespaldo.nombre });
-      } else if (estado.ultimoFallo) {
-        setEstadoPeriodico({ creado: false, omitidoPor: `último fallo: ${estado.ultimoFallo.detalle}` });
-      } else if (estado.intervaloMinutos === 0) {
-        setEstadoPeriodico({ creado: false, omitidoPor: 'desactivado (intervalo 0)' });
-      } else {
-        setEstadoPeriodico({ creado: false, omitidoPor: 'sin respaldos automáticos aún' });
-      }
-    });
-  }, [cargar, cargarAdjuntos]);
+    cargarEstadoPeriodico();
+  }, [cargar, cargarAdjuntos, cargarVinculos, cargarEstadoPeriodico]);
 
   async function crear() {
     setOcupado(true);
@@ -68,10 +73,55 @@ export default function Respaldo() {
       const info = (await api().invocar('respaldo:crear')) as InfoRespaldo;
       setMensaje({ texto: `Respaldo creado: ${info.nombre} (hash ${info.hashSha256.slice(0, 12)}…)`, tipo: 'ok' });
       cargar();
+      cargarEstadoPeriodico();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
       setOcupado(false);
+    }
+  }
+
+  async function ejecutarPeriodico() {
+    setOcupado(true);
+    setMensaje(null);
+    try {
+      const r = (await api().invocar('respaldo:ejecutarPeriodico')) as { creado: boolean; nombre?: string; omitidoPor?: string };
+      setMensaje({
+        texto: r.creado
+          ? `Respaldo periódico creado: ${r.nombre}.`
+          : `Respaldo periódico omitido: ${r.omitidoPor ?? 'sin información'}.`,
+        tipo: 'ok'
+      });
+      cargar();
+      cargarEstadoPeriodico();
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      cargarEstadoPeriodico();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function verificarAdjunto(id: number) {
+    try {
+      const r = (await api().invocar('adjunto:verificar', { id })) as { existe: boolean; hashCoincide: boolean; nombreOriginal: string };
+      setMensaje({
+        texto: r.existe && r.hashCoincide
+          ? `Adjunto ${r.nombreOriginal} verificado: hash correcto.`
+          : `Adjunto ${r.nombreOriginal}: ${r.existe ? 'hash NO coincide' : 'archivo ausente en disco'}.`,
+        tipo: r.existe && r.hashCoincide ? 'ok' : 'error'
+      });
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function abrirAdjunto(id: number) {
+    try {
+      const r = (await api().abrirAdjunto(id)) as { abierto: boolean; nombreOriginal: string };
+      setMensaje({ texto: `Adjunto ${r.nombreOriginal} abierto con la aplicación del sistema.`, tipo: 'ok' });
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }
   }
 
@@ -83,6 +133,7 @@ export default function Respaldo() {
       const resultado = (await api().invocar('respaldo:restaurar', { nombre: info.nombre })) as { detalle: string };
       setMensaje({ texto: resultado.detalle, tipo: 'ok' });
       cargar();
+      cargarEstadoPeriodico();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -159,8 +210,13 @@ export default function Respaldo() {
               <option value="proyecto">Proyecto</option>
             </select>
           </label>
-          <label>Identificador del documento (folio)
-            <input value={entidadIdAdjunto} onChange={e => setEntidadIdAdjunto(e.target.value)} required placeholder="CMP-000001" />
+          <label>Documento
+            <select value={entidadIdAdjunto} onChange={e => setEntidadIdAdjunto(e.target.value)} required>
+              <option value="">— Seleccione documento —</option>
+              {(vinculos[entidadAdjunto] ?? []).map(v => (
+                <option key={v.folio} value={v.folio}>{v.folio} · {v.concepto} ({v.fecha})</option>
+              ))}
+            </select>
           </label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
           <button className="primario" type="submit">Registrar adjunto…</button>
@@ -170,7 +226,7 @@ export default function Respaldo() {
         <p className="vacio">Sin adjuntos registrados.</p>
       ) : (
         <table>
-          <thead><tr><th>Entidad</th><th>Documento</th><th>Archivo</th><th>Hash</th><th>Registrado</th></tr></thead>
+          <thead><tr><th>Entidad</th><th>Documento</th><th>Archivo</th><th>Hash</th><th>Registrado</th><th></th></tr></thead>
           <tbody>
             {adjuntos.map(a => (
               <tr key={a.id}>
@@ -179,6 +235,10 @@ export default function Respaldo() {
                 <td>{a.nombreOriginal}</td>
                 <td className="menor">{a.hashSha256.slice(0, 16)}…</td>
                 <td>{a.creadoEn}</td>
+                <td>
+                  <button type="button" onClick={() => void verificarAdjunto(a.id)}>Verificar</button>{' '}
+                  <button type="button" onClick={() => void abrirAdjunto(a.id)}>Abrir</button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -195,6 +255,7 @@ export default function Respaldo() {
             retencion: Number(retencionMinutos) || 5
           });
           setMensaje({ texto: 'Configuración de respaldo periódico guardada.', tipo: 'ok' });
+          cargarEstadoPeriodico();
         } catch (err) {
           setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
         }
@@ -210,11 +271,21 @@ export default function Respaldo() {
         </div>
       </form>
       {estadoPeriodico && (
-        <p className="menor">
-          {estadoPeriodico.creado
-            ? `Último respaldo automático: ${estadoPeriodico.nombre}.`
-            : `Respaldo periódico: ${estadoPeriodico.omitidoPor ?? 'sin información'}.`}
-        </p>
+        <div className="fila">
+          <p className="menor">
+            Intervalo: {estadoPeriodico.intervaloMinutos} min.{' '}
+            {estadoPeriodico.ultimoRespaldo
+              ? `Último respaldo automático: ${estadoPeriodico.ultimoRespaldo.nombre} (${estadoPeriodico.ultimoRespaldo.creadoEn}).`
+              : 'Sin respaldos automáticos aún.'}
+            {estadoPeriodico.proximaEjecucion && ` Próxima ejecución: ${estadoPeriodico.proximaEjecucion}.`}
+          </p>
+          {estadoPeriodico.ultimoFallo && (
+            <p className="aviso error">
+              Último fallo del respaldo periódico ({estadoPeriodico.ultimoFallo.creadoEn}): {estadoPeriodico.ultimoFallo.detalle}
+            </p>
+          )}
+          <button type="button" disabled={ocupado} onClick={() => void ejecutarPeriodico()}>Ejecutar respaldo periódico ahora</button>
+        </div>
       )}
       <p className="menor">
         Cada respaldo incluye manifiesto con hash SHA-256; la restauración verifica hash e integridad,

@@ -51,5 +51,11 @@ contextBridge.exposeInMainWorld('arkon', {
       }
     }
     return ipcRenderer.invoke('arkon:guardarCsvAuxiliar', s);
+  },
+  abrirAdjunto(id: number): Promise<unknown> {
+    if (!Number.isInteger(id) || id <= 0) {
+      return Promise.reject(new Error('Adjunto inválido'));
+    }
+    return ipcRenderer.invoke('arkon:abrirAdjunto', { id });
   }
 });

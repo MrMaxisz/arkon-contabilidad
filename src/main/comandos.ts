@@ -3,7 +3,7 @@ import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerr
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
-import { listarAdjuntos } from './servicios/adjuntos';
+import { listarAdjuntos, verificarAdjunto } from './servicios/adjuntos';
 import { respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
 import { manejarRestauracion } from './servicios/restauracion';
 import type { ContextoApp } from './servicios/restauracion';
@@ -139,6 +139,25 @@ export const comandos: Record<string, Manejador> = {
       return listarAdjuntos(ctx.db, p.entidad, typeof p.entidadId === 'string' ? p.entidadId : undefined);
     }
     return listarAdjuntos(ctx.db);
+  },
+  'adjunto:verificar': (ctx, payload) => {
+    const p = objeto(payload);
+    return verificarAdjunto(ctx.db, ctx.rutas.adjuntos, entero(p, 'id'));
+  },
+  'documento:listarVinculos': (ctx) => {
+    const ventas = ctx.db
+      .prepare("SELECT folio, concepto, fecha_operacion AS fecha FROM venta WHERE estado = 'registrada' ORDER BY id DESC LIMIT 50")
+      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+    const compras = ctx.db
+      .prepare("SELECT folio, concepto, fecha_operacion AS fecha FROM compra WHERE estado = 'registrada' ORDER BY id DESC LIMIT 50")
+      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+    const cotizaciones = ctx.db
+      .prepare("SELECT CAST(id AS TEXT) AS folio, numero || ' rev ' || revision AS concepto, estado AS fecha FROM cotizacion ORDER BY id DESC LIMIT 50")
+      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+    const proyectos = ctx.db
+      .prepare("SELECT CAST(id AS TEXT) AS folio, nombre AS concepto, estado AS fecha FROM proyecto ORDER BY id DESC LIMIT 50")
+      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+    return { venta: ventas, compra: compras, cotizacion: cotizaciones, proyecto: proyectos };
   },
   'config:respaldoPeriodicoLeer': ctx => {
     const intervalo = ctx.db.prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_intervalo_minutos'").get() as { valor: string } | undefined;

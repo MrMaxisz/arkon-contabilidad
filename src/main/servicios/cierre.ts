@@ -76,7 +76,7 @@ function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: strin
       `SELECT c.codigo, c.nombre, c.tipo,
               COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS saldo
        FROM asiento_linea l
-       JOIN asiento a ON a.id = l.asiento_id AND a.estado = 'contabilizado'
+       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
        JOIN cuenta c ON c.id = l.cuenta_id
        WHERE c.tipo IN ('ingreso','costo','gasto')
          AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
@@ -94,6 +94,7 @@ export interface EstadoEjercicio {
   resultadoNetoMinor: string;
   cierreExistente: { id: number; folio: string; fecha: string } | null;
   periodoDiciembreAbierto: boolean;
+  ejercicioCerrado: boolean;
 }
 
 export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): EstadoEjercicio {
@@ -119,13 +120,17 @@ export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): Estad
     )
     .get(desde, hasta) as { id: number; folio: string; fecha: string } | undefined;
   const diciembre = periodos.find(p => p.inicio.slice(0, 4) === String(anio) && p.inicio.slice(5, 7) === '12');
+  const bloqueo = db
+    .prepare("SELECT estado FROM cierre_ejercicio WHERE ambito_id = 'administrativo' AND anio = ?")
+    .get(anio) as { estado: string } | undefined;
   return {
     anio,
     periodos,
     cuentasResultado,
     resultadoNetoMinor: minorATexto(neto),
     cierreExistente: cierre ?? null,
-    periodoDiciembreAbierto: diciembre?.estado === 'abierto'
+    periodoDiciembreAbierto: diciembre?.estado === 'abierto',
+    ejercicioCerrado: bloqueo?.estado === 'cerrado'
   };
 }
 
@@ -163,77 +168,93 @@ export function cerrarEjercicio(
   if (previo) {
     return { id: previo.id, folio: previo.folio, duplicado: true, periodoId: 0, netoMinor: '0.00' };
   }
-  const yaCerrado = db
-    .prepare(
-      `SELECT id FROM asiento
-       WHERE origen_tipo = 'cierre' AND fecha_operacion >= ? AND fecha_operacion <= ? AND estado = 'contabilizado'`
-    )
-    .get(`${anio}-01-01`, fechaCierre) as { id: number } | undefined;
-  if (yaCerrado) {
-    throw new ErrorCierre(`El ejercicio ${anio} ya tiene asiento de cierre`);
-  }
-  const saldos = saldosResultado(db, `${anio}-01-01`, fechaCierre);
-  if (saldos.length === 0) {
-    throw new ErrorCierre(`El ejercicio ${anio} no tiene movimientos en cuentas de resultados`);
-  }
-  const periodo = periodoDeFecha(db, fechaCierre);
-  if (periodo.estado !== 'abierto') {
-    throw new ErrorCierre(`El período de diciembre ${anio} está cerrado; reábrelo antes de cerrar el ejercicio`);
-  }
-  const codigoResultado = entrada.cuentaResultadoCodigo?.trim() || '3201';
-  const cuentaResultado = db
-    .prepare('SELECT id, nombre FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
-    .get(codigoResultado) as { id: number; nombre: string } | undefined;
-  if (!cuentaResultado) {
-    throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${codigoResultado}`);
-  }
-  const lineas: Array<{ cuentaId: number; debeMinor: string; haberMinor: string }> = [];
-  let neto = 0n;
-  for (const f of saldos) {
-    const cuenta = db
-      .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
-      .get(f.codigo) as { id: number } | undefined;
-    if (!cuenta) {
-      throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${f.codigo}`);
+  const ejecutar = db.transaction((): { id: number; folio: string; duplicado: boolean; periodoId: number; netoMinor: string } => {
+    const bloqueo = db
+      .prepare("SELECT estado FROM cierre_ejercicio WHERE ambito_id = 'administrativo' AND anio = ?")
+      .get(anio) as { estado: string } | undefined;
+    if (bloqueo?.estado === 'cerrado') {
+      throw new ErrorCierre(`El ejercicio ${anio} está cerrado; reábrelo con motivo auditado antes de un nuevo cierre`);
     }
-    const saldo = BigInt(f.saldo);
-    neto += saldo;
-    if (saldo > 0n) {
-      lineas.push({ cuentaId: cuenta.id, debeMinor: minorATexto(saldo), haberMinor: '' });
-    } else if (saldo < 0n) {
-      lineas.push({ cuentaId: cuenta.id, debeMinor: '', haberMinor: minorATexto(-saldo) });
+    const yaCerrado = db
+      .prepare(
+        `SELECT id FROM asiento
+         WHERE origen_tipo = 'cierre' AND fecha_operacion >= ? AND fecha_operacion <= ? AND estado = 'contabilizado'`
+      )
+      .get(`${anio}-01-01`, fechaCierre) as { id: number } | undefined;
+    if (yaCerrado) {
+      throw new ErrorCierre(`El ejercicio ${anio} ya tiene asiento de cierre`);
     }
-  }
-  if (neto > 0n) {
-    lineas.push({ cuentaId: cuentaResultado.id, debeMinor: '', haberMinor: minorATexto(neto) });
-  } else if (neto < 0n) {
-    lineas.push({ cuentaId: cuentaResultado.id, debeMinor: minorATexto(-neto), haberMinor: '' });
-  }
-  const asiento = contabilizarAsiento(db, {
-    fechaOperacion: fechaCierre,
-    concepto: `Cierre del ejercicio ${anio}`,
-    lineas,
-    origenTipo: 'cierre',
-    origenId: entrada.claveIdempotencia,
-    claveIdempotencia: `${entrada.claveIdempotencia}:cierre`,
-    responsable: entrada.responsable,
-    ambitoId: 'administrativo'
+    const saldos = saldosResultado(db, `${anio}-01-01`, fechaCierre);
+    if (saldos.length === 0) {
+      throw new ErrorCierre(`El ejercicio ${anio} no tiene movimientos en cuentas de resultados`);
+    }
+    const periodo = periodoDeFecha(db, fechaCierre);
+    if (periodo.estado !== 'abierto') {
+      throw new ErrorCierre(`El período de diciembre ${anio} está cerrado; reábrelo antes de cerrar el ejercicio`);
+    }
+    const codigoResultado = entrada.cuentaResultadoCodigo?.trim() || '3201';
+    const cuentaResultado = db
+      .prepare('SELECT id, nombre FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+      .get(codigoResultado) as { id: number; nombre: string } | undefined;
+    if (!cuentaResultado) {
+      throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${codigoResultado}`);
+    }
+    const lineas: Array<{ cuentaId: number; debeMinor: string; haberMinor: string }> = [];
+    let neto = 0n;
+    for (const f of saldos) {
+      const cuenta = db
+        .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+        .get(f.codigo) as { id: number } | undefined;
+      if (!cuenta) {
+        throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${f.codigo}`);
+      }
+      const saldo = BigInt(f.saldo);
+      neto += saldo;
+      if (saldo > 0n) {
+        lineas.push({ cuentaId: cuenta.id, debeMinor: minorATexto(saldo), haberMinor: '' });
+      } else if (saldo < 0n) {
+        lineas.push({ cuentaId: cuenta.id, debeMinor: '', haberMinor: minorATexto(-saldo) });
+      }
+    }
+    if (neto > 0n) {
+      lineas.push({ cuentaId: cuentaResultado.id, debeMinor: '', haberMinor: minorATexto(neto) });
+    } else if (neto < 0n) {
+      lineas.push({ cuentaId: cuentaResultado.id, debeMinor: minorATexto(-neto), haberMinor: '' });
+    }
+    const asiento = contabilizarAsiento(db, {
+      fechaOperacion: fechaCierre,
+      concepto: `Cierre del ejercicio ${anio}`,
+      lineas,
+      origenTipo: 'cierre',
+      origenId: entrada.claveIdempotencia,
+      claveIdempotencia: `${entrada.claveIdempotencia}:cierre`,
+      responsable: entrada.responsable,
+      ambitoId: 'administrativo'
+    });
+    db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
+    cerrarPeriodo(db, periodo.id, entrada.responsable, `Cierre del ejercicio ${anio}: ${entrada.motivo}`);
+    db.prepare(
+      `INSERT INTO cierre_ejercicio (ambito_id, anio, estado, asiento_id, responsable, motivo)
+       VALUES ('administrativo', ?, 'cerrado', ?, ?, ?)
+       ON CONFLICT (ambito_id, anio) DO UPDATE SET
+         estado = 'cerrado', asiento_id = excluded.asiento_id,
+         responsable = excluded.responsable, motivo = excluded.motivo, creado_en = datetime('now')`
+    ).run(anio, asiento.asientoId, entrada.responsable, entrada.motivo);
+    registroEvento(db, entrada.responsable, 'cierre_ejercicio', 'ejercicio', String(anio), {
+      folio: asiento.folio,
+      neto: minorATexto(neto),
+      referencia: entrada.referencia,
+      motivo: entrada.motivo
+    });
+    return {
+      id: asiento.asientoId,
+      folio: asiento.folio,
+      duplicado: false,
+      periodoId: periodo.id,
+      netoMinor: minorATexto(neto)
+    };
   });
-  db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
-  cerrarPeriodo(db, periodo.id, entrada.responsable, `Cierre del ejercicio ${anio}: ${entrada.motivo}`);
-  registroEvento(db, entrada.responsable, 'cierre_ejercicio', 'ejercicio', String(anio), {
-    folio: asiento.folio,
-    neto: minorATexto(neto),
-    referencia: entrada.referencia,
-    motivo: entrada.motivo
-  });
-  return {
-    id: asiento.asientoId,
-    folio: asiento.folio,
-    duplicado: false,
-    periodoId: periodo.id,
-    netoMinor: minorATexto(neto)
-  };
+  return ejecutar();
 }
 
 export function reabrirEjercicio(
@@ -252,13 +273,24 @@ export function reabrirEjercicio(
   }
   const fechaDiciembre = `${anio}-12-31`;
   validarFechaCalendario(fechaDiciembre);
-  const periodo = periodoDeFecha(db, fechaDiciembre);
-  reabrirPeriodo(db, periodo.id, entrada.responsable, `Reapertura del ejercicio ${anio}: ${entrada.motivo}`);
-  registroEvento(db, entrada.responsable, 'reapertura_ejercicio', 'ejercicio', String(anio), {
-    periodoId: periodo.id,
-    motivo: entrada.motivo
+  const ejecutar = db.transaction((): { periodoId: number } => {
+    const periodo = periodoDeFecha(db, fechaDiciembre);
+    const bloqueo = db
+      .prepare("SELECT estado FROM cierre_ejercicio WHERE ambito_id = 'administrativo' AND anio = ?")
+      .get(anio) as { estado: string } | undefined;
+    if (bloqueo) {
+      db.prepare(
+        "UPDATE cierre_ejercicio SET estado = 'reabierto', creado_en = datetime('now') WHERE ambito_id = 'administrativo' AND anio = ? AND estado = 'cerrado'"
+      ).run(anio);
+    }
+    reabrirPeriodo(db, periodo.id, entrada.responsable, `Reapertura del ejercicio ${anio}: ${entrada.motivo}`);
+    registroEvento(db, entrada.responsable, 'reapertura_ejercicio', 'ejercicio', String(anio), {
+      periodoId: periodo.id,
+      motivo: entrada.motivo
+    });
+    return { periodoId: periodo.id };
   });
-  return { periodoId: periodo.id };
+  return ejecutar();
 }
 
 export { ErrorContable };

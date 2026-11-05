@@ -38,6 +38,8 @@ export const COMANDOS_PERMITIDOS = new Set([
   'cierre:reabrir',
   'auxiliar:efectivo',
   'adjunto:listar',
+  'adjunto:verificar',
+  'documento:listarVinculos',
   'cotizacion:crear',
   'cotizacion:guardar',
   'cotizacion:revision',

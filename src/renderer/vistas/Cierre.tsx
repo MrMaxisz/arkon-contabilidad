@@ -15,6 +15,7 @@ interface EstadoEjercicio {
   resultadoNetoMinor: string;
   cierreExistente: { id: number; folio: string; fecha: string } | null;
   periodoDiciembreAbierto: boolean;
+  ejercicioCerrado: boolean;
 }
 
 export default function Cierre() {
@@ -149,6 +150,11 @@ export default function Cierre() {
             </p>
           ) : (
             <p className="menor">El ejercicio aún no tiene asiento de cierre.</p>
+          )}
+          {estado.ejercicioCerrado && (
+            <p className="aviso error">
+              El ejercicio está bloqueado: no se aceptan operaciones de {estado.anio}. Reábrelo con motivo auditado para corregir.
+            </p>
           )}
         </>
       )}

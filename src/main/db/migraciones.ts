@@ -480,5 +480,22 @@ INSERT INTO configuracion (clave, valor, fuente, vigencia)
 SELECT 'respaldo_intervalo_minutos', '0', 'Política operativa editable por el propietario (0 = desactivado)', NULL
 WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'respaldo_intervalo_minutos');
 `
+  },
+  {
+    version: 13,
+    nombre: 'cierre_ejercicio',
+    sql: `
+CREATE TABLE cierre_ejercicio (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ambito_id TEXT NOT NULL REFERENCES ambito(id),
+  anio INTEGER NOT NULL,
+  estado TEXT NOT NULL CHECK (estado IN ('cerrado','reabierto')),
+  asiento_id INTEGER REFERENCES asiento(id),
+  responsable TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (ambito_id, anio)
+);
+`
   }
 ];

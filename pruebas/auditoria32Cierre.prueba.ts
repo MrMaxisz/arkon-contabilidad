@@ -174,7 +174,7 @@ describe('auditoría 32: apertura documentada y cierre de ejercicio', () => {
         referencia: 'soporte dos',
         claveIdempotencia: 'ci-a32-dos'
       })
-    ).toThrow(/ya tiene asiento de cierre/);
+    ).toThrow(/está cerrado/);
 
     const duplicado = despachar(ctx, 'cierre:ejercicio', {
       anio: 2026,

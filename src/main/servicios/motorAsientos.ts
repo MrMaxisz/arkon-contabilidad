@@ -31,6 +31,18 @@ export interface PeriodoInfo {
   fin: string;
 }
 
+function estadoCierreEjercicio(db: Database.Database, ambitoId: string, anio: number): string | undefined {
+  const tabla = db
+    .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'cierre_ejercicio'")
+    .get() as { x: number } | undefined;
+  if (!tabla) {
+    return undefined;
+  }
+  return (db
+    .prepare('SELECT estado FROM cierre_ejercicio WHERE ambito_id = ? AND anio = ?')
+    .get(ambitoId, anio) as { estado: string } | undefined)?.estado;
+}
+
 export function periodoDeFecha(db: Database.Database, fecha: string): PeriodoInfo {
   const mes = fecha.slice(0, 7);
   const inicio = `${mes}-01`;
@@ -126,6 +138,11 @@ export function contabilizarAsiento(
     .get(entrada.ambitoId) as { id: string } | undefined;
   if (!ambito) {
     throw new ErrorContable(`Ámbito inexistente o inactivo: ${entrada.ambitoId}`);
+  }
+  const anioOperacion = Number(entrada.fechaOperacion.slice(0, 4));
+  const cierreEjercicio = estadoCierreEjercicio(db, entrada.ambitoId, anioOperacion);
+  if (cierreEjercicio === 'cerrado') {
+    throw new ErrorContable(`El ejercicio ${anioOperacion} está cerrado; reábrelo con motivo auditado para operar`);
   }
   if (entrada.claveIdempotencia) {
     const previo = db
@@ -234,6 +251,12 @@ export function anularAsiento(
   }
   if (original.estado !== 'contabilizado') {
     throw new ErrorContable(`Solo se anulan asientos contabilizados: ${original.folio}`);
+  }
+  const cierreEjercicioAnulacion = estadoCierreEjercicio(db, original.ambito_id, Number(original.fecha_operacion.slice(0, 4)));
+  if (cierreEjercicioAnulacion === 'cerrado') {
+    throw new ErrorContable(
+      `El ejercicio ${Number(original.fecha_operacion.slice(0, 4))} está cerrado; reábrelo con motivo auditado antes de anular`
+    );
   }
   const periodo = db
     .prepare('SELECT estado FROM periodo WHERE id = ?')

@@ -1,10 +1,10 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { despachar, type ContextoApp } from './comandos';
 import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
-import { registrarAdjunto, validarVinculoDocumento } from './servicios/adjuntos';
+import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
@@ -124,6 +124,26 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     const rutaFinal = destino.filePath.toLowerCase().endsWith('.csv') ? destino.filePath : `${destino.filePath}.csv`;
     fs.writeFileSync(rutaFinal, `${exportacion.csv}\n`, 'utf8');
     return { guardado: true, ruta: rutaFinal, version: exportacion.version };
+  });
+
+  ipcMain.handle('arkon:abrirAdjunto', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const id = Number(p.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error('Adjunto inválido');
+    }
+    const verificacion = verificarAdjunto(ctx.db, ctx.rutas.adjuntos, id);
+    if (!verificacion.existe) {
+      throw new Error(`El archivo del adjunto no está en disco: ${verificacion.nombreOriginal}`);
+    }
+    if (!verificacion.hashCoincide) {
+      throw new Error(`El hash del adjunto ${verificacion.nombreOriginal} no coincide; restaure desde un respaldo verificado`);
+    }
+    await shell.openPath(verificacion.ruta);
+    return { abierto: true, nombreOriginal: verificacion.nombreOriginal };
   });
 
   ipcMain.handle('arkon:pdfCotizacion', async (evento, solicitud) => {

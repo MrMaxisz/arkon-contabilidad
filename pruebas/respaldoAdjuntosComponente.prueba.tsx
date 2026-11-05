@@ -11,7 +11,8 @@ vi.mock('../src/renderer/api', () => ({
     guardarCsv: () => Promise.resolve({ guardado: false }),
     pdfCotizacion: () => Promise.resolve({ guardado: false }),
     registrarAdjunto: (entidad: string, entidadId: string, responsable: string) =>
-      invocar('__registrarAdjunto', { entidad, entidadId, responsable })
+      invocar('__registrarAdjunto', { entidad, entidadId, responsable }),
+    abrirAdjunto: (id: number) => invocar('__abrirAdjunto', { id })
   })
 }));
 
@@ -29,6 +30,27 @@ beforeEach(() => {
         ]);
       case 'config:respaldoPeriodicoLeer':
         return Promise.resolve({ intervaloMinutos: 30, retencion: 5 });
+      case 'documento:listarVinculos':
+        return Promise.resolve({
+          venta: [{ folio: 'V-000001', concepto: 'Venta sintética', fecha: '2026-11-01' }],
+          compra: [
+            { folio: 'CMP-000001', concepto: 'Compra sintética uno', fecha: '2026-11-02' },
+            { folio: 'CMP-000002', concepto: 'Compra sintética dos', fecha: '2026-11-03' }
+          ],
+          cotizacion: [],
+          proyecto: []
+        });
+      case 'respaldo:estadoPeriodico':
+        return Promise.resolve({
+          intervaloMinutos: 30,
+          ultimoRespaldo: { creadoEn: '2026-11-04 10:00:00', nombre: 'respaldo-automatico-sintetico.db' },
+          ultimoFallo: { creadoEn: '2026-11-05 10:00:00', detalle: 'fallo sintético del temporizador' },
+          proximaEjecucion: '2026-11-05T11:00:00.000Z'
+        });
+      case 'adjunto:verificar':
+        return Promise.resolve({ id: 1, nombreOriginal: 'factura.txt', ruta: 'C:\\sintetico\\factura.txt', existe: true, hashCoincide: true });
+      case '__abrirAdjunto':
+        return Promise.resolve({ abierto: true, nombreOriginal: 'factura.txt' });
       case '__registrarAdjunto':
         return Promise.resolve({
           registrado: true,
@@ -65,9 +87,10 @@ describe('auditoría 26: panel de adjuntos en Respaldo', () => {
     render(<Respaldo />);
 
     await waitFor(() => screen.getByText('Adjuntos'));
+    const selectorDocumento = screen.getByLabelText(/^Documento\n?/) as HTMLSelectElement;
+    expect(selectorDocumento.value).toBe('');
+    fireEvent.change(selectorDocumento, { target: { value: 'CMP-000002' } });
     const inputs = screen.getAllByRole('textbox');
-    const folioInput = inputs.find(i => i.placeholder === 'CMP-000001') as HTMLInputElement;
-    fireEvent.change(folioInput, { target: { value: 'CMP-000002' } });
     const responsableInput = inputs.find(i => i.required && !i.placeholder) as HTMLInputElement;
     fireEvent.change(responsableInput, { target: { value: 'prueba' } });
 
@@ -78,7 +101,36 @@ describe('auditoría 26: panel de adjuntos en Respaldo', () => {
     expect(invocar.mock.calls.some(c => c[0] === 'adjunto:listar')).toBe(true);
   });
 
-  it('guardar configuración periódica invoca el comando con valores validados', async () => {
+  it('el estado periódico muestra éxito, fallo reciente y próxima ejecución, y se refresca al guardar', async () => {
+    render(<Respaldo />);
+
+    await waitFor(() => screen.getByText(/Último respaldo automático: respaldo-automatico-sintetico\.db/));
+    expect(screen.getByText(/Pr\u00f3xima ejecuci\u00f3n: 2026-11-05T11:00:00/)).toBeTruthy();
+    expect(screen.getByText(/fallo sint\u00e9tico del temporizador/)).toBeTruthy();
+
+    const intervaloInput = screen.getByLabelText(/Intervalo \(minutos/) as HTMLInputElement;
+    fireEvent.change(intervaloInput, { target: { value: '60' } });
+    fireEvent.click(screen.getByText('Guardar configuraci\u00f3n'));
+
+    await waitFor(() => screen.getByText(/Configuraci\u00f3n de respaldo peri\u00f3dico guardada/));
+    const consultasEstado = invocar.mock.calls.filter(c => c[0] === 'respaldo:estadoPeriodico').length;
+    expect(consultasEstado).toBeGreaterThanOrEqual(2);
+  });
+
+  it('verificar y abrir adjunto usan los puentes con id del listado', async () => {
+    render(<Respaldo />);
+
+    await waitFor(() => screen.getByText('factura.txt'));
+    fireEvent.click(screen.getByText('Verificar'));
+    await waitFor(() => screen.getByText(/hash correcto/));
+    expect(invocar.mock.calls.some(c => c[0] === 'adjunto:verificar' && (c[1] as { id: number }).id === 1)).toBe(true);
+
+    fireEvent.click(screen.getByText('Abrir'));
+    await waitFor(() => screen.getByText(/abierto con la aplicaci\u00f3n del sistema/));
+    expect(invocar.mock.calls.some(c => c[0] === '__abrirAdjunto' && (c[1] as { id: number }).id === 1)).toBe(true);
+  });
+
+  it('guardar configuraci\u00f3n peri\u00f3dica invoca el comando con valores validados', async () => {
     render(<Respaldo />);
 
     await waitFor(() => screen.getByText('Respaldo periódico'));

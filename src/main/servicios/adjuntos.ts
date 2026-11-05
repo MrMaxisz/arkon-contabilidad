@@ -113,6 +113,28 @@ export function listarAdjuntos(db: Database.Database, entidad?: string, entidadI
   }));
 }
 
+export function verificarAdjunto(
+  db: Database.Database,
+  dirAdjuntos: string,
+  id: number
+): { id: number; nombreOriginal: string; ruta: string; existe: boolean; hashCoincide: boolean } {
+  const fila = db.prepare('SELECT * FROM adjunto WHERE id = ?').get(id) as
+    | { id: number; entidad: string; entidad_id: string; nombre_original: string; ruta_relativa: string; hash_sha256: string; creado_en: string }
+    | undefined;
+  if (!fila) {
+    throw new ErrorAdjunto(`No existe el adjunto ${id}`);
+  }
+  validarRutasRelativas([fila.ruta_relativa]);
+  const ruta = path.join(dirAdjuntos, fila.ruta_relativa);
+  const existe = fs.existsSync(ruta) && fs.statSync(ruta).isFile();
+  let hashCoincide = false;
+  if (existe) {
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
+    hashCoincide = hash === fila.hash_sha256;
+  }
+  return { id: fila.id, nombreOriginal: fila.nombre_original, ruta, existe, hashCoincide };
+}
+
 export function inventarioAdjuntosRegistrado(db: Database.Database): Array<{ rutaRelativa: string; hashSha256: string; nombreOriginal: string }> {
   const tablaExiste = db
     .prepare("SELECT 1 AS x FROM sqlite_master WHERE type = 'table' AND name = 'adjunto'")

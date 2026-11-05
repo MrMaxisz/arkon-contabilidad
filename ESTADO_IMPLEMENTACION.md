@@ -417,3 +417,28 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 - Estado periódico: refresco tras guardado/ejecución, fallo reciente visible aunque exista éxito anterior, próxima ejecución.
 - Selector de documento existente en adjuntos (hoy folio libre) y consulta del archivo desde la app.
 - Paquete fiscal (F-07/F-14/F-11) contra especificación oficial; instalador NSIS y recorridos reales en Windows offline.
+
+## Bloque auditoría 33 (P1 del cierre + estado periódico completo + adjuntos con selector y consulta)
+
+### Corregido (P1 de la auditoría 33)
+
+- **Saldos de resultados alineados con el mayor** (`src/main/servicios/cierre.ts`): `saldosResultado` ahora incluye asientos `contabilizados` Y `anulados` (misma semántica que `mayorDeCuenta`), de modo que originales anulados y sus reversos se cancelan. Prueba: venta 100.00 anulada + venta 30.00 viva → estado 30.00 = mayor; el cierre traslada 30.00 a 3201; mayor de 4101 queda 0.00 y 3201 refleja el resultado; conciliación por cuenta antes/después.
+- **Bloqueo de ejercicio persistido** (migración v13, tabla `cierre_ejercicio`): aplicado en el MOTOR CENTRAL (`contabilizarAsiento` y `anularAsiento` en `motorAsientos.ts`), cubre todas las rutas (ventas, compras, cobros, pagos, ajustes, apertura, anulaciones de documentos) y meses aún no creados (la validación ocurre antes de derivar el período, así que no se crean períodos espurios). `reabrirEjercicio` marca el ejercicio `reabierto` con motivo auditado y reabre diciembre; tras ello se puede anular el asiento de cierre y contabilizar uno nuevo. Prueba del recorrido completo: cierre → rechazo retroactivo en noviembre y septiembre (mes inexistente) → ajuste rechazado → anulación rechazada → reapertura → anulación del cierre → corrección → nuevo cierre (neto 60.00 conciliado con 3201) → ejercicio 2027 utilizable sin duplicar arrastre.
+- **Cierre atómico**: `cerrarEjercicio` envuelve validaciones, asiento, soporte, cierre de período, bloqueo y bitácora en una transacción única. Prueba con trigger sintético que aborta al cerrar el período: no queda asiento de cierre, ni bloqueo, ni período diciembre cerrado, ni clave de idempotencia consumida; el reintento con la misma clave completa exactamente una vez.
+- Compatibilidad: la consulta de bloqueo tolera bases migradas a versiones previas (verifica existencia de la tabla), sin romper pruebas de migración v5/v7.
+
+### Completado (bloques pendientes)
+
+- **Estado periódico** (`Respaldo.tsx`): muestra intervalo, último respaldo, último fallo (visible aunque exista éxito anterior) y próxima ejecución; se refresca al guardar configuración, tras crear/restaurar respaldo manual y tras "Ejecutar respaldo periódico ahora" (nuevo botón con `respaldo:ejecutarPeriodico`). Prueba de componente: éxito + fallo + próxima ejecución visibles y reconsulta tras guardar.
+- **Adjuntos con selector y consulta**: nuevo comando `documento:listarVinculos` (documentos reales de venta/compra/cotización/proyecto) que alimenta un selector en lugar de folio libre; `adjunto:verificar` recalcula SHA-256 desde disco (existe/hashCoincide); puente nativo `arkon:abrirAdjunto` (preload `abrirAdjunto`) que verifica hash antes de abrir con `shell.openPath`. Botones Verificar/Abrir por adjunto en la tabla. Pruebas: despachar real con archivo alterado/ausente/inexistente; selector con documentos reales; componente con puentes.
+
+### Comprobación
+
+- `npm run typecheck` (ambas capas) → sin errores.
+- `npx vitest run` → 174/174 (39 archivos).
+- `npm run build` → OK.
+
+### Pendiente (límites reales)
+
+- Paquete fiscal (F-07/F-14/F-11) contra especificación oficial con fuentes del contador.
+- Instalador NSIS y recorridos gráficos reales en Windows offline (los tests Node/jsdom no equivalen a ese recorrido).
