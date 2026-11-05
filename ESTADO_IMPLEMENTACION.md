@@ -1,6 +1,20 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (auditoría 26 de Codex; integración completa de adjuntos y respaldo periódico). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 27 de Codex; lote de recuperación + inicio del bloque 3 de auxiliares). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 27 (Codex) — lote de recuperación + bloque 3 (auxiliares) — aplicado y probado
+
+Correcciones del lote de recuperación:
+- **[P1] Inventario de la instantánea real**: `respaldoPeriodicoSiCorresponde` abre la base temporal tras el backup y deriva el inventario de adjuntos y la versión de esquema de esa copia (no de la activa); mutex `operacionEnCurso` impide copias/restauraciones simultáneas. Regresión: intercalación determinista (adjunto registrado durante el backup) → el paquete refleja la instantánea y se restaura correctamente en otro perfil.
+- **[P2] Vínculo documental validado**: `validarVinculoDocumento` en la ruta real (canal IPC `arkon:registrarAdjunto`) rechaza entidades no reconocidas y documentos inexistentes; el servicio mantiene su API para pruebas. Regresiones: documento inexistente rechazado, entidad inventada rechazada, documento existente aceptado.
+- **[P2] Estado periódico visible**: comando `respaldo:estadoPeriodico` devuelve intervalo, último respaldo, último fallo y próxima ejecución; la vista Respaldo consulta y muestra el estado real. Regresión: estado consultable desde despachar con y sin respaldos automáticos.
+
+Bloque 3 — Auxiliares de clientes, proveedores y caja/bancos (inicio):
+- `auxiliarContrapartes`: saldos por cliente/proveedor derivados de documentos registrados menos aplicaciones de cobros/pagos y aplicaciones de anticipos; conciliación con el mayor (1201 y 2101). Vista Reportes con tablas y indicador de conciliación.
+- `auxiliarEfectivo`: saldos por cuenta de efectivo con conciliación al mayor. Vista Reportes.
+- Pruebas sintéticas: auxiliares concilian tras ventas+compras+cobros+pagos; efectivo concilia tras cobros y transferencias; persistencia tras cerrar/reabrir; reversos (anulación de venta) mantienen conciliación.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **147/147 en verde** (31 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Auditoría 26 (Codex) — integración completa de adjuntos y respaldo periódico — aplicado y probado
 

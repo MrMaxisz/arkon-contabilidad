@@ -4,7 +4,7 @@ import path from 'path';
 import { despachar, type ContextoApp } from './comandos';
 import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
-import { registrarAdjunto } from './servicios/adjuntos';
+import { registrarAdjunto, validarVinculoDocumento } from './servicios/adjuntos';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -56,6 +56,7 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     if (!entidad || !entidadId || !responsable) {
       throw new Error('El adjunto requiere entidad, identificador y responsable');
     }
+    validarVinculoDocumento(ctx.db, entidad, entidadId);
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const opcionesDialogo = {
       title: 'Seleccionar documento de respaldo',

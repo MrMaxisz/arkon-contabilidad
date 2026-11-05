@@ -750,3 +750,153 @@ export function rentabilidadProyectos(
       'La rentabilidad se calcula con los ingresos y costos/gastos reconocidos en asientos vinculados a los documentos del proyecto (coherente con el mayor): el IVA acreditable (1203) no es costo, el IVA al costo sí lo es, y las compras de activo no se convierten en gasto. Los totales documentales se muestran aparte, como métrica informativa.'
   };
 }
+
+export interface FilaAuxiliar {
+  contraparteId: number;
+  contraparteNombre: string;
+  saldoMinor: string;
+}
+
+export interface AuxiliarContrapartes {
+  clientes: FilaAuxiliar[];
+  proveedores: FilaAuxiliar[];
+  totalClientesMinor: string;
+  totalProveedoresMinor: string;
+  conciliaMayor: boolean;
+}
+
+export function auxiliarContrapartes(db: Database.Database): AuxiliarContrapartes {
+  const clientes = db
+    .prepare(
+      `SELECT p.id, p.nombre,
+              COALESCE((
+                SELECT SUM(v.total_minor) FROM venta v WHERE v.contraparte_id = p.id AND v.estado = 'registrada'
+              ), 0) - COALESCE((
+                SELECT SUM(a.monto_minor) FROM aplicacion a
+                JOIN tesoreria_movimiento t ON t.id = a.movimiento_id AND t.estado = 'registrado'
+                JOIN venta v2 ON v2.id = a.documento_id AND v2.contraparte_id = p.id AND v2.estado = 'registrada'
+                WHERE a.documento_tipo = 'venta'
+              ), 0) - COALESCE((
+                SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
+                JOIN venta v3 ON v3.id = aa.documento_id AND v3.contraparte_id = p.id AND v3.estado = 'registrada'
+                WHERE aa.documento_tipo = 'venta' AND aa.estado = 'registrada'
+              ), 0) AS saldo
+       FROM contraparte p
+       WHERE p.es_cliente = 1
+       ORDER BY p.nombre`
+    )
+    .all() as Array<{ id: number; nombre: string; saldo: number }>;
+  const proveedores = db
+    .prepare(
+      `SELECT p.id, p.nombre,
+              COALESCE((
+                SELECT SUM(co.total_minor) FROM compra co WHERE co.contraparte_id = p.id AND co.estado = 'registrada'
+              ), 0) - COALESCE((
+                SELECT SUM(a.monto_minor) FROM aplicacion a
+                JOIN tesoreria_movimiento t ON t.id = a.movimiento_id AND t.estado = 'registrado'
+                JOIN compra co2 ON co2.id = a.documento_id AND co2.contraparte_id = p.id AND co2.estado = 'registrada'
+                WHERE a.documento_tipo = 'compra'
+              ), 0) - COALESCE((
+                SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
+                JOIN compra co3 ON co3.id = aa.documento_id AND co3.contraparte_id = p.id AND co3.estado = 'registrada'
+                WHERE aa.documento_tipo = 'compra' AND aa.estado = 'registrada'
+              ), 0) AS saldo
+       FROM contraparte p
+       WHERE p.es_proveedor = 1
+       ORDER BY p.nombre`
+    )
+    .all() as Array<{ id: number; nombre: string; saldo: number }>;
+  const mapear = (f: { id: number; nombre: string; saldo: number }): FilaAuxiliar => ({
+    contraparteId: f.id,
+    contraparteNombre: f.nombre,
+    saldoMinor: minorATexto(BigInt(f.saldo))
+  });
+  const mapeadasClientes = clientes.filter(f => f.saldo !== 0).map(mapear);
+  const mapeadasProveedores = proveedores.filter(f => f.saldo !== 0).map(mapear);
+  const totalClientes = mapeadasClientes.reduce((s, f) => s + BigInt(Math.round(Number(f.saldoMinor.replace('.', '')) * 100) / 100), 0n);
+  void totalClientes;
+  const totalClientesNum = clientes.reduce((s, f) => s + BigInt(f.saldo), 0n);
+  const totalProveedoresNum = proveedores.reduce((s, f) => s + BigInt(f.saldo), 0n);
+  const saldoMayor1201 = BigInt(
+    (db
+      .prepare(
+        `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS s
+         FROM asiento_linea l
+         JOIN asiento a ON a.id = l.asiento_id
+         JOIN cuenta c ON c.id = l.cuenta_id
+         WHERE c.codigo = '1201' AND a.estado IN ('contabilizado','anulado')`
+      )
+      .get() as { s: number }).s
+  );
+  const saldoMayor2101 = BigInt(
+    (db
+      .prepare(
+        `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS s
+         FROM asiento_linea l
+         JOIN asiento a ON a.id = l.asiento_id
+         JOIN cuenta c ON c.id = l.cuenta_id
+         WHERE c.codigo = '2101' AND a.estado IN ('contabilizado','anulado')`
+      )
+      .get() as { s: number }).s
+  );
+  const conciliaClientes = totalClientesNum === saldoMayor1201;
+  const conciliaProveedores = totalProveedoresNum === -saldoMayor2101;
+  return {
+    clientes: mapeadasClientes,
+    proveedores: mapeadasProveedores,
+    totalClientesMinor: minorATexto(totalClientesNum),
+    totalProveedoresMinor: minorATexto(totalProveedoresNum),
+    conciliaMayor: conciliaClientes && conciliaProveedores
+  };
+}
+
+export interface FilaAuxiliarEfectivo {
+  cuentaId: number;
+  codigo: string;
+  nombre: string;
+  saldoMinor: string;
+}
+
+export interface AuxiliarEfectivo {
+  cuentas: FilaAuxiliarEfectivo[];
+  totalMinor: string;
+  conciliaMayor: boolean;
+}
+
+export function auxiliarEfectivo(db: Database.Database): AuxiliarEfectivo {
+  const filas = db
+    .prepare(
+      `SELECT c.id, c.codigo, c.nombre,
+              COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+       FROM cuenta c
+       LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
+       LEFT JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       WHERE c.es_efectivo = 1 AND c.activa = 1
+       GROUP BY c.id, c.codigo, c.nombre
+       ORDER BY c.codigo`
+    )
+    .all() as Array<{ id: number; codigo: string; nombre: string; saldo: number }>;
+  const cuentas = filas.map(f => ({
+    cuentaId: f.id,
+    codigo: f.codigo,
+    nombre: f.nombre,
+    saldoMinor: minorATexto(BigInt(f.saldo))
+  }));
+  const totalAuxiliar = filas.reduce((s, f) => s + BigInt(f.saldo), 0n);
+  const totalMayor = BigInt(
+    (db
+      .prepare(
+        `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS s
+         FROM asiento_linea l
+         JOIN asiento a ON a.id = l.asiento_id
+         JOIN cuenta c ON c.id = l.cuenta_id
+         WHERE c.es_efectivo = 1 AND a.estado IN ('contabilizado','anulado') AND c.activa = 1`
+      )
+      .get() as { s: number }).s
+  );
+  return {
+    cuentas,
+    totalMinor: minorATexto(totalAuxiliar),
+    conciliaMayor: totalAuxiliar === totalMayor
+  };
+}

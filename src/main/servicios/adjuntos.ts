@@ -16,6 +16,28 @@ export interface AdjuntoInfo {
   creadoEn: string;
 }
 
+const ENTIDADES_VALIDAS = new Set(['compra', 'venta', 'cotizacion', 'proyecto']);
+
+export function validarVinculoDocumento(db: Database.Database, entidad: string, entidadId: string): void {
+  if (!ENTIDADES_VALIDAS.has(entidad)) {
+    throw new ErrorAdjunto(`Entidad no reconocida para adjuntos: ${entidad}`);
+  }
+  const tablas: Record<string, string> = {
+    compra: 'compra',
+    venta: 'venta',
+    cotizacion: 'cotizacion',
+    proyecto: 'proyecto'
+  };
+  const tabla = tablas[entidad];
+  const columna = entidad === 'cotizacion' || entidad === 'proyecto' ? 'id' : 'folio';
+  const fila = db
+    .prepare(`SELECT 1 AS x FROM ${tabla} WHERE ${columna} = ?`)
+    .get(entidadId) as { x: number } | undefined;
+  if (!fila) {
+    throw new ErrorAdjunto(`No existe ${entidad} con identificador ${entidadId}; el adjunto debe vincularse a un documento real`);
+  }
+}
+
 export function registrarAdjunto(
   db: Database.Database,
   dirAdjuntos: string,

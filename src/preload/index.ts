@@ -29,6 +29,7 @@ const COMANDOS_PERMITIDOS = new Set([
   'config:respaldoPeriodicoLeer',
   'config:respaldoPeriodicoGuardar',
   'respaldo:ejecutarPeriodico',
+  'respaldo:estadoPeriodico',
   'adjunto:listar',
   'cotizacion:crear',
   'cotizacion:guardar',

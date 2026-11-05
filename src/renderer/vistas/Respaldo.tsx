@@ -42,6 +42,23 @@ export default function Respaldo() {
       setIntervaloMinutos(String(config.intervaloMinutos));
       setRetencionMinutos(String(config.retencion));
     });
+    void api().invocar('respaldo:estadoPeriodico').then(r => {
+      const estado = r as {
+        intervaloMinutos: number;
+        ultimoRespaldo: { creadoEn: string; nombre: string } | null;
+        ultimoFallo: { creadoEn: string; detalle: string } | null;
+        proximaEjecucion: string | null;
+      };
+      if (estado.ultimoRespaldo) {
+        setEstadoPeriodico({ creado: true, nombre: estado.ultimoRespaldo.nombre });
+      } else if (estado.ultimoFallo) {
+        setEstadoPeriodico({ creado: false, omitidoPor: `último fallo: ${estado.ultimoFallo.detalle}` });
+      } else if (estado.intervaloMinutos === 0) {
+        setEstadoPeriodico({ creado: false, omitidoPor: 'desactivado (intervalo 0)' });
+      } else {
+        setEstadoPeriodico({ creado: false, omitidoPor: 'sin respaldos automáticos aún' });
+      }
+    });
   }, [cargar, cargarAdjuntos]);
 
   async function crear() {

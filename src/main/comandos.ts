@@ -32,7 +32,9 @@ import {
   aplicarAnticipo,
   anularAplicacionAnticipo,
   estadoResultados,
-  rentabilidadProyectos
+  rentabilidadProyectos,
+  auxiliarContrapartes,
+  auxiliarEfectivo
 } from './servicios/fiscal';
 import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento, editarContraparte, cambiarEstadoContraparte, desactivarCuenta } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador, generarHtmlCotizacion } from './servicios/cotizaciones';
@@ -159,6 +161,28 @@ export const comandos: Record<string, Manejador> = {
     return { ok: true };
   },
   'respaldo:ejecutarPeriodico': async ctx => respaldoPeriodicoSiCorresponde(ctx),
+  'respaldo:estadoPeriodico': (ctx) => {
+    const intervalo = ctx.db.prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_intervalo_minutos'").get() as { valor: string } | undefined;
+    const intervaloMin = Number(intervalo?.valor ?? '0') || 0;
+    const ultimo = ctx.db
+      .prepare("SELECT creado_en, nombre FROM respaldo WHERE nombre LIKE 'respaldo-automatico-%' ORDER BY id DESC LIMIT 1")
+      .get() as { creado_en: string; nombre: string } | undefined;
+    const ultimoFallo = ctx.db
+      .prepare("SELECT fecha AS creado_en, detalle FROM bitacora_evento WHERE tipo = 'respaldo_periodico_fallo' ORDER BY id DESC LIMIT 1")
+      .get() as { creado_en: string; detalle: string } | undefined;
+    let proximaEjecucion: string | null = null;
+    if (intervaloMin > 0 && ultimo) {
+      const fechaUltimo = new Date(ultimo.creado_en.replace(' ', 'T') + 'Z').getTime();
+      const proxima = new Date(fechaUltimo + intervaloMin * 60000);
+      proximaEjecucion = proxima.toISOString();
+    }
+    return {
+      intervaloMinutos: intervaloMin,
+      ultimoRespaldo: ultimo ? { creadoEn: ultimo.creado_en, nombre: ultimo.nombre } : null,
+      ultimoFallo: ultimoFallo ? { creadoEn: ultimoFallo.creado_en, detalle: ultimoFallo.detalle } : null,
+      proximaEjecucion
+    };
+  },
   'respaldo:restaurar': (ctx, payload) => {
     const p = objeto(payload);
     return manejarRestauracion(ctx, texto(p, 'nombre'));
@@ -510,6 +534,8 @@ export const comandos: Record<string, Manejador> = {
     return estadoResultados(ctx.db, texto(p, 'mes'));
   },
   'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
+  'auxiliar:contrapartes': ctx => auxiliarContrapartes(ctx.db),
+  'auxiliar:efectivo': ctx => auxiliarEfectivo(ctx.db),
   'fiscal:politicas': ctx => ({
     anticipoHechoGenerador: politicaAnticipoHechoGenerador(ctx.db),
     ivaComprasCreditoFiscal: ivaComprasCreditoFiscal(ctx.db),

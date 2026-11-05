@@ -12,6 +12,7 @@ import CobrosPagos from './vistas/CobrosPagos';
 import CajaBancos from './vistas/CajaBancos';
 import Impuestos from './vistas/Impuestos';
 import Catalogo from './vistas/Catalogo';
+import Reportes from './vistas/Reportes';
 
 interface BalanceResumen {
   totalActivoMinor: string;
@@ -33,6 +34,7 @@ const SECCIONES = [
   'Caja y bancos',
   'Contabilidad',
   'Impuestos',
+  'Reportes',
   'Respaldo',
   'Bitácora'
 ] as const;
@@ -104,6 +106,7 @@ export default function App() {
         {seccion === 'Caja y bancos' && <CajaBancos />}
         {seccion === 'Contabilidad' && <Contabilidad alCambiar={cargarBalance} />}
         {seccion === 'Impuestos' && <Impuestos />}
+        {seccion === 'Reportes' && <Reportes />}
         {seccion === 'Respaldo' && <Respaldo />}
         {seccion === 'Bitácora' && <Bitacora />}
       </main>
