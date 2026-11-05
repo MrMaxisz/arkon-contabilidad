@@ -971,7 +971,7 @@ export function auxiliarContraparteDetalle(
   };
 }
 
-function escaparCsv(valor: string): string {
+export function escaparCsv(valor: string): string {
   if (/[",\n\r]/.test(valor)) {
     return `"${valor.replace(/"/g, '""')}"`;
   }

@@ -442,3 +442,28 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 
 - Paquete fiscal (F-07/F-14/F-11) contra especificación oficial con fuentes del contador.
 - Instalador NSIS y recorridos gráficos reales en Windows offline (los tests Node/jsdom no equivalen a ese recorrido).
+
+## Bloque auditoría 34 (bundle de preload, backfill de cierres, adjuntos completos, shell sin éxito falso, paquete del contador y Anexo 1 F-07)
+
+### Corregido (P1/P2 de la auditoría 34)
+
+- **P1 Preload sandbox-safe**: el preload se empaqueta con esbuild en un solo archivo CJS (`build:preload`, `dist/preload/index.js`) con `electron` como única dependencia externa; `tsconfig.node.json` ya no emite `src/preload` (nuevo `tsconfig.preload.json` noEmit), por lo que ninguna recompilación de main puede volver a dejar un `require('./comandosPermitidos')` roto. Prueba del artefacto (`auditoria34.prueba.ts`): bundle generado con los mismos argumentos del build no requiere módulos locales y contiene la allowlist; verificación adicional del bundle en `dist` cuando existe. Sandbox/contextIsolation/nodeIntegration intactos.
+- **P1 Migración de cierres v12**: migración v14 `cierre_ejercicio_backfill` reconstruye el bloqueo desde cierres vigentes: asiento `cierre` contabilizado → `cerrado` con su asiento/responsable; cierre solo anulado → `reabierto` documentado. Pruebas: base v12 con cierre activo (implementación del SHA 08d55b6) queda bloqueada tras migrar (venta retroactiva rechazada); base v12 con cierre anulado queda operable. Historial, saldos y folios preservados; `aplicarMigraciones` sigue siendo idempotente.
+- **P2 Adjuntos >50**: `documento:listarVinculos` acepta `busqueda` (LIKE escapado sobre folio/concepto/nombre/código) y `limite` (1-500, por defecto 50); la vista añade caja de búsqueda en vivo junto al selector. Prueba con 55 ventas: por defecto 50, búsqueda encuentra V-000001, límite 500 devuelve las 55; el límite excesivo se acota.
+- **P2 Falso éxito al abrir**: `arkon:abrirAdjunto` examina el string de retorno de `shell.openPath`: texto no vacío → error visible con el mensaje del sistema; vacío → `abierto:true`; rechazo y remitente ajeno propagados; el hash se verifica antes de abrir. Pruebas con Electron simulado (`auditoria34Shell.prueba.ts`): 'No application is associated…' se comunica como fallo, hash alterado no abre.
+
+### Añadido (bloque independiente)
+
+- **Paquete interno para el contador** (`src/main/servicios/paqueteContador.ts`, `paquete:generar`, canal nativo `arkon:guardarPaqueteContador` con diálogo de carpeta, botón en Reportes): LEEME con versión/período/límites, cuentas, auxiliares de clientes/proveedores por documento con el corte pedido, auxiliar de efectivo, estado de resultados mensual, asientos del período y conciliaciones — todo derivado de los mismos servicios ya conciliados; evento en bitácora al guardar. Pruebas por despachar (coherencia de corte, contenido, rechazos) y del handler IPC real con diálogo (escritura, cancelación sin archivos).
+- **Anexo 1 F-07 v14 (ventas a contribuyentes)** con especificación OFICIAL verificada: Manual de Usuario Anexos F-07 v14 (DGII, Ministerio de Hacienda, Enero 2025; transparenciafiscal.gob.sv / mh.gob.sv), Anexo 1 columnas A-T, separador ';', fechas DD/MM/AAAA, montos de 10 caracteres con dos decimales, columnas R/S según período 2025-01. `src/main/servicios/anexosFiscales.ts`, comando `fiscal:anexo1Ventas`, canal `arkon:guardarAnexo1Ventas`, sección en Impuestos con previsualización. Sin datos inventados: clase/resolución/serie quedan vacías (ARKON sin autorización de documentos), folios sin NIT/NRC o sin desglose de tratamiento se listan en `incompletos`, anuladas y consumidor final excluidas, y la vista muestra la advertencia de que NO debe presentarse sin activación formal. Pruebas: estructura A-T exacta, exclusión de anuladas/consumidor final, incompletos listados, mes inválido rechazado (vigencia sintética aislada solo en la prueba).
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 189/189 (43 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido (solo `require("electron")`).
+
+### Pendiente (límites reales)
+
+- Anexos 2 (consumidor final), 3 (compras) y F-14 (retenciones) con la misma especificación oficial ya identificada; decisiones del contador para activación formal.
+- Instalador NSIS y recorridos gráficos reales en Windows offline (el arranque real del preload debe confirmarse en Windows como hiciste; aquí se probó el artefacto del build).

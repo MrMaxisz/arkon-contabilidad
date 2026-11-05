@@ -497,5 +497,42 @@ CREATE TABLE cierre_ejercicio (
   UNIQUE (ambito_id, anio)
 );
 `
+  },
+  {
+    version: 14,
+    nombre: 'cierre_ejercicio_backfill',
+    sql: `
+INSERT INTO cierre_ejercicio (ambito_id, anio, estado, asiento_id, responsable, motivo)
+SELECT a.ambito_id,
+       CAST(substr(a.fecha_operacion, 1, 4) AS INTEGER),
+       'cerrado',
+       a.id,
+       a.responsable,
+       COALESCE(a.motivo, a.concepto)
+FROM asiento a
+WHERE a.origen_tipo = 'cierre'
+  AND a.estado = 'contabilizado'
+  AND NOT EXISTS (
+    SELECT 1 FROM cierre_ejercicio ce
+    WHERE ce.ambito_id = a.ambito_id
+      AND ce.anio = CAST(substr(a.fecha_operacion, 1, 4) AS INTEGER)
+  );
+
+INSERT INTO cierre_ejercicio (ambito_id, anio, estado, asiento_id, responsable, motivo)
+SELECT a.ambito_id,
+       CAST(substr(a.fecha_operacion, 1, 4) AS INTEGER),
+       'reabierto',
+       a.id,
+       a.responsable,
+       'Cierre anulado antes del bloqueo persistido; reapertura implícita documentada'
+FROM asiento a
+WHERE a.origen_tipo = 'cierre'
+  AND a.estado = 'anulado'
+  AND NOT EXISTS (
+    SELECT 1 FROM cierre_ejercicio ce
+    WHERE ce.ambito_id = a.ambito_id
+      AND ce.anio = CAST(substr(a.fecha_operacion, 1, 4) AS INTEGER)
+  );
+`
   }
 ];

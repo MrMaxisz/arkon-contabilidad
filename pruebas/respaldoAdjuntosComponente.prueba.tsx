@@ -87,7 +87,9 @@ describe('auditoría 26: panel de adjuntos en Respaldo', () => {
     render(<Respaldo />);
 
     await waitFor(() => screen.getByText('Adjuntos'));
-    const selectorDocumento = screen.getByLabelText(/^Documento\n?/) as HTMLSelectElement;
+    const selectorDocumento = screen
+      .getAllByRole('combobox')
+      .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === 'CMP-000002')) as HTMLSelectElement;
     expect(selectorDocumento.value).toBe('');
     fireEvent.change(selectorDocumento, { target: { value: 'CMP-000002' } });
     const inputs = screen.getAllByRole('textbox');

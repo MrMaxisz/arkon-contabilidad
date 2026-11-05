@@ -5,6 +5,9 @@ import { despachar, type ContextoApp } from './comandos';
 import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
+import { generarPaqueteContador } from './servicios/paqueteContador';
+import { exportarAnexo1VentasContribuyentes } from './servicios/anexosFiscales';
+import { registroEvento } from './servicios/bitacora';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
@@ -126,6 +129,81 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     return { guardado: true, ruta: rutaFinal, version: exportacion.version };
   });
 
+  ipcMain.handle('arkon:guardarAnexo1Ventas', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const mes = typeof p.mes === 'string' ? p.mes : '';
+    if (!mes) {
+      throw new Error('El anexo requiere mes (AAAA-MM)');
+    }
+    const anexo = exportarAnexo1VentasContribuyentes(ctx.db, mes);
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opciones = {
+      title: 'Guardar Anexo 1 (Ventas a contribuyentes) F-07 v14',
+      defaultPath: `anexo1-ventas-${mes}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    };
+    const destino = ventanaPrincipal
+      ? await dialog.showSaveDialog(ventanaPrincipal, opciones)
+      : await dialog.showSaveDialog(opciones);
+    if (destino.canceled || !destino.filePath) {
+      return { guardado: false };
+    }
+    fs.writeFileSync(destino.filePath, `${anexo.csv}\n`, 'utf8');
+    registroEvento(ctx.db, 'sistema', 'anexo_f07_anexo1', 'archivo_csv', destino.filePath, {
+      mes,
+      filas: anexo.filas,
+      incompletos: anexo.incompletos.length
+    });
+    return {
+      guardado: true,
+      ruta: destino.filePath,
+      version: anexo.version,
+      filas: anexo.filas,
+      incompletos: anexo.incompletos,
+      advertencia: anexo.advertencia
+    };
+  });
+
+  ipcMain.handle('arkon:guardarPaqueteContador', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const desde = typeof p.desde === 'string' ? p.desde : '';
+    const hasta = typeof p.hasta === 'string' ? p.hasta : '';
+    if (!desde || !hasta) {
+      throw new Error('El paquete requiere rango de fechas');
+    }
+    const paquete = generarPaqueteContador(ctx.db, desde, hasta);
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opciones = {
+      title: 'Guardar paquete para el contador',
+      properties: ['openDirectory', 'createDirectory'] as Array<'openDirectory' | 'createDirectory'>,
+      buttonLabel: 'Guardar paquete aquí'
+    };
+    const destino = ventanaPrincipal
+      ? await dialog.showOpenDialog(ventanaPrincipal, opciones)
+      : await dialog.showOpenDialog(opciones);
+    const carpetaBase = destino.canceled ? undefined : destino.filePaths?.[0];
+    if (!carpetaBase) {
+      return { guardado: false };
+    }
+    const carpeta = path.join(carpetaBase, `paquete-contador-${desde}_${hasta}`);
+    fs.mkdirSync(carpeta, { recursive: true });
+    for (const archivo of paquete.archivos) {
+      fs.writeFileSync(path.join(carpeta, archivo.nombre), `${archivo.contenido}\n`, 'utf8');
+    }
+    registroEvento(ctx.db, 'sistema', 'paquete_contador', 'archivo_csv', carpeta, {
+      desde,
+      hasta,
+      archivos: paquete.archivos.length
+    });
+    return { guardado: true, ruta: carpeta, archivos: paquete.archivos.map(a => a.nombre), version: paquete.version };
+  });
+
   ipcMain.handle('arkon:abrirAdjunto', async (evento, solicitud) => {
     if (evento.sender.id !== ventanaWebContentsId) {
       throw new Error('Remitente no autorizado');
@@ -142,7 +220,10 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     if (!verificacion.hashCoincide) {
       throw new Error(`El hash del adjunto ${verificacion.nombreOriginal} no coincide; restaure desde un respaldo verificado`);
     }
-    await shell.openPath(verificacion.ruta);
+    const resultadoApertura = await shell.openPath(verificacion.ruta);
+    if (typeof resultadoApertura === 'string' && resultadoApertura.length > 0) {
+      throw new Error(`No se pudo abrir el adjunto ${verificacion.nombreOriginal}: ${resultadoApertura}`);
+    }
     return { abierto: true, nombreOriginal: verificacion.nombreOriginal };
   });
 

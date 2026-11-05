@@ -56,6 +56,8 @@ export default function Reportes() {
   const [corte, setCorte] = useState('');
   const [detalle, setDetalle] = useState<DetalleContraparte | null>(null);
   const consultaDetalle = useRef(0);
+  const [paqueteDesde, setPaqueteDesde] = useState('');
+  const [paqueteHasta, setPaqueteHasta] = useState('');
 
   const cargarDetalle = useCallback(() => {
     const numeroConsulta = ++consultaDetalle.current;
@@ -98,6 +100,24 @@ export default function Reportes() {
       setMensaje(r.guardado && r.ruta ? `Auxiliar guardado en ${r.ruta}.` : 'Guardado cancelado.');
     } catch (err) {
       setMensaje(`Error al guardar: ${String(err instanceof Error ? err.message : err)}`);
+    }
+  }
+
+  async function guardarPaquete() {
+    setMensaje(null);
+    try {
+      const r = (await api().guardarPaqueteContador(paqueteDesde, paqueteHasta)) as {
+        guardado: boolean;
+        ruta?: string;
+        archivos?: string[];
+      };
+      setMensaje(
+        r.guardado && r.ruta
+          ? `Paquete guardado en ${r.ruta} (${r.archivos?.length ?? 0} archivos).`
+          : 'Guardado de paquete cancelado.'
+      );
+    } catch (err) {
+      setMensaje(`Error al guardar el paquete: ${String(err instanceof Error ? err.message : err)}`);
     }
   }
 
@@ -257,6 +277,20 @@ export default function Reportes() {
       )}
 
       <h2>Exportación</h2>
+      <div className="fila">
+        <label>Paquete para el contador desde
+          <input type="date" value={paqueteDesde} onChange={e => setPaqueteDesde(e.target.value)} />
+        </label>
+        <label>hasta
+          <input type="date" value={paqueteHasta} onChange={e => setPaqueteHasta(e.target.value)} />
+        </label>
+        <button
+          disabled={!paqueteDesde || !paqueteHasta}
+          onClick={() => void guardarPaquete()}
+        >
+          Guardar paquete para el contador…
+        </button>
+      </div>
       <div className="fila">
         <button onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</button>
         <button onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</button>

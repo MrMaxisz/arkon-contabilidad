@@ -10,6 +10,8 @@ export interface ArkonApi {
     hastaFecha?: string;
   }): Promise<unknown>;
   abrirAdjunto(id: number): Promise<unknown>;
+  guardarPaqueteContador(desde: string, hasta: string): Promise<unknown>;
+  guardarAnexo1Ventas(mes: string): Promise<unknown>;
 }
 
 export function api(): ArkonApi {

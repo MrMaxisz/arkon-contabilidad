@@ -57,5 +57,20 @@ contextBridge.exposeInMainWorld('arkon', {
       return Promise.reject(new Error('Adjunto inválido'));
     }
     return ipcRenderer.invoke('arkon:abrirAdjunto', { id });
+  },
+  guardarPaqueteContador(desde: string, hasta: string): Promise<unknown> {
+    if (typeof desde !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+      return Promise.reject(new Error('Fecha inicial inválida'));
+    }
+    if (typeof hasta !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) {
+      return Promise.reject(new Error('Fecha final inválida'));
+    }
+    return ipcRenderer.invoke('arkon:guardarPaqueteContador', { desde, hasta });
+  },
+  guardarAnexo1Ventas(mes: string): Promise<unknown> {
+    if (typeof mes !== 'string' || !/^\d{4}-\d{2}$/.test(mes)) {
+      return Promise.reject(new Error('Mes inválido (AAAA-MM)'));
+    }
+    return ipcRenderer.invoke('arkon:guardarAnexo1Ventas', { mes });
   }
 });

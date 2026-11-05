@@ -22,6 +22,7 @@ export default function Respaldo() {
   const [intervaloMinutos, setIntervaloMinutos] = useState('0');
   const [retencionMinutos, setRetencionMinutos] = useState('5');
   const [vinculos, setVinculos] = useState<Record<string, Array<{ folio: string; concepto: string; fecha: string }>>>({ venta: [], compra: [], cotizacion: [], proyecto: [] });
+  const [busquedaDocumento, setBusquedaDocumento] = useState('');
   const [estadoPeriodico, setEstadoPeriodico] = useState<{
     intervaloMinutos: number;
     ultimoRespaldo: { creadoEn: string; nombre: string } | null;
@@ -40,9 +41,9 @@ export default function Respaldo() {
       .catch(() => setAdjuntos([]));
   }, []);
 
-  const cargarVinculos = useCallback(() => {
+  const cargarVinculos = useCallback((busqueda: string) => {
     void api()
-      .invocar('documento:listarVinculos', {})
+      .invocar('documento:listarVinculos', { busqueda, limite: 200 })
       .then(r => setVinculos(r as Record<string, Array<{ folio: string; concepto: string; fecha: string }>>))
       .catch(() => setVinculos({ venta: [], compra: [], cotizacion: [], proyecto: [] }));
   }, []);
@@ -57,7 +58,7 @@ export default function Respaldo() {
   useEffect(() => {
     cargar();
     cargarAdjuntos();
-    cargarVinculos();
+    cargarVinculos('');
     void api().invocar('config:respaldoPeriodicoLeer').then(r => {
       const config = r as { intervaloMinutos: number; retencion: number };
       setIntervaloMinutos(String(config.intervaloMinutos));
@@ -211,6 +212,14 @@ export default function Respaldo() {
             </select>
           </label>
           <label>Documento
+            <input
+              value={busquedaDocumento}
+              onChange={e => {
+                setBusquedaDocumento(e.target.value);
+                cargarVinculos(e.target.value);
+              }}
+              placeholder="Buscar por folio o concepto"
+            />
             <select value={entidadIdAdjunto} onChange={e => setEntidadIdAdjunto(e.target.value)} required>
               <option value="">— Seleccione documento —</option>
               {(vinculos[entidadAdjunto] ?? []).map(v => (

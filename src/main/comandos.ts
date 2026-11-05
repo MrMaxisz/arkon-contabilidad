@@ -11,6 +11,8 @@ import type { ContextoApp } from './servicios/restauracion';
 export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
+import { generarPaqueteContador } from './servicios/paqueteContador';
+import { exportarAnexo1VentasContribuyentes } from './servicios/anexosFiscales';
 import {
   crearItem,
   editarItem,
@@ -144,19 +146,31 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     return verificarAdjunto(ctx.db, ctx.rutas.adjuntos, entero(p, 'id'));
   },
-  'documento:listarVinculos': (ctx) => {
+  'documento:listarVinculos': (ctx, payload) => {
+    const p = objeto(payload);
+    const busqueda = typeof p.busqueda === 'string' ? p.busqueda.trim() : '';
+    const limite = typeof p.limite === 'number' && Number.isInteger(p.limite) && p.limite > 0 ? Math.min(p.limite, 500) : 50;
+    const patron = busqueda ? `%${busqueda.replace(/[%_]/g, c => `\${c}`)}%` : '%';
+    const filtroVenta = busqueda
+      ? "AND estado = 'registrada' AND (folio LIKE ? OR concepto LIKE ?)"
+      : "AND estado = 'registrada'";
+    const filtroCompra = busqueda
+      ? "AND estado = 'registrada' AND (folio LIKE ? OR concepto LIKE ?)"
+      : "AND estado = 'registrada'";
+    const filtroCotizacion = busqueda ? 'AND (numero LIKE ? OR CAST(id AS TEXT) LIKE ?)' : '';
+    const filtroProyecto = busqueda ? 'AND (nombre LIKE ? OR codigo LIKE ? OR CAST(id AS TEXT) LIKE ?)' : '';
     const ventas = ctx.db
-      .prepare("SELECT folio, concepto, fecha_operacion AS fecha FROM venta WHERE estado = 'registrada' ORDER BY id DESC LIMIT 50")
-      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+      .prepare(`SELECT folio, concepto, fecha_operacion AS fecha FROM venta WHERE 1=1 ${filtroVenta} ORDER BY id DESC LIMIT ?`)
+      .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
     const compras = ctx.db
-      .prepare("SELECT folio, concepto, fecha_operacion AS fecha FROM compra WHERE estado = 'registrada' ORDER BY id DESC LIMIT 50")
-      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+      .prepare(`SELECT folio, concepto, fecha_operacion AS fecha FROM compra WHERE 1=1 ${filtroCompra} ORDER BY id DESC LIMIT ?`)
+      .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
     const cotizaciones = ctx.db
-      .prepare("SELECT CAST(id AS TEXT) AS folio, numero || ' rev ' || revision AS concepto, estado AS fecha FROM cotizacion ORDER BY id DESC LIMIT 50")
-      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+      .prepare(`SELECT CAST(id AS TEXT) AS folio, numero || ' rev ' || revision AS concepto, estado AS fecha FROM cotizacion WHERE 1=1 ${filtroCotizacion} ORDER BY id DESC LIMIT ?`)
+      .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
     const proyectos = ctx.db
-      .prepare("SELECT CAST(id AS TEXT) AS folio, nombre AS concepto, estado AS fecha FROM proyecto ORDER BY id DESC LIMIT 50")
-      .all() as Array<{ folio: string; concepto: string; fecha: string }>;
+      .prepare(`SELECT CAST(id AS TEXT) AS folio, nombre AS concepto, estado AS fecha FROM proyecto WHERE 1=1 ${filtroProyecto} ORDER BY id DESC LIMIT ?`)
+      .all(...(busqueda ? [patron, patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
     return { venta: ventas, compra: compras, cotizacion: cotizaciones, proyecto: proyectos };
   },
   'config:respaldoPeriodicoLeer': ctx => {
@@ -642,6 +656,14 @@ export const comandos: Record<string, Manejador> = {
       responsable: texto(p, 'responsable'),
       motivo: texto(p, 'motivo')
     });
+  },
+  'paquete:generar': (ctx, payload) => {
+    const p = objeto(payload);
+    return generarPaqueteContador(ctx.db, texto(p, 'desde'), texto(p, 'hasta'));
+  },
+  'fiscal:anexo1Ventas': (ctx, payload) => {
+    const p = objeto(payload);
+    return exportarAnexo1VentasContribuyentes(ctx.db, texto(p, 'mes'));
   }
 };
 
