@@ -683,3 +683,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - **Servicio**: ejercicio anual (familia de cierre, conciliación independiente, reapertura), códigos F-14 soportados/bloqueados, paquete con ejercicio-anual.csv.
 - **Componente**: UI anual vigente (limpieza/carga/año confirmado/bloqueo de exportación/payload concordante) — pruebas de componente específicas de este bloque.
 - **Pendiente Windows real**: instalación/actualización NSIS según el plan manual del script, recorrido gráfico offline, arranque del preload empaquetado en Electron real.
+
+## Bloque auditoría 45 (herramientas reproducibles de aceptación de dos versiones y manual final)
+
+### Añadido
+
+- **Herramienta CLI de semilla/verificación** (`scripts/semilla-qa.ts`, compilada a `dist/scripts/semilla-qa.js`): tres modos por comandos públicos — `sembrar` (perfil sintético con contraparte, venta 100.00 sintética, adjunto con hash SHA-256, bitácora; manifiesto esperado con folio/total/hash/eventos), `respaldar` (respaldo con manifiesto SHA-256 antes de actualizar, hash y nombre persistidos en el manifiesto) y `verificar` (comprobación independiente: venta existe/total, contraparte, adjunto registrado/archivo/hash recalculado, bitácora conservada, respaldo previo presente; estados PASA/FALLA por comprobación, exit 2 si falla). Validación de rutas: ABSOLUTAS normalizadas, rechaza OneDrive y la base operativa. **Probada en este entorno Linux con perfiles sintéticos**: sembrar→respaldar→verificar PASA completo; verificación contra perfil vacío FALLA con exit 2; ruta relativa rechazada con exit 1. Etiquetada como prueba CLI separada del recorrido GUI real.
+- **Script de aceptación de dos versiones** (`scripts/aceptacion-dos-versiones.ps1`): parametriza instalador anterior/nuevo, destino de instalación QA y perfil contable+Chromium exclusivos (rutas absolutas validadas, fuera de OneDrive, distintas del operativo); pasos claros: 1) sembrar con la versión ANTERIOR (GUI manual o alternativa CLI), 2) respaldo CLI, 3) instalar NSIS NUEVO sobre el mismo destino (manual), 4) verificación CLI independiente con PASA/FALLA, 5) recorrido gráfico offline con el binario instalado; rollback documentado desde el respaldo del paso 2. NO ejecuta electron.cmd para certificar; nada se aprueba solo por proceso activo; restaura el valor previo de ARKON_RUTA_DATOS; argumentos con espacios manejados por parámetros nombrados.
+- **qa-windows.ps1 endurecido**: rutas absolutas normalizadas, rechazo de OneDrive y base operativa, marcador QA (`QA-MARCADOR.txt`) para reabrir el perfil existente, restauración del valor previo de ARKON_RUTA_DATOS, y nota explícita de que el proceso de desarrollo activo NO certifica el binario instalado.
+- **Opción local Unsigned QA documentada**: el comando de build sin firma (`--publish never --config.win.signAndEditExecutable=false`) queda registrado en el manual como artefacto LOCAL SIN FIRMA válido solo para QA (limitación del winCodeSign por permisos de enlaces simbólicos, resuelta por el auditor sin elevar permisos); la publicación sigue prohibida.
+- **Manual final ampliado** (`docs/MANUAL-USUARIO.md`): pasos reales de instalación, actualización conservando datos (respaldo previo, NSIS sobre la instalación, verificación CLI), respaldos/restauración/rollback, y **matriz de aceptación gráfica offline de 10 puntos** (apertura, captura+doble envío, anulación, adjuntos, CSV/PDF, reportes anuales, respaldo/restauración, cierre/reapertura, impuestos bloqueados, actualización) con criterios de aprobación. Sin tasas/identidades/políticas inventadas.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer, incluye scripts) → sin errores.
+- `npx vitest run` → 227/227 (51 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+- CLI ejecutado REAL en este entorno: sembrar/respaldar/verificar PASA; perfil vacío FALLA exit 2; ruta relativa rechazada exit 1.
+
+### Límites exactos
+
+- Este entorno es Linux: NO ejecuté el instalador NSIS, ni la instalación/actualización real, ni el recorrido gráfico. La instalación y el recorrido GUI quedan para el auditor en Windows con `scripts/aceptacion-dos-versiones.ps1` y la matriz del manual. El NSIS local sin firma del auditor (sha256 5ECE…9a08, 85,876,374 bytes) sigue siendo artefacto de QA no publicado.

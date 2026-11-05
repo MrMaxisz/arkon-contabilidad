@@ -47,3 +47,54 @@ que decida el contador responsable.
   están bloqueados con mensaje explícito.
 - La verificación real del instalador NSIS y del recorrido gráfico offline en Windows está pendiente
   (ver `docs/QA-WINDOWS.md` y `scripts/qa-windows.ps1`).
+
+
+## Instalación, actualización, respaldo y rollback (pasos reales)
+
+### Instalación inicial (Windows, offline)
+1. Ejecutar el instalador NSIS generado en `paquete\` (p. ej. `ARKON Contabilidad Setup 0.1.0.exe`).
+   Para QA local sin firma (winCodeSign no disponible por permisos de enlaces simbólicos):
+   `node node_modules\electron-builder\out\cli\cli.js --win nsis --publish never --config.win.signAndEditExecutable=false .`
+   — artefacto LOCAL SIN FIRMA con icono predeterminado, válido SOLO para QA; no es firma oficial.
+2. Elegir destino de instalación (por defecto `%LOCALAPPDATA%\Programs\ARKON Contabilidad`).
+3. Al abrir, los datos se crean en `%LOCALAPPDATA%\ARKON Contabilidad\` (fuera de OneDrive).
+
+### Actualización conservando datos
+1. **Antes de actualizar**: botón "Crear respaldo ahora" (vista Respaldo) — genera copia con
+   manifiesto SHA-256 en `respaldos\`.
+2. Instalar el nuevo NSIS sobre la instalación existente (mismo destino). Los datos del perfil
+   (`%LOCALAPPDATA%\ARKON Contabilidad`) NO se tocan.
+3. Abrir la app: contrapartes, documentos, adjuntos y bitácora deben seguir visibles.
+4. Verificación reproducible por CLI (opcional):
+   `node dist\scripts\semilla-qa.js verificar --perfil <perfil-QA> --manifiesto <semilla-qa.json>`
+
+### Respaldos y restauración
+- Manual: "Crear respaldo ahora" (vista Respaldo) — copia SQLite + adjuntos + manifiesto con hash.
+- Periódico: configurar intervalo y retención (0 = desactivado) en la misma vista.
+- Restaurar: seleccionar respaldo → "Restaurar" → confirmar; se conserva copia del estado anterior
+  y la restauración interrumpida se resuelve al siguiente arranque verificando hashes.
+- **Rollback**: si una actualización pierde datos, restaurar el respaldo previo desde la vista
+  Respaldo y reportar el hallazgo (el manifiesto del respaldo sirve de evidencia).
+
+### QA de dos versiones (perfiles sintéticos, sin tocar la base operativa)
+Ver `scriptsceptacion-dos-versiones.ps1`: siembra un perfil QA (contraparte, venta, adjunto con
+hash, bitácora), crea respaldo con manifiesto esperado, guía la instalación del NSIS nuevo y
+verifica el perfil tras actualizar con estados PASA/FALLA (exit 2 si falla). Nada se aprueba solo
+por proceso activo. `scripts\qa-windows.ps1` añade marcador QA para reabrir el mismo perfil.
+
+## Matriz de aceptación gráfica offline (recorrido manual en Windows)
+
+| # | Comprobación | Pasos | Criterio de aprobación |
+|---|---|---|---|
+| 1 | Apertura offline | Instalar, desconectar red, abrir | Ventana sin preload-error; datos del perfil |
+| 2 | Captura + doble envío | Registrar venta/compra; repetir envío con la misma operación | Sin duplicados (idempotencia visible) |
+| 3 | Anulación | Anular documento con diálogo de confirmación | Reverso contabilizado y bitácora con motivo |
+| 4 | Adjuntos | Adjuntar con selector, Verificar hash, Abrir | Hash correcto; archivo alterado no abre |
+| 5 | CSV/PDF | Exportar libros, paquete del contador, ejercicio anual, cotización PDF | Archivos en disco con cifras de pantalla |
+| 6 | Reportes anuales | Ejercicio anual: consultar año, exportar soporte | Conciliación OK; familia de cierre marcada |
+| 7 | Respaldo/restauración | Respaldo manual, restaurar, reabrir | Datos previos restaurados; copia del anterior |
+| 8 | Cierre/reapertura | Cerrar ejercicio, reabrir con motivo | Bloqueo central activo; bitácora auditada |
+| 9 | Impuestos bloqueados | Diagnóstico F-07/F-14 sin activación | Guardado de presentación bloqueado con mensaje |
+| 10 | Actualización | Instalar nueva versión sobre la anterior | Datos/adjuntos/bitácora conservados (PASO 4 CLI) |
+
+Sin tasas, identidades ni políticas inventadas; ARKON administrativa sin constitución ni IVA.

@@ -16,7 +16,14 @@ $envAnteriorRuta = $env:ARKON_RUTA_DATOS
 if (-not $Perfil) {
   $Perfil = Join-Path $env:LOCALAPPDATA ("ARKON-QA-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 }
+if (-not [System.IO.Path]::IsPathRooted($Perfil)) { throw "El perfil debe ser ABSOLUTO: $Perfil" }
+$Perfil = [System.IO.Path]::GetFullPath($Perfil)
+if ($Perfil -like "*OneDrive*") { throw "El perfil no puede estar bajo OneDrive: $Perfil" }
+$operativo = Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad'
+if ($Perfil -eq [System.IO.Path]::GetFullPath($operativo)) { throw "El perfil no puede ser la base operativa: $Perfil" }
 New-Item -ItemType Directory -Path $Perfil -Force | Out-Null
+# Marcador QA para reabrir el perfil existente en corridas posteriores.
+Set-Content -Path (Join-Path $Perfil 'QA-MARCADOR.txt') -Value "Perfil QA de ARKON Contabilidad; semilla sintética; $(Get-Date -Format o)" -Encoding UTF8
 $chromium = Join-Path $Perfil 'chromium'
 New-Item -ItemType Directory -Path $chromium -Force | Out-Null
 Write-Host "Perfil QA aislado: $Perfil"
@@ -58,7 +65,7 @@ try {
     if ($proceso.HasExited) {
       throw "La app se cerró durante el arranque (código $($proceso.ExitCode)); revisa el perfil $Perfil"
     }
-    Write-Host "Proceso Electron activo (PID $($proceso.Id))."
+    Write-Host "Proceso de DESARROLLO activo (PID $($proceso.Id)). NOTA: esto NO certifica el binario instalado; la aceptación real requiere el NSIS instalado (ver scripts\aceptacion-dos-versiones.ps1)."
     return 0
   }
   Write-Host @"
@@ -74,7 +81,7 @@ IMPORTANTE: al terminar, ejecuta `npm run rebuild:node` para devolver better-sql
 "@
 }
 finally {
-  Remove-Item Env:\ARKON_RUTA_DATOS -ErrorAction SilentlyContinue
   if ($envAnteriorRuta) { $env:ARKON_RUTA_DATOS = $envAnteriorRuta }
+  else { Remove-Item Env:\ARKON_RUTA_DATOS -ErrorAction SilentlyContinue }
   Write-Host "`nVariables de entorno restauradas. El perfil QA NO se elimina: revísalo y borre $Perfil solo si es de este QA."
 }
