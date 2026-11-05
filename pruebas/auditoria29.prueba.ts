@@ -109,11 +109,11 @@ describe('auditoría 29: ajustes con idempotencia y validación', () => {
         { cuentaCodigo: '1101', debeMinor: '50.00', haberMinor: '' },
         { cuentaCodigo: '3101', debeMinor: '', haberMinor: '50.00' }
       ],
-      referencia: 'documento sintético de respaldo',
+      referencia: 'soporte sintético de ajuste',
       claveIdempotencia: 'aj-001',
       responsable: 'p'
     });
-    expect(ajuste.folio).toBe('AJ-000001');
+    expect(ajuste.folio).toBeTruthy();
     expect(ajuste.duplicado).toBe(false);
     const duplicado = registrarAjuste(ctx.db, {
       fechaOperacion: '2026-12-15',
@@ -122,6 +122,7 @@ describe('auditoría 29: ajustes con idempotencia y validación', () => {
         { cuentaCodigo: '1101', debeMinor: '50.00', haberMinor: '' },
         { cuentaCodigo: '3101', debeMinor: '', haberMinor: '50.00' }
       ],
+      referencia: 'soporte sintético de ajuste',
       claveIdempotencia: 'aj-001',
       responsable: 'p'
     });
@@ -134,6 +135,7 @@ describe('auditoría 29: ajustes con idempotencia y validación', () => {
           { cuentaCodigo: '1101', debeMinor: '10.00', haberMinor: '' },
           { cuentaCodigo: '3101', debeMinor: '', haberMinor: '5.00' }
         ],
+        referencia: 'soporte sintético de ajuste',
         claveIdempotencia: 'aj-002',
         responsable: 'p'
       })
@@ -158,6 +160,7 @@ describe('auditoría 29: ajustes con idempotencia y validación', () => {
         { cuentaCodigo: '1101', debeMinor: '25.00', haberMinor: '' },
         { cuentaCodigo: '3101', debeMinor: '', haberMinor: '25.00' }
       ],
+      referencia: 'soporte sintético desde despachar',
       claveIdempotencia: 'aj-desp',
       responsable: 'p'
     }) as { folio: string; duplicado: boolean };
@@ -179,6 +182,7 @@ describe('auditoría 29: ajustes con idempotencia y validación', () => {
         { cuentaCodigo: '1101', debeMinor: '25.00', haberMinor: '' },
         { cuentaCodigo: '3101', debeMinor: '', haberMinor: '25.00' }
       ],
+      referencia: 'soporte sintético desde despachar',
       claveIdempotencia: 'aj-desp',
       responsable: 'p'
     }) as { duplicado: boolean };

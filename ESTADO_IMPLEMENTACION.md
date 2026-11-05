@@ -1,6 +1,19 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (auditoría 29 de Codex; coordinador único + ajustes + auxiliares con detalle y exportación). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 30 de Codex; ajustes con motor completo). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 30 (Codex) — ajustes usan el motor contable completo — aplicado y probado
+
+- **[P1] registrarAjuste delega en contabilizarAsiento**: calendario validado (rechaza 2027-02-30), pertenencia al período, período abierto (rechaza en cerrado), ámbito activo, cuentas válidas, cuadre, responsable — todas las garantías del motor central. La referencia de soporte es obligatoria. Patrón: idempotencia → validación de cuentas → contabilizarAsiento (borrador→líneas→contabilizado) → motivo con referencia → bitácora.
+- Los comandos `ajuste:registrar` en despachar ahora exigen `referencia` con `texto(p, 'referencia')`.
+
+Pendientes identificados para el próximo incremento (bloque 3 continúa):
+- `auxiliarContraparteDetalle`: filtrar también aplicaciones/anticipos por fecha de corte (no solo documentos).
+- `exportarCsvAuxiliar`: escapar comillas/comas/saltos en CSV con utilidad común.
+- Vista JSX de ajustes, exportación por diálogo nativo, cierre mensual/anual completo.
+- Estado periódico: refrescar tras guardado, mostrar fallo reciente, selector de documento en adjuntos.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **154/154 en verde** (32 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Auditoría 29 (Codex) — coordinador único + bloque 3 avanzado — aplicado y probado
 

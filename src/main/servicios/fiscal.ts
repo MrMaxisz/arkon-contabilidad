@@ -5,7 +5,6 @@ import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
-import { periodoDeFecha } from './motorAsientos';
 import { saldoPendienteDocumento } from './saldos';
 
 export class ErrorFiscal extends Error {}
@@ -998,7 +997,7 @@ export interface EntradaAjuste {
   fechaOperacion: string;
   concepto: string;
   lineas: Array<{ cuentaCodigo: string; debeMinor: string; haberMinor: string }>;
-  referencia?: string;
+  referencia: string;
   claveIdempotencia: string;
   responsable: string;
 }
@@ -1007,64 +1006,43 @@ export function registrarAjuste(
   db: Database.Database,
   entrada: EntradaAjuste
 ): { id: number; folio: string; duplicado: boolean; estado: string } {
+  if (!entrada.referencia?.trim()) {
+    throw new ErrorFiscal('El ajuste exige referencia de soporte');
+  }
   const previo = db
     .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
     .get(`${entrada.claveIdempotencia}:ajuste`) as { id: number; folio: string } | undefined;
   if (previo) {
     return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
   }
-  const lineas = entrada.lineas.map(l => {
+  const lineasAsiento = entrada.lineas.map(l => {
     const cuenta = db
-      .prepare('SELECT id, tipo, es_grupo, activa FROM cuenta WHERE codigo = ?')
-      .get(l.cuentaCodigo) as { id: number; tipo: string; es_grupo: number; activa: number } | undefined;
-    if (!cuenta || cuenta.es_grupo === 1 || cuenta.activa === 0) {
-      throw new ErrorFiscal(`Cuenta inválida para ajuste: ${l.cuentaCodigo}`);
+      .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+      .get(l.cuentaCodigo) as { id: number } | undefined;
+    if (!cuenta) {
+      throw new ErrorFiscal(`Cuenta inválida o inactiva para ajuste: ${l.cuentaCodigo}`);
     }
     return {
       cuentaId: cuenta.id,
-      debe: l.debeMinor ? parseMontoMinor(l.debeMinor) : 0n,
-      haber: l.haberMinor ? parseMontoMinor(l.haberMinor) : 0n
+      debeMinor: l.debeMinor || '',
+      haberMinor: l.haberMinor || ''
     };
   });
-  let totalDebe = 0n;
-  let totalHaber = 0n;
-  for (const l of lineas) {
-    totalDebe += l.debe;
-    totalHaber += l.haber;
-  }
-  if (totalDebe !== totalHaber || totalDebe === 0n) {
-    throw new ErrorFiscal('Ajuste descuadrado o vacío');
-  }
-  const n = (db.prepare("SELECT COUNT(*) AS n FROM asiento WHERE origen_tipo = 'ajuste'").get() as { n: number }).n;
-  const folio = `AJ-${String(n + 1).padStart(6, '0')}`;
-  const tx = db.transaction(() => {
-    const periodo = periodoDeFecha(db, entrada.fechaOperacion);
-    const info = db
-      .prepare(
-        `INSERT INTO asiento (folio, fecha_operacion, periodo_id, ambito_id, concepto, origen_tipo, origen_id,
-          clave_idempotencia, estado, responsable, motivo)
-         VALUES (?, ?, ?, 'administrativo', ?, 'ajuste', ?, ?, 'borrador', ?, ?)`
-      )
-      .run(
-        folio,
-        entrada.fechaOperacion,
-        periodo.id,
-        entrada.concepto,
-        folio,
-        `${entrada.claveIdempotencia}:ajuste`,
-        entrada.responsable,
-        entrada.referencia ?? null
-      );
-    const asientoId = Number(info.lastInsertRowid);
-    const insertar = db.prepare(
-      'INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)'
-    );
-    for (const l of lineas) {
-      insertar.run(asientoId, l.cuentaId, l.debe, l.haber);
-    }
-    db.prepare("UPDATE asiento SET estado = 'contabilizado', contabilizado_en = datetime('now') WHERE id = ?").run(asientoId);
-    registroEvento(db, entrada.responsable, 'ajuste_registrado', 'asiento', String(asientoId), { folio, concepto: entrada.concepto });
-    return { id: asientoId, folio, duplicado: false, estado: 'contabilizado' };
+  const asiento = contabilizarAsiento(db, {
+    fechaOperacion: entrada.fechaOperacion,
+    concepto: entrada.concepto,
+    lineas: lineasAsiento,
+    origenTipo: 'ajuste',
+    origenId: entrada.claveIdempotencia,
+    claveIdempotencia: `${entrada.claveIdempotencia}:ajuste`,
+    responsable: entrada.responsable,
+    ambitoId: 'administrativo'
   });
-  return tx();
+  db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
+  registroEvento(db, entrada.responsable, 'ajuste_registrado', 'asiento', String(asiento.asientoId), {
+    folio: asiento.folio,
+    concepto: entrada.concepto,
+    referencia: entrada.referencia
+  });
+  return { id: asiento.asientoId, folio: asiento.folio, duplicado: false, estado: 'contabilizado' };
 }

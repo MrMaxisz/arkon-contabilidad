@@ -419,7 +419,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaDestinoId: entero(p, 'cuentaDestinoId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      referencia: texto(p, 'referencia'),
       aplicaciones: p.aplicaciones as never,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
@@ -433,7 +433,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaOrigenId: entero(p, 'cuentaOrigenId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      referencia: texto(p, 'referencia'),
       aplicaciones: p.aplicaciones as never,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
@@ -447,7 +447,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaDestinoId: entero(p, 'cuentaDestinoId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      referencia: texto(p, 'referencia'),
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
     });
@@ -567,7 +567,7 @@ export const comandos: Record<string, Manejador> = {
       fechaOperacion: texto(p, 'fechaOperacion'),
       concepto: texto(p, 'concepto'),
       lineas,
-      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      referencia: texto(p, 'referencia'),
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
     });
