@@ -829,3 +829,20 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Sandbox Linux: la prueba de mecanismo corre con Node; la integración con Electron real (positivo ABI130) es el producto probe verificado por ti en Windows (48). Instalación/actualización/recorrido offline Windows siguen pendientes de tu QA real de dos versiones. No se tocó la app abierta ni la base del propietario.
+
+## Bloque auditoría 50 (corrección exacta del ejecutable del harness de mecanismo)
+
+### Corregido
+
+- **P1 POSITIVO en Windows**: la bifurcación real del ejecutable en `ejecutarHarness` (`usarElectron = process.platform === win32 && existsSync(electronExe)` → `comando = usarElectron ? electronExe : process.execPath`) fue ELIMINADA: el harness de mecanismo lanza **`process.execPath` (Node) en TODOS los SO**, sin condición de plataforma. En Windows ya no intenta cargar el native Node137 (ABI de la suite) dentro de Electron130 — la causa exacta de las dos caídas 49/50. La integración con Electron real permanece ÚNICAMENTE en el producto (`scripts/probe-electron-abi.mjs`) después del rebuild explícito (ya verificado por el auditor: Electron 33.4.11/ABI130, probe PASA).
+- **Guarda de regresión añadida** (4ª prueba del archivo): verifica que el archivo de prueba contiene `const comando = process.execPath;` y que NO existen las asignaciones `const usarElectron =` ni `comando = usarElectron` — impide que una futura edición reintroduzca la bifurcación sin que la suite lo detecte. El POSITIVO exige ok:true con ABI de Node y versión de Node; el NEGATIVO (binario sintético) sigue rechazado como error.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → 247/247 (53 archivos), incluido el POSITIVO del mecanismo que ahora lanza Node sin bifurcación.
+- `npm run build` → OK.
+
+### Límites exactos
+
+- Sandbox Linux: la prueba de mecanismo corre con Node (ABI 127 aquí); en Windows correrá con Node (ABI 137 de la suite) — en ambos casos con el runtime que coincide con el native reconstruido por `npm test`. La integración Electron130 es el producto probe (verificado por el auditor en 48/50). QA real de dos versiones del auditor en curso (instalación/actualización con datos sintéticos conservados: 93 filas/24 tablas/1 adjunto con hash, CLI verificar PASA); recorrido offline integral sigue pendiente.

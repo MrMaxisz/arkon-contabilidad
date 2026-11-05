@@ -65,11 +65,11 @@ try {
 }
 `;
     fs.writeFileSync(rutaScript, script, 'utf8');
-    // En Linux este sandbox no puede ejecutar Electron (bibliotecas gráficas ausentes): el harness
-    // valida el mecanismo CJS/JSON con Node (ABI de Node); en Windows usa el binario real de Electron.
-    const electronExe = path.join(process.cwd(), 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
-    const usarElectron = process.platform === 'win32' && fs.existsSync(electronExe);
-    const comando = usarElectron ? electronExe : process.execPath;
+    // PRUEBA DE MECANISMO: lanzar SIEMPRE process.execPath (Node) en TODOS los SO. npm test
+    // reconstruye el native para el ABI de Node; lanzar Electron aquí cargaría Node137 en
+    // Electron130 y fallaría en Windows. La integración con Electron real la hace el producto
+    // (scripts/probe-electron-abi.mjs) después del rebuild explícito — nunca esta prueba.
+    const comando = process.execPath;
     const r = spawnSync(comando, [rutaScript], {
       encoding: 'utf8',
       timeout: 30_000,
@@ -119,6 +119,14 @@ describe('auditoría 48: harness CJS/JSON del probe de ABI', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('REGRESIÓN: el harness de mecanismo lanza SIEMPRE Node (process.execPath), nunca el binario de Electron', () => {
+    const contenido = fs.readFileSync(path.join(process.cwd(), 'pruebas', 'probeElectron.prueba.ts'), 'utf8');
+    // La selección del ejecutable debe ser incondicional Node, sin bifurcación por plataforma.
+    expect(contenido).toContain('const comando = process.execPath;');
+    expect(contenido).not.toMatch(/const\s+usarElectron\s*=/);
+    expect(contenido).not.toMatch(/comando\s*=\s*usarElectron/);
   });
 
   it('el pipeline dist:win:qa mantiene rebuild→probe→build→NSIS→verificación y typecheck ejecutable en scripts', () => {
