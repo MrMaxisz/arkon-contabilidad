@@ -96,6 +96,25 @@ export default function Impuestos() {
   const [metaDocumentoId, setMetaDocumentoId] = useState(0);
   const [metaTipo, setMetaTipo] = useState<'venta' | 'compra'>('venta');
   const [metaClasificacion, setMetaClasificacion] = useState('');
+  const [f14Diagnostico, setF14Diagnostico] = useState<{
+    folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
+    listos: string[];
+    bloqueado: boolean;
+    motivo: string;
+  } | null>(null);
+  const [retencionesF14, setRetencionesF14] = useState<Array<{ id: number; folio: string; contraparteNombre: string; fecha: string }>>([]);
+  const [f14Id, setF14Id] = useState(0);
+  const [f14Domiciliado, setF14Domiciliado] = useState('1');
+  const [f14Pais, setF14Pais] = useState('9300');
+  const [f14Nit, setF14Nit] = useState('');
+  const [f14Dui, setF14Dui] = useState('');
+  const [f14Codigo, setF14Codigo] = useState('');
+  const [f14TipoOp, setF14TipoOp] = useState('1');
+  const [f14Clasificacion, setF14Clasificacion] = useState('2');
+  const [f14Sector, setF14Sector] = useState('2');
+  const [f14CostoGasto, setF14CostoGasto] = useState('1');
+  const [f14Responsable, setF14Responsable] = useState('');
+  const [f14Motivo, setF14Motivo] = useState('');
   const [metaSector, setMetaSector] = useState('');
   const [metaCostoGasto, setMetaCostoGasto] = useState('');
   const [metaCargando, setMetaCargando] = useState(false);
@@ -123,6 +142,7 @@ export default function Impuestos() {
         };
         setVentasSelector(vinculos.venta ?? []);
         setComprasSelector(vinculos.compra ?? []);
+        cargarRetenciones();
       })
       .catch(() => {
         setVentasSelector([]);
@@ -519,7 +539,9 @@ export default function Impuestos() {
                   sector: metaSector || undefined,
                   tipoCostoGasto: metaCostoGasto || undefined
                 }),
-            tipoOperacionRenta: metaOperacionRenta
+            tipoOperacionRenta: metaOperacionRenta,
+            responsable: metaResponsable,
+            motivo: metaMotivo
           });
           setMensaje({ texto: 'Metadatos fiscales registrados en bitácora.', tipo: 'ok' });
           await seleccionarDocumento(metaDocumentoId, metaTipo);
@@ -694,9 +716,108 @@ export default function Impuestos() {
           Guardar Anexo 3…
         </button>
       </div>
+      <h2>Anexo de Retenciones F-14 v16</h2>
+      <div className="fila">
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void diagnosticarF14()}
+        >
+          Diagnosticar F-14
+        </button>
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void guardarF14()}
+        >
+          Guardar anexo F-14…
+        </button>
+      </div>
+      {f14Diagnostico && (
+        <div>
+          <p className="menor">
+            Retenciones listas: {f14Diagnostico.listos.length}. {f14Diagnostico.bloqueado ? `BLOQUEADO: ${f14Diagnostico.motivo}` : 'Sin faltantes para el mes.'}
+          </p>
+          {f14Diagnostico.folios.map(f => (
+            <p key={f.folio} className="menor">
+              {f.folio}: {f.faltantes.join(' · ')}
+            </p>
+          ))}
+        </div>
+      )}
+      <h3>Completar metadatos de retención (vía auditada F-14)</h3>
+      <form onSubmit={async e => {
+        e.preventDefault();
+        setMensaje(null);
+        try {
+          await api().invocar('fiscal:retencionMetadatosCompletar', {
+            retencionId: f14Id,
+            domiciliado: f14Domiciliado,
+            codigoPais: f14Pais,
+            nitNif: f14Nit || undefined,
+            dui: f14Dui || undefined,
+            codigoIngreso: f14Codigo,
+            tipoOperacion: f14TipoOp,
+            clasificacion: f14Clasificacion,
+            sector: f14Sector,
+            tipoCostoGasto: f14CostoGasto,
+            responsable: f14Responsable,
+            motivo: f14Motivo
+          });
+          setMensaje({ texto: 'Metadatos F-14 registrados en bitácora.', tipo: 'ok' });
+          await diagnosticarF14();
+        } catch (err) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      }}>
+        <div className="fila">
+          <label>Retención
+            <select value={String(f14Id)} onChange={e => setF14Id(Number(e.target.value))} required>
+              <option value="0">— Seleccione retención —</option>
+              {retencionesF14.map(r => (
+                <option key={r.id} value={String(r.id)}>{r.folio} · {r.contraparteNombre} ({r.fecha})</option>
+              ))}
+            </select>
+          </label>
+          <label>Domiciliado (A)
+            <select value={f14Domiciliado} onChange={e => setF14Domiciliado(e.target.value)}>
+              <option value="1">1 Domiciliado</option>
+              <option value="2">2 No domiciliado</option>
+            </select>
+          </label>
+          <label>País (B)<input value={f14Pais} onChange={e => setF14Pais(e.target.value)} maxLength={4} required /></label>
+          <label>NIT/NIF (D)<input value={f14Nit} onChange={e => setF14Nit(e.target.value)} maxLength={14} placeholder="14 dígitos" /></label>
+          <label>DUI (E)<input value={f14Dui} onChange={e => setF14Dui(e.target.value)} maxLength={9} placeholder="9 dígitos" /></label>
+        </div>
+        <div className="fila">
+          <label>Código ingreso (F)<input value={f14Codigo} onChange={e => setF14Codigo(e.target.value)} maxLength={2} required placeholder="2 dígitos" /></label>
+          <label>Tipo operación (S)
+            <select value={f14TipoOp} onChange={e => setF14TipoOp(e.target.value)}>
+              <option value="1">1 Gravada</option>
+              <option value="2">2 No gravada</option>
+              <option value="9">9 Nota 9</option>
+            </select>
+          </label>
+          <label>Clasificación (T)
+            <select value={f14Clasificacion} onChange={e => setF14Clasificacion(e.target.value)}>
+              <option value="1">1 Costo</option>
+              <option value="2">2 Gasto</option>
+              <option value="9">9 Nota 9</option>
+            </select>
+          </label>
+          <label>Sector (U)<input value={f14Sector} onChange={e => setF14Sector(e.target.value)} maxLength={1} required /></label>
+          <label>Tipo costo/gasto (V)<input value={f14CostoGasto} onChange={e => setF14CostoGasto(e.target.value)} maxLength={1} required /></label>
+        </div>
+        <div className="fila">
+          <label>Responsable<input value={f14Responsable} onChange={e => setF14Responsable(e.target.value)} required /></label>
+          <label style={{ flex: 2 }}>Motivo<input value={f14Motivo} onChange={e => setF14Motivo(e.target.value)} required /></label>
+          <button className="primario" type="submit" disabled={!f14Id}>Registrar metadatos F-14</button>
+        </div>
+      </form>
       <p className="aviso error">
         Los anexos 2 y 3 comparten el bloqueo del Anexo 1: requieren metadatos fiscales completos por la vía
         auditada y cobertura de vigencia por fecha de documento; ARKON no está constituida ni inscrita en IVA.
+        El anexo F-14 sigue el mismo bloqueo de activación formal.
       </p>
     </div>
   );
@@ -710,6 +831,43 @@ export default function Impuestos() {
         motivo: string;
       };
       setAnexoDiagnostico({ ...r, anexo, tipoDocumento });
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  function cargarRetenciones() {
+    void api()
+      .invocar('retencion:listar', {})
+      .then(r => {
+        const filas = r as Array<{ id: number; folio: string; contraparteNombre: string; fecha: string }>;
+        setRetencionesF14(filas ?? []);
+      })
+      .catch(() => setRetencionesF14([]));
+  }
+
+  async function diagnosticarF14() {
+    try {
+      const r = (await api().invocar('fiscal:anexoRetenciones', { mes: anexoMes })) as {
+        folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
+        listos: string[];
+        bloqueado: boolean;
+        motivo: string;
+      };
+      setF14Diagnostico(r);
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function guardarF14() {
+    try {
+      const r = (await api().guardarAnexoF14(anexoMes)) as { guardado: boolean; ruta?: string; filas: number };
+      if (r.guardado && r.ruta) {
+        setMensaje({ texto: `Anexo F-14 guardado en ${r.ruta} (${r.filas} filas).`, tipo: 'ok' });
+      } else {
+        setMensaje({ texto: 'Guardado del anexo F-14 cancelado.', tipo: 'ok' });
+      }
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     }

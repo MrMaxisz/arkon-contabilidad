@@ -70,6 +70,14 @@ export function completarMetadatosFiscales(
     if (!CATALOGO_T_COMPRA.has(entrada.tipoCostoGasto ?? '')) {
       throw new ErrorAnexo(`Tipo de costo/gasto (columna T) de compra inválido: catálogo 1-7`);
     }
+    const errorConjunto = errorCombinacionRentaCompra(
+      entrada.clasificacionRenta ?? '',
+      entrada.sector ?? '',
+      entrada.tipoCostoGasto ?? ''
+    );
+    if (errorConjunto) {
+      throw new ErrorAnexo(errorConjunto);
+    }
   }
   const tabla = tipo === 'venta' ? 'venta' : 'compra';
   const doc = db.prepare(`SELECT id, folio, estado FROM ${tabla} WHERE id = ?`).get(documentoId) as
@@ -643,6 +651,30 @@ const CATALOGO_R_COMPRA = new Set(['1', '2']);
 const CATALOGO_S_COMPRA = new Set(['1', '2', '3', '4']);
 const CATALOGO_T_COMPRA = new Set(['1', '2', '3', '4', '5', '6', '7']);
 
+// Reglas conjuntas del Anexo 3 (manual F-07 v14, tabla página impresa 21):
+// - R2 (gasto) permite T 1-3 con cualquier S 1-4.
+// - R1 (costo) + S1 (industria) permite T 4-7.
+// - R1 (costo) + S2/S3/S4 permite T 4-5.
+function combinacionRentaCompraValida(r: string, sector: string, t: string): boolean {
+  if (r === '2') {
+    return ['1', '2', '3'].includes(t);
+  }
+  if (r === '1') {
+    if (sector === '1') {
+      return ['4', '5', '6', '7'].includes(t);
+    }
+    return ['4', '5'].includes(t);
+  }
+  return false;
+}
+
+function errorCombinacionRentaCompra(r: string, sector: string, t: string): string | null {
+  if (!combinacionRentaCompraValida(r, sector, t)) {
+    return `combinación R=${r}/S=${sector}/T=${t} no permitida por la tabla del manual F-07 v14 (página impresa 21)`;
+  }
+  return null;
+}
+
 function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
   const faltantes: string[] = [];
   const nit = (co.nit || '').replace(/[-|]/g, '');
@@ -671,6 +703,14 @@ function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
     }
     if (!CATALOGO_T_COMPRA.has(co.tipo_costo_gasto ?? '')) {
       faltantes.push('tipo de costo/gasto del catálogo 1-7 (columna T)');
+    }
+    const errorConjunto = errorCombinacionRentaCompra(
+      co.clasificacion_renta ?? '',
+      co.sector ?? '',
+      co.tipo_costo_gasto ?? ''
+    );
+    if (errorConjunto) {
+      faltantes.push(errorConjunto);
     }
   }
   const vigencia = db

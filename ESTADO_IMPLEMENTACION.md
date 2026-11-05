@@ -571,3 +571,28 @@ Manual de usuario para la carga de archivo del Anexo de Retenciones de Impuesto 
 - `npm run typecheck` (main + preload + renderer) → sin errores.
 - `npx vitest run` → 211/211 (47 archivos).
 - `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+## Bloque auditoría 40 (contrato del submit, reglas conjuntas del Anexo 3, Anexo F-14 v16)
+
+### Corregido (hallazgos de la auditoría 40)
+
+- **P1 Payload sin responsable/motivo**: restituidos en el submit del formulario de metadatos (el spread por tipo los había desplazado). El mock del componente ahora valida el contrato real: rechaza 'Campo requerido: responsable/motivo' y los catálogos de compra, de modo que la suite detecta omisiones del contrato (las pruebas existentes rellenan ambos y pasan; una omisión fallaría).
+- **P2 Reglas conjuntas del Anexo 3** (tabla página impresa 21 del manual F-07 v14): R2 (gasto) permite T 1-3 con cualquier S 1-4; R1 (costo) + S1 (industria) permite T 4-7; R1 + S2/S3/S4 permite T 4-5. Aplicadas en vía auditada, diagnóstico y exportación (revalidación) con mensaje corregible 'combinación R=/S=/T= no permitida'. Pruebas: R2/S4/T7 rechazada; Q1/R2/S4/T1, R1/S1/T7 y R1/S2/T4 aceptadas; R1/S2/T7 rechazada; mutación a combinación inválida bloquea diagnóstico y exportación. Combinación de aceptación actualizada según la corrección del auditor.
+
+### Añadido: Anexo de Retenciones F-14 v16 (fuente y versión oficiales verificadas)
+
+- **Fuente**: Manual de usuario F-14 v16 (Octubre 2025), https://www.transparenciafiscal.gob.sv/downloads/pdf/700-DGII-MN-2021-26032.pdf — la portada del archivo es v16, no v15; no se toma el aviso antiguo ni el nombre del fichero como versión.
+- **Matriz exacta A-W (23 columnas)**: A domiciliado(1), B país(4), C nombre(100), D NIT/NIF(14), E DUI(9), F código ingreso(2), G devengado(12), H bonificaciones(12), I retenido(12), J aguinaldo exento(6), K aguinaldo gravado(12), L AFP(6), M ISSS(5), N INPEP(5), O IPSFA(5), P CEFAFA(5), Q Bienestar Magisterial(5), R ISSS/IVM(5), S tipo operación(1), T clasificación(1), U sector(1), V tipo costo/gasto(1), W período(6 MMYYYY). S/T/U/V = 0 antes de 2024-02.
+- **Migración v17** (metadatos de retención: domiciliado, código país, NIT/NIF, DUI, código ingreso, S/T/U/V) y **vía auditada** `fiscal:retencionMetadatosCompletar` con bitácora; catálogos verificados del propio F-14: S {1 Gravada, 2 No Gravada, 9 nota 9}, T {1 Costo, 2 Gasto, 9 nota 9}; nota 9 (página 5) implementada para instituciones públicas/municipalidades/no inscritos IVA/no deducibles. Impedimento exacto documentado en el código y docs: los catálogos completos de U y V del F-14 no son extraíbles del PDF de imágenes; se valida dígito simple (más el 9 de nota 9) y queda pendiente la lista exacta. No se trasladan reglas del F-07 al F-14.
+- **Diagnóstico y exportación**: `fiscal:anexoRetenciones` (bloqueo por faltantes o sin cobertura de vigencia por fecha de retención) y `exportarAnexoRetencionesF14Presentacion` con límites por columna, revalidación al exportar, nombre en mayúsculas (columna C), devengado/retenido de la retención real, período MMYYYY y bloqueo de activación formal. Canal nativo `arkon:guardarAnexoF14` + preload `guardarAnexoF14` + sección en Impuestos con diagnóstico, guardado y formulario auditable (selector de retenciones, país, NIT/DUI, código, S/T/U/V, responsable/motivo).
+- **Pruebas** (`auditoria40F14.prueba.ts`): 23 columnas exactas con valores sintéticos (país 9300, código 42, devengado 1000.00, retenido 100.00, período 112026); persistencia tras reapertura; revalidación (sector 'X' bloquea la exportación); rechazos de país/NIT/código/S-T fuera de catálogo/responsable/motivo; nota 9 aceptada con DUI; período 2023-11 exporta S/T/U/V=0 sin exigirlos.
+
+### F-11
+
+Guía oficial localizada y descargada (58 páginas): https://www.transparenciafiscal.gob.sv/downloads/pdf/700-DGII-GA-2018-20288.pdf (entrada del catálogo normativo de Hacienda). Contiene pasos de renta en línea; NO es un esquema CSV ni confirma tasas/vigencias actuales: se usará para soporte interno anual y paquete del contador, sin generar archivo de presentación ni inventar tasas.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 215/215 (48 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.

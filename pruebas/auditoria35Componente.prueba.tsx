@@ -122,8 +122,21 @@ beforeEach(() => {
           motivo: 'Hay documentos con metadatos fiscales incompletos',
           fuente: 'Manual F-07 v14'
         });
-      case 'fiscal:metadatosCompletar':
+      case 'fiscal:metadatosCompletar': {
+        const datosCompletar = datos as Record<string, unknown>;
+        if (typeof datosCompletar.responsable !== 'string' || !datosCompletar.responsable) {
+          return Promise.reject(new Error('Campo requerido: responsable'));
+        }
+        if (typeof datosCompletar.motivo !== 'string' || !datosCompletar.motivo) {
+          return Promise.reject(new Error('Campo requerido: motivo'));
+        }
+        if (datosCompletar.tipo === 'compra') {
+          if (typeof datosCompletar.clasificacionRenta !== 'string' || !datosCompletar.clasificacionRenta) {
+            return Promise.reject(new Error('Clasificación (columna R) de compra inválida: catálogo 1-2'));
+          }
+        }
         return Promise.resolve({ ok: true });
+      }
       default:
         return Promise.resolve([]);
     }
@@ -195,7 +208,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
 
     fireEvent.change(selectorVenta(), { target: { value: '0' } });
     await waitFor(() => expect(screen.queryByText(/Documento seleccionado/)).toBeNull());
-    expect((screen.getByText(/Registrar metadatos/) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Registrar metadatos') as HTMLButtonElement).disabled).toBe(true);
 
     lecturasDiferidas.set(30, () => undefined);
     invocar.mockImplementation((comando: string, datos?: unknown) => {
@@ -206,7 +219,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
     });
     fireEvent.change(selectorVenta(), { target: { value: '12' } });
     await waitFor(() => screen.getByText(/No se pudo cargar la venta 12/));
-    expect((screen.getByText(/Registrar metadatos|Cargando documento/) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Registrar metadatos') as HTMLButtonElement).disabled || (screen.getByText('Cargando documento…') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('secciones Anexo 2 y Anexo 3: diagnóstico, guardado por puente y flujo de compra', async () => {

@@ -6,6 +6,7 @@ import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
+import { exportarAnexoRetencionesF14Presentacion } from './servicios/anexoF14';
 import {
   exportarAnexo1VentasPresentacion,
   exportarAnexo2VentasConsumidorPresentacion,
@@ -175,6 +176,38 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       filas: exportacion.filas,
       fuente: exportacion.fuente
     };
+  });
+
+  ipcMain.handle('arkon:guardarAnexoF14', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const mes = typeof p.mes === 'string' ? p.mes : '';
+    if (!mes) {
+      throw new Error('El anexo F-14 requiere mes (AAAA-MM)');
+    }
+    const anexo = exportarAnexoRetencionesF14Presentacion(ctx.db, mes);
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opciones = {
+      title: 'Guardar Anexo de Retenciones F-14 v16',
+      defaultPath: `anexo-retenciones-${mes}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    };
+    const destino = ventanaPrincipal
+      ? await dialog.showSaveDialog(ventanaPrincipal, opciones)
+      : await dialog.showSaveDialog(opciones);
+    if (destino.canceled || !destino.filePath) {
+      return { guardado: false };
+    }
+    fs.writeFileSync(destino.filePath, `${anexo.csv}\n`, 'utf8');
+    registroEvento(ctx.db, 'sistema', 'anexo_f14_retenciones', 'archivo_csv', destino.filePath, {
+      mes,
+      filas: anexo.filas,
+      version: anexo.version,
+      fuente: anexo.fuente
+    });
+    return { guardado: true, ruta: destino.filePath, version: anexo.version, filas: anexo.filas, fuente: anexo.fuente };
   });
 
   ipcMain.handle('arkon:guardarPaqueteContador', async (evento, solicitud) => {

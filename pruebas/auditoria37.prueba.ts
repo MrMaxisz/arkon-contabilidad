@@ -310,7 +310,7 @@ describe('auditoría 37: Anexos 2 y 3 del F-07 v14', () => {
         tipoIngresoRenta: '2',
         clasificacionRenta: '1',
         sector: '1',
-        tipoCostoGasto: '1'
+        tipoCostoGasto: '4'
       },
       'p',
       'completitud sintética'
@@ -474,7 +474,7 @@ describe('auditoría 38: reglas por clase del Anexo 2, agrupación DTE y catálo
       tipoIngresoRenta: '2',
       clasificacionRenta: '1',
       sector: '2',
-      tipoCostoGasto: '3'
+      tipoCostoGasto: '4'
     }, 'p', 'completitud sintética');
 
     const diagnostico = despachar(contexto(db), 'fiscal:anexo3Compras', { mes: '2026-11' }) as {

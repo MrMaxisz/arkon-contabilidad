@@ -562,4 +562,19 @@ ALTER TABLE compra ADD COLUMN sector TEXT;
 ALTER TABLE compra ADD COLUMN tipo_costo_gasto TEXT;
 `
   },
+  {
+    version: 17,
+    nombre: 'metadatos_fiscales_retenciones_f14',
+    sql: `
+ALTER TABLE retencion ADD COLUMN domiciliado TEXT;
+ALTER TABLE retencion ADD COLUMN codigo_pais TEXT;
+ALTER TABLE retencion ADD COLUMN nit_nif TEXT;
+ALTER TABLE retencion ADD COLUMN dui TEXT;
+ALTER TABLE retencion ADD COLUMN codigo_ingreso TEXT;
+ALTER TABLE retencion ADD COLUMN tipo_operacion_f14 TEXT;
+ALTER TABLE retencion ADD COLUMN clasificacion_f14 TEXT;
+ALTER TABLE retencion ADD COLUMN sector_f14 TEXT;
+ALTER TABLE retencion ADD COLUMN tipo_costo_gasto_f14 TEXT;
+`
+  },
 ];

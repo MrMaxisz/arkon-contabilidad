@@ -133,7 +133,7 @@ describe('auditoría 39: recorrido completo de compra del Anexo 3 con venta simu
       tipoOperacionRenta: '1',
       clasificacionRenta: '2',
       sector: '4',
-      tipoCostoGasto: '7',
+      tipoCostoGasto: '1',
       responsable: 'p',
       motivo: 'completitud sintética'
     });
@@ -150,7 +150,7 @@ describe('auditoría 39: recorrido completo de compra del Anexo 3 con venta simu
     };
     expect(releer.clasificacion_renta).toBe('2');
     expect(releer.sector).toBe('4');
-    expect(releer.tipo_costo_gasto).toBe('7');
+    expect(releer.tipo_costo_gasto).toBe('1');
     expect(releer.tipo_ingreso_renta).toBeNull();
 
     // Diagnóstico 3 listo y exportación de presentación.
@@ -167,7 +167,7 @@ describe('auditoría 39: recorrido completo de compra del Anexo 3 con venta simu
     expect(fila[16]).toBe('1');
     expect(fila[17]).toBe('2');
     expect(fila[18]).toBe('4');
-    expect(fila[19]).toBe('7');
+    expect(fila[19]).toBe('1');
     db2.close();
   });
 
@@ -225,7 +225,7 @@ describe('auditoría 39: recorrido completo de compra del Anexo 3 con venta simu
       tipoOperacionRenta: '1',
       clasificacionRenta: '1',
       sector: '2',
-      tipoCostoGasto: '3',
+      tipoCostoGasto: '4',
       responsable: 'p',
       motivo: 'completitud sintética'
     });
@@ -238,6 +238,68 @@ describe('auditoría 39: recorrido completo de compra del Anexo 3 con venta simu
     expect(diagnostico.bloqueado).toBe(true);
     expect(diagnostico.folios[0].faltantes.some(f => f.includes('catálogo 1-4 (columna S)'))).toBe(true);
     expect(() => exportarAnexo3ComprasPresentacion(db, '2026-11')).toThrow(/catálogo 1-4/);
+    db.close();
+  });
+});
+
+describe('auditoría 40: reglas conjuntas R/S/T del Anexo 3 (tabla página impresa 21)', () => {
+  it('R2 permite T1-3 con cualquier S; R1+S1 permite T4-7; R1+S2-4 permite T4-5; fuera de tabla se rechaza', () => {
+    const db = abrir();
+    const ctx = contexto(db);
+    despachar(ctx, 'vigencia:crear', {
+      desde: '2026-01-01',
+      inscritoIva: true,
+      descripcion: 'vigencia sintética aislada',
+      fuente: 'prueba sintética',
+      responsable: 'p'
+    });
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor Conjuntas A40', esCliente: false, esProveedor: true, responsable: 'p', nit: '0614-444555-101-5' });
+    const compra = registrarCompra(db, {
+      contraparteId: proveedor,
+      fechaOperacion: '2026-11-08',
+      concepto: 'Compra conjuntas sintética',
+      condicion: 'contado',
+      lineas: [{ descripcion: 'Material', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '10.00', tasa: '0', tratamiento: 'exento' }],
+      claveIdempotencia: 'c-a40',
+      responsable: 'p'
+    });
+    completarClasificacionDocumento(db, 'compra', compra.id, {
+      clasificacionDocumento: 'contribuyente',
+      tipoDocumento: 'ccf',
+      responsable: 'p',
+      motivo: 'clasificación sintética'
+    });
+
+    const guardar = (r: string, sec: string, t: string) =>
+      despachar(ctx, 'fiscal:metadatosCompletar', {
+        tipo: 'compra',
+        documentoId: compra.id,
+        claseDocumentoFiscal: '1',
+        numeroResolucion: 'R-A40',
+        serieDocumento: 'A',
+        numeroDocumentoAutorizado: 'CCF-A40',
+        tipoOperacionRenta: '1',
+        clasificacionRenta: r,
+        sector: sec,
+        tipoCostoGasto: t,
+        responsable: 'p',
+        motivo: 'completitud sintética'
+      });
+
+    expect(() => guardar('2', '4', '7')).toThrow(/combinación R=2\/S=4\/T=7 no permitida/);
+    guardar('2', '4', '1');
+    guardar('1', '1', '7');
+    guardar('1', '2', '4');
+    expect(() => guardar('1', '2', '7')).toThrow(/combinación R=1\/S=2\/T=7 no permitida/);
+
+    db.prepare('UPDATE compra SET tipo_costo_gasto = ? WHERE id = ?').run('3', compra.id);
+    const diagnostico = despachar(ctx, 'fiscal:anexo3Compras', { mes: '2026-11' }) as {
+      folios: Array<{ folio: string; faltantes: string[] }>;
+      bloqueado: boolean;
+    };
+    expect(diagnostico.bloqueado).toBe(true);
+    expect(diagnostico.folios[0].faltantes.some(f => f.includes('combinación R=1/S=2/T=3'))).toBe(true);
+    expect(() => exportarAnexo3ComprasPresentacion(db, '2026-11')).toThrow(/combinación R=1\/S=2\/T=3/);
     db.close();
   });
 });

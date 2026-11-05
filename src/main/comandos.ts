@@ -13,6 +13,10 @@ import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import { generarPaqueteContador } from './servicios/paqueteContador';
 import {
+  completarMetadatosRetencion,
+  diagnosticarAnexoRetencionesF14
+} from './servicios/anexoF14';
+import {
   diagnosticarAnexo1Ventas,
   exportarAnexo1VentasPresentacion,
   diagnosticarAnexo2VentasConsumidor,
@@ -763,6 +767,30 @@ export const comandos: Record<string, Manejador> = {
   'fiscal:anexo3Compras': (ctx, payload) => {
     const p = objeto(payload);
     return diagnosticarAnexo3Compras(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:anexoRetenciones': (ctx, payload) => {
+    const p = objeto(payload);
+    return diagnosticarAnexoRetencionesF14(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:retencionMetadatosCompletar': (ctx, payload) => {
+    const p = objeto(payload);
+    return completarMetadatosRetencion(
+      ctx.db,
+      entero(p, 'retencionId'),
+      {
+        domiciliado: texto(p, 'domiciliado'),
+        codigoPais: texto(p, 'codigoPais'),
+        nitNif: typeof p.nitNif === 'string' ? p.nitNif : undefined,
+        dui: typeof p.dui === 'string' ? p.dui : undefined,
+        codigoIngreso: texto(p, 'codigoIngreso'),
+        tipoOperacion: texto(p, 'tipoOperacion'),
+        clasificacion: texto(p, 'clasificacion'),
+        sector: texto(p, 'sector'),
+        tipoCostoGasto: texto(p, 'tipoCostoGasto')
+      },
+      texto(p, 'responsable'),
+      texto(p, 'motivo')
+    );
   }
 };
 

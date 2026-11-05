@@ -67,6 +67,12 @@ contextBridge.exposeInMainWorld('arkon', {
     }
     return ipcRenderer.invoke('arkon:guardarPaqueteContador', { desde, hasta });
   },
+  guardarAnexoF14(mes: string): Promise<unknown> {
+    if (typeof mes !== 'string' || !/^\d{4}-\d{2}$/.test(mes)) {
+      return Promise.reject(new Error('Mes inválido (AAAA-MM)'));
+    }
+    return ipcRenderer.invoke('arkon:guardarAnexoF14', { mes });
+  },
   guardarAnexoF07(anexo: 1 | 2 | 3, mes: string): Promise<unknown> {
     if (typeof mes !== 'string' || !/^\d{4}-\d{2}$/.test(mes)) {
       return Promise.reject(new Error('Mes inválido (AAAA-MM)'));
