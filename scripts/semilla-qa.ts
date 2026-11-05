@@ -28,6 +28,7 @@ interface ManifiestoSemilla {
   ventaTotalMinor: string;
   adjuntoHash: string;
   eventosEsperados: number;
+  eventosHash: string;
   respaldoHash?: string;
   respaldoNombre?: string;
 }
@@ -138,6 +139,11 @@ function sembrar(perfil: string, manifiestoRuta: string): void {
   });
 
   const eventos = listarEventos(ctx.db, 100);
+  // Eventos sembrados = los de MENOR id (listarEventos viene DESC); orden ascendente estable.
+  const sembradosOrdenados = [...eventos].sort((a, b) => a.id - b.id);
+  const hashEventos = crypto.createHash('sha256')
+    .update(sembradosOrdenados.map(e => `${e.id}|${e.tipo}|${e.entidad}|${e.entidadId}|${e.detalle}`).join('\n'))
+    .digest('hex');
   const manifiesto: ManifiestoSemilla = {
     version: 'qa-semilla-v1',
     perfil: path.normalize(perfil),
@@ -146,7 +152,8 @@ function sembrar(perfil: string, manifiestoRuta: string): void {
     ventaFolio: venta.folio,
     ventaTotalMinor: '100.00',
     adjuntoHash: adjunto.hashSha256,
-    eventosEsperados: eventos.length
+    eventosEsperados: eventos.length,
+    eventosHash: hashEventos
   };
   fs.mkdirSync(path.dirname(manifiestoRuta), { recursive: true });
   fs.writeFileSync(manifiestoRuta, JSON.stringify(manifiesto, null, 2), 'utf8');
@@ -228,6 +235,19 @@ async function verificar(perfil: string, manifiestoRuta: string): Promise<void> 
     eventos.length >= esperado.eventosEsperados,
     `${eventos.length} eventos (esperados >= ${esperado.eventosEsperados})`
   );
+  // Hash de identidad/contenido de los eventos sembrados: detecta alteraciones con la MISMA
+  // cantidad (UPDATE del detalle) y pérdidas; permite eventos adicionales legítimos posteriores.
+  if (eventos.length >= esperado.eventosEsperados) {
+    const sembrados = [...eventos].sort((a, b) => a.id - b.id).slice(0, esperado.eventosEsperados);
+    const hashEventos = crypto.createHash('sha256')
+      .update(sembrados.map(e => `${e.id}|${e.tipo}|${e.entidad}|${e.entidadId}|${e.detalle}`).join('\n'))
+      .digest('hex');
+    comprobar(
+      'bitacora-contenido',
+      hashEventos === esperado.eventosHash,
+      hashEventos === esperado.eventosHash ? 'contenido de los eventos sembrados íntegro' : 'contenido alterado o reordenado'
+    );
+  }
 
   if (esperado.respaldoHash && esperado.respaldoNombre) {
     const rutaRespaldo = path.join(rutas.respaldos, esperado.respaldoNombre);

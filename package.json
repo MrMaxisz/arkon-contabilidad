@@ -19,7 +19,7 @@
     "build:qa": "tsc -p tsconfig.node.json --outDir dist && node dist/scripts/semilla-qa.js",
     "probe:electron": "node scripts/probe-electron-abi.mjs",
     "rebuild:electron": "node scripts/rebuild-electron.mjs",
-    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && node scripts/build:cli && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs",
+    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs",
     "build:cli": "tsc -p tsconfig.scripts.json --outDir dist"
   },
   "dependencies": {

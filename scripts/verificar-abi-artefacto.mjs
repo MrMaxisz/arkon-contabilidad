@@ -18,6 +18,22 @@ if (probe.resultado !== 'PASA') {
   console.error(`FALLA: el probe de ABI no pasó (resultado: ${probe.resultado}).`);
   process.exit(2);
 }
+// Vincular el probe al binario ACTUAL del disco: un probe previo con PASA no vale si el
+// native cambió después (p. ej. rebuild:node de la suite). El hash del native cargado por
+// el probe debe coincidir con el del disco AHORA y con el del artefacto.
+const nativeDisco = path.join(process.cwd(), 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+const hashDisco = createHash('sha256').update(readFileSync(nativeDisco)).digest('hex');
+if (probe.hashNative !== hashDisco) {
+  console.error('FALLA: el probe fue hecho con otro binario (hash del probe ≠ hash del disco actual).');
+  console.error(`probe: ${probe.hashNative}`);
+  console.error(`disco: ${hashDisco}`);
+  console.error('El native cambió tras el probe (¿rebuild:node de la suite?). Reejecutar dist:win:qa.');
+  process.exit(2);
+}
+if (registro.sha256 !== probe.hashNative) {
+  console.error('FALLA: abi-electron.json no coincide con el hash del probe; regenerar con rebuild-electron.mjs + probe.');
+  process.exit(2);
+}
 
 function buscar(directorio) {
   for (const entrada of readdirSync(directorio)) {

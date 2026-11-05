@@ -20,10 +20,26 @@ if (-not [System.IO.Path]::IsPathRooted($Perfil)) { throw "El perfil debe ser AB
 $Perfil = [System.IO.Path]::GetFullPath($Perfil)
 if ($Perfil -like "*OneDrive*") { throw "El perfil no puede estar bajo OneDrive: $Perfil" }
 $operativo = Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad'
-if ($Perfil -eq [System.IO.Path]::GetFullPath($operativo)) { throw "El perfil no puede ser la base operativa: $Perfil" }
+$perfilLower = $Perfil.ToLowerInvariant().TrimEnd('\') + '\'
+$operativoLower = [System.IO.Path]::GetFullPath($operativo).ToLowerInvariant().TrimEnd('\') + '\'
+if ($perfilLower -eq $operativoLower) { throw "El perfil no puede ser la base operativa: $Perfil" }
+if ($perfilLower.StartsWith($operativoLower)) { throw "El perfil no puede ser subruta de la base operativa: $Perfil" }
 New-Item -ItemType Directory -Path $Perfil -Force | Out-Null
-# Marcador QA para reabrir el perfil existente en corridas posteriores.
-Set-Content -Path (Join-Path $Perfil 'QA-MARCADOR.txt') -Value "Perfil QA de ARKON Contabilidad; semilla sintética; $(Get-Date -Format o)" -Encoding UTF8
+# Marcador QA ÚNICO alineado con el CLI (QA-MARCADOR-ARKON.txt): solo en perfil nuevo vacío;
+# un perfil existente sin marcador se rechaza (no se marcan perfiles de origen desconocido).
+$marcador = Join-Path $Perfil 'QA-MARCADOR-ARKON.txt'
+if (Test-Path $marcador) {
+  $contenido = Get-Content $marcador -Raw -ErrorAction SilentlyContinue
+  if (-not $contenido -or -not $contenido.Contains('Perfil QA de ARKON Contabilidad')) {
+    throw "Marcador QA inválido en $marcador; el perfil existe pero no es un perfil QA válido."
+  }
+} else {
+  $existentes = @(Get-ChildItem $Perfil -ErrorAction SilentlyContinue)
+  if ($existentes.Count -gt 0) {
+    throw "El perfil $Perfil ya existe con contenido y sin marcador QA; rechazado para no tocar datos desconocidos."
+  }
+  Set-Content -Path $marcador -Value "Perfil QA de ARKON Contabilidad; semilla sintética; $(Get-Date -Format o)" -Encoding UTF8
+}
 $chromium = Join-Path $Perfil 'chromium'
 New-Item -ItemType Directory -Path $chromium -Force | Out-Null
 Write-Host "Perfil QA aislado: $Perfil"

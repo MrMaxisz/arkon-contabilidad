@@ -19,6 +19,13 @@ if (edadMs > 30 * 60 * 1000) {
   console.error(`FALLA: el probe de ABI tiene más de 30 minutos (${Math.round(edadMs / 60000)} min). El binario pudo cambiar (p. ej. rebuild:node de la suite). Reejecutar dist:win:qa.`);
   process.exit(2);
 }
-console.log('Guarda ABI: probe vigente. Continuaría el empaquetado; para el pipeline completo use npm run dist:win:qa.');
-console.log('Este comando NO empaqueta por sí solo: use dist:win:qa.');
+import { createHash } from 'node:crypto';
+const nativeDisco = path.join(process.cwd(), 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
+const hashDisco = createHash('sha256').update(readFileSync(nativeDisco)).digest('hex');
+if (probe.hashNative !== hashDisco) {
+  console.error('FALLA: el native del disco cambió tras el probe (¿rebuild:node?). Reejecutar dist:win:qa antes de empaquetar.');
+  process.exit(2);
+}
+console.log('Guarda ABI: probe vigente y vinculado al binario actual.');
+console.log('Este comando NO empaqueta ni distribuye: use npm run dist:win:qa para el pipeline completo.');
 process.exit(0);

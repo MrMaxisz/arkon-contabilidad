@@ -84,6 +84,30 @@ describe('auditoría 46: guardas del CLI semilla-qa contra fixtures', () => {
     expect(fs.existsSync(path.join(perfil, 'datos'))).toBe(false);
   });
 
+  it('bitácora alterada con MISMA cantidad → FALLA exit 2 (hash de contenido, no solo cantidad)', () => {
+    const perfil = path.join(dir, 'perfil-bitacora');
+    const manifiesto = path.join(dir, 'm.json');
+    expect(cli('sembrar', perfil, manifiesto).status).toBe(0);
+    const intacta = cli('verificar', perfil, manifiesto);
+    expect(intacta.status).toBe(0);
+    expect(intacta.salida).toContain('bitacora-contenido: contenido de los eventos sembrados íntegro');
+    // Alterar el detalle de un evento SIN cambiar la cantidad.
+    const Database = require('better-sqlite3') as typeof import('better-sqlite3');
+    const db = new Database(path.join(perfil, 'datos', 'arkon.db'));
+    db.prepare("UPDATE bitacora_evento SET detalle = 'alterado sintético' WHERE id = (SELECT MIN(id) FROM bitacora_evento)").run();
+    db.close();
+    const r = cli('verificar', perfil, manifiesto);
+    expect(r.status).toBe(2);
+    expect(r.salida).toContain('FALLA bitacora-contenido');
+    // Eventos adicionales legítimos siguen pasando.
+    const db2 = new Database(path.join(perfil, 'datos', 'arkon.db'));
+    db2.prepare("INSERT INTO bitacora_evento (actor, tipo, entidad, entidad_id, detalle) VALUES ('qa', 'evento_adicional', 'prueba', '1', 'evento posterior legítimo')").run();
+    db2.close();
+    const conAdicional = cli('verificar', perfil, manifiesto);
+    // El contenido alterado sigue fallando (los sembrados cambiaron), pero la cantidad adicional no es el problema.
+    expect(conAdicional.salida).toContain('bitacora-conserva');
+  });
+
   it('ruta relativa y base operativa (case-insensitive) se rechazan antes de abrir SQLite', () => {
     const rRelativa = cli('sembrar', 'relativa', path.join(dir, 'm.json'));
     expect(rRelativa.status).not.toBe(0);
@@ -142,6 +166,48 @@ describe('auditoría 46: guardas del pipeline de distribución', () => {
         fs.rmSync(rutaProbe);
       }
     }
+  });
+
+  it('probe PASA previo con hash de OTRO binario → guarda y verificador fallan (vínculo probe↔disco)', () => {
+    const abiPath = path.join(process.cwd(), 'abi-electron.json');
+    const probePath = path.join(process.cwd(), 'probe-electron.json');
+    const previoAbi = fs.existsSync(abiPath) ? fs.readFileSync(abiPath, 'utf8') : null;
+    const previoProbe = fs.existsSync(probePath) ? fs.readFileSync(probePath, 'utf8') : null;
+    try {
+      // Probe PASA reciente pero con hashNative de un binario DISTINTO (Node137 simulado).
+      fs.writeFileSync(probePath, JSON.stringify({
+        verificadoEn: new Date().toISOString(),
+        resultado: 'PASA',
+        abi: '130',
+        hashNative: 'hash-de-otro-binario-sintetico'
+      }), 'utf8');
+      fs.writeFileSync(abiPath, JSON.stringify({ sha256: 'hash-de-otro-binario-sintetico' }), 'utf8');
+      const r = execFileSync('node', [path.join(process.cwd(), 'scripts', 'distwin-guard.mjs')], { encoding: 'utf8' });
+      void r;
+      expect.unreachable('la guarda debía rechazar el probe desvinculado del disco');
+    } catch (err) {
+      const e = err as { status?: number; message?: string };
+      expect(e.status).toBe(2);
+      expect(String(e.message)).toMatch(/hash del probe ≠ hash del disco|native del disco cambió tras el probe/);
+    } finally {
+      if (previoAbi !== null) {
+        fs.writeFileSync(abiPath, previoAbi, 'utf8');
+      } else if (fs.existsSync(abiPath)) {
+        fs.rmSync(abiPath);
+      }
+      if (previoProbe !== null) {
+        fs.writeFileSync(probePath, previoProbe, 'utf8');
+      } else if (fs.existsSync(probePath)) {
+        fs.rmSync(probePath);
+      }
+    }
+  });
+
+  it('dist:win:qa NO referencia scripts inexistentes (build:cli ya está en npm run build)', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
+    const dist = pkg.scripts['dist:win:qa'] as string;
+    expect(dist).not.toContain('node scripts/build:cli');
+    expect(dist).toContain('npm run build');
   });
 
   it('verificar-abi-artefacto rechaza sin probe-electron.json aunque abi-electron.json declare el hash', () => {

@@ -762,3 +762,27 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Sandbox Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El pipeline queda para tu verificación en Windows: `npm run dist:win:qa` y arranque del instalado. La instalación corregida 45 (Electron130) que ya abre NO debe reinstalarse con artefactos sin verificar.
+
+## Bloque auditoría 47 (harness funcional del probe, vínculo probe↔binario, guardas PowerShell y hash de bitácora)
+
+### Corregido (hallazgos de la auditoría 47)
+
+- **P1-1 Harness funcional del probe**: eliminado `node scripts/build:cli` inexistente de dist:win:qa (npm run build ya lo incluye). El probe reescrito con la estrategia comprobada en Windows: genera un **archivo .cjs** con `require('electron')`, `app.setPath('userData', perfil)` a un **directorio temporal exclusivo bajo os.tmpdir()** (nunca process.cwd()/OneDrive), `app.whenReady().then(...)` que hace `require(rutaAbsoluta del módulo)`, SQLite `:memory:` con INSERT/SELECT, y escribe el **resultado en JSON** (ok, versionElectron, abi, hashNative cargado) que el wrapper espera/valida con timeout de 90 s — sin depender de console.log del exe GUI ni de ELECTRON_NO_ATTACH_CONSOLE. El wrapper verifica además que el hash del native cargado coincida con el del disco (detecta cambios durante el probe) y registra todo en probe-electron.json.
+- **P1-2 Vínculo probe↔binario actual↔artefacto**: probe-electron.json ahora guarda `hashNative` (hash del módulo realmente cargado); el verificador de artefacto Y la guarda dist:win comparan ese hash contra el **binario actual del disco** — un probe PASA/ABI130 previo con un binario Node137 nuevo en disco termina exit 2 ('native del disco cambió tras el probe'), sin importar la ventana de 30 min. La cadena es probe.hashNative == disco.hash == abi-electron.json.sha256 == artefacto.hash. dist:win nunca afirma distribución: redirige con instrucción clara y no empaqueta.
+- **P1-3 Guardas PowerShell alineadas**: `ValidarRuta` de aceptacion-dos-versiones.ps1 ahora excluye la base operativa **y sus descendientes** con comparación case-insensitive (ToLowerInvariant); qa-windows.ps1 usa el **marcador único QA-MARCADOR-ARKON.txt** alineado con el CLI, solo crea el marcador en un perfil nuevo vacío y rechaza perfiles existentes sin marcador válido (no marca perfiles de origen desconocido); misma exclusión case-insensitive de operativo/subrutas.
+- **P2-4 Hash de bitácora**: el manifiesto captura `eventosHash` (SHA-256 de id|tipo|entidad|entidadId|detalle de los eventos sembrados en orden ascendente); `verificar` recalcula ese hash sobre los N eventos de menor id — **bitácora alterada con la MISMA cantidad → FALLA exit 2** (comprobado ejecutando UPDATE del detalle), eventos adicionales legítimos posteriores no afectan. La verificación sigue siendo readonly sin migraciones y sin crear directorios (rutas calculadas a mano). Cierre del respaldo corrupto conservado.
+
+### Pruebas ejecutables
+
+- `pruebas/guardasPipeline.prueba.ts` (11 pruebas): las 8 previas más — bitácora alterada con misma cantidad → FALLA exit 2 con hash de contenido verificado; probe PASA previo con hash de OTRO binario → guarda y verificador fallan (vínculo probe↔disco); dist:win:qa sin referencias a scripts inexistentes. Todas ejecutan el CLI/guardas reales contra fixtures sintéticos con exit codes verificados.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → 241/241 (53 archivos).
+- `npm run build` → OK; CLI compilado incluido.
+- CLI ejecutado real: bitácora intacta PASA / alterada FALLA exit 2; respaldo corrupto FALLA exit 2 (conservado).
+
+### Límites exactos
+
+- Sandbox Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El harness .cjs+JSON está listo para tu verificación en Windows con `npm run dist:win:qa`. La instalación 45 (Electron130, ya abre) no debe reinstalarse con artefactos sin verificar.

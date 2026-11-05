@@ -35,8 +35,12 @@ function ValidarRuta([string]$ruta, [string]$que) {
   if (-not [System.IO.Path]::IsPathRooted($ruta)) { throw "$que debe ser ABSOLUTA: $ruta" }
   $norm = [System.IO.Path]::GetFullPath($ruta)
   if ($norm -like "*OneDrive*") { throw "$que no puede estar bajo OneDrive: $norm" }
-  $operativo = Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad'
-  if ($norm -eq [System.IO.Path]::GetFullPath($operativo)) { throw "$que no puede ser la base operativa: $norm" }
+  # Case-insensitive (Windows): 'arkon contabilidad' === 'ARKON Contabilidad'; excluir operativo Y descendientes.
+  $operativo = (Join-Path $env:LOCALAPPDATA 'ARKON Contabilidad')
+  $normLower = $norm.ToLowerInvariant().TrimEnd('\') + '\'
+  $operativoLower = [System.IO.Path]::GetFullPath($operativo).ToLowerInvariant().TrimEnd('\') + '\'
+  if ($normLower -eq $operativoLower) { throw "$que no puede ser la base operativa: $norm" }
+  if ($normLower.StartsWith($operativoLower)) { throw "$que no puede ser subruta de la base operativa: $norm" }
   return $norm
 }
 
