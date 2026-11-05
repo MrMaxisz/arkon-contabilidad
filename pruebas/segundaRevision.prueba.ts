@@ -42,7 +42,7 @@ function catalogoAnticipo(db: Database.Database): Record<string, { nombre: strin
 }
 
 describe('normalización del catálogo de anticipos (migración v3)', () => {
-  it('una base v1 migrada converge con una instalación nueva, preservando los movimientos', () => {
+  it('una base v1 migrada converge con una instalación nueva, preservando los movimientos', async () => {
     const rutaVieja = path.join(dir, 'vieja.db');
     const dbVieja = abrirBase(rutaVieja);
     dbVieja.exec(migraciones[0].sql);
@@ -119,7 +119,7 @@ describe('normalización del catálogo de anticipos (migración v3)', () => {
 });
 
 describe('traslado de líneas hacia asientos contabilizados', () => {
-  it('un UPDATE que mueva una línea a un asiento contabilizado se rechaza', () => {
+  it('un UPDATE que mueva una línea a un asiento contabilizado se rechaza', async () => {
     const ruta = path.join(dir, 'traslado.db');
     const db = abrirBase(ruta);
     aplicarMigraciones(db);
@@ -165,7 +165,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
     const rutaDb = path.join(dir, 'activa.db');
     const ctx = await contexto(rutaDb);
     const dbOriginal = ctx.db;
-    expect(() => manejarRestauracion(ctx, 'respaldo-inexistente.db')).toThrow();
+    await expect(manejarRestauracion(ctx, 'respaldo-inexistente.db')).rejects.toThrow();
     expect(ctx.db).toBe(dbOriginal);
     expect(ctx.db.open).toBe(true);
     ctx.db.close();
@@ -176,7 +176,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
     const ctx = await contexto(rutaDb);
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
     const dbOriginal = ctx.db;
-    const resultado = manejarRestauracion(ctx, info.nombre);
+    const resultado = await manejarRestauracion(ctx, info.nombre);
     expect(resultado.ok).toBe(true);
     expect(ctx.db).not.toBe(dbOriginal);
     expect(ctx.db.open).toBe(true);
@@ -186,7 +186,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
     expect(evento.n).toBe(1);
 
     const info2 = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
-    const resultado2 = manejarRestauracion(ctx, info2.nombre);
+    const resultado2 = await manejarRestauracion(ctx, info2.nombre);
     expect(resultado2.ok).toBe(true);
     expect(ctx.db.open).toBe(true);
     ctx.db.close();
@@ -198,7 +198,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
     fs.appendFileSync(path.join(ctx.rutas.respaldos, info.nombre), 'corrupcion');
     const dbOriginal = ctx.db;
-    expect(() => manejarRestauracion(ctx, info.nombre)).toThrow();
+    await expect(manejarRestauracion(ctx, info.nombre)).rejects.toThrow();
     expect(ctx.db).toBe(dbOriginal);
     expect(ctx.db.open).toBe(true);
     ctx.db.close();
@@ -210,7 +210,7 @@ describe('catálogo de respaldos visible', () => {
     const rutaDb = path.join(dir, 'activa4.db');
     const ctx = await crearContextoBase(prepararRutasDatos(path.join(dir, 'datos4')), rutaDb, '0.1.0-prueba');
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
-    manejarRestauracion(ctx, info.nombre);
+    await manejarRestauracion(ctx, info.nombre);
     const lista = descubrirRespaldos(ctx.rutas.respaldos);
     expect(lista.length).toBeGreaterThanOrEqual(1);
     expect(lista.some(r => r.nombre === info.nombre)).toBe(true);
@@ -224,15 +224,15 @@ describe('catálogo de respaldos visible', () => {
     fs.copyFileSync(path.join(ctx.rutas.respaldos, `${info.nombre}.manifest.json`), `${externa}.manifest.json`);
     const listaExterna = descubrirRespaldos(ctxLimpio.rutas.respaldos);
     expect(listaExterna.some(r => r.nombre === info.nombre)).toBe(true);
-    const resultado = manejarRestauracion(ctxLimpio, info.nombre);
-    expect(resultado.ok).toBe(true);
+    const resultadoLimpio = await manejarRestauracion(ctxLimpio, info.nombre);
+    expect(resultadoLimpio.ok).toBe(true);
     ctx.db.close();
     ctxLimpio.db.close();
   });
 });
 
 describe('fecha local de El Salvador', () => {
-  it('usa UTC-6 explícito, sin depender de la zona del equipo', () => {
+  it('usa UTC-6 explícito, sin depender de la zona del equipo', async () => {
     expect(fechaLocalElSalvador(new Date('2026-11-04T23:30:00Z'))).toBe('2026-11-04');
     expect(fechaLocalElSalvador(new Date('2026-11-05T02:30:00Z'))).toBe('2026-11-04');
     expect(fechaLocalElSalvador(new Date('2026-11-05T05:59:00Z'))).toBe('2026-11-04');

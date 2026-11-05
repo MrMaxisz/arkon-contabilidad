@@ -1,6 +1,13 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la vigésima segunda revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (tras la vigésima tercera revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Correcciones de la vigésima tercera revisión — aplicadas y probadas
+
+- **[P1] Restauración interrumpida detectada al arrancar**: `manejarRestauracion` escribe un marcador persistente (`restauracion-en-curso.json`) con la fase de la operación antes de activar componentes; `crearContextoBase` lo detecta al arrancar y resuelve la restauración interrumpida eligiendo un conjunto completo y verificado (fase 'iniciada' → limpia temporales sin tocar el estado; fase 'base-activada' → completa la activación de adjuntos, contrasta el inventario de la base con los archivos y, si falta alguno, revierte base y adjuntos desde las copias previas). Las copias previas solo se eliminan tras confirmar la coherencia. Regresión: interrupción de un proceso hijo real (exit 86) entre la activación de base y la de adjuntos → el arranque posterior completa la restauración coherente (base del respaldo + adjunto nuevo verificado, marcador eliminado).
+- **[P1] Inventario validado registro por registro**: `manejarRestauracion` abre la base del respaldo y contrasta cada registro de `adjunto` (ruta y hash) con el manifiesto **antes de sustituir el estado activo**; rechaza omisiones, duplicados e identidades discordantes aunque los totales coincidan; `validarRutasRelativas` impide rutas fuera del paquete (`..`, absolutas). Regresión: manifiesto con misma cantidad pero ruta distinta → restauración rechazada conservando el estado activo.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **130/130 en verde** (26 archivos, incluida la interrupción en proceso hijo real). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Correcciones de la vigésima segunda revisión — aplicadas y probadas
 

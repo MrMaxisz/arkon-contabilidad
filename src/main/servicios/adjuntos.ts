@@ -108,6 +108,14 @@ export function inventarioAdjuntosRegistrado(db: Database.Database): Array<{ rut
   }));
 }
 
+export function validarRutasRelativas(rutas: string[]): void {
+  for (const ruta of rutas) {
+    if (ruta.includes('..') || path.isAbsolute(ruta) || ruta.includes('\\')) {
+      throw new ErrorAdjunto(`Ruta de adjunto fuera del paquete: ${ruta}`);
+    }
+  }
+}
+
 export function copiarAdjuntosRespaldo(
   db: Database.Database,
   dirAdjuntos: string,

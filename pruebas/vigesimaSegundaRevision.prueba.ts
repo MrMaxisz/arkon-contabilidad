@@ -148,7 +148,7 @@ describe('vigesimasegunda revisión: recuperación coordinada ante fallos', () =
     };
     let error: unknown;
     try {
-      manejarRestauracion(ctx, info.nombre);
+      await manejarRestauracion(ctx, info.nombre);
     } catch (err) {
       error = err;
     } finally {

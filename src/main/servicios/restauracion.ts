@@ -2,6 +2,7 @@ import path from 'path';
 import type Database from 'better-sqlite3';
 import type { RutasDatos } from '../db/conexion';
 import { abrirBase } from '../db/conexion';
+import { inventarioAdjuntosRegistrado } from './adjuntos';
 import fs from 'fs';
 import { aplicarMigraciones } from '../db/aplicarMigraciones';
 import { restaurarRespaldo, registrarRestauracion, ErrorRespaldo } from './respaldo';
@@ -15,7 +16,63 @@ export interface ContextoApp {
   reabrirBase(): void;
 }
 
+function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, marcador: string): void {
+  let info: { fase?: string; rutaDb?: string; adjuntos?: string; previaAdjuntos?: string; areaTemporal?: string; respaldo?: string };
+  try {
+    info = JSON.parse(fs.readFileSync(marcador, 'utf8'));
+  } catch {
+    fs.rmSync(marcador, { force: true });
+    return;
+  }
+  const areaTemporal = info.areaTemporal ?? `${rutas.adjuntos}.restauracion-tmp`;
+  const previaAdjuntos = info.previaAdjuntos ?? `${rutas.adjuntos}.antes-restauracion`;
+  const basePrevia = `${rutaDb}.antes-restauracion`;
+  const fase = info.fase ?? 'iniciada';
+  if (fase === 'iniciada') {
+    fs.rmSync(`${rutaDb}.restauracion-tmp`, { force: true });
+    fs.rmSync(areaTemporal, { recursive: true, force: true });
+    fs.rmSync(marcador, { force: true });
+    return;
+  }
+  if (fase === 'base-activada') {
+    const adjuntosTemporalesExisten = fs.existsSync(areaTemporal) && fs.readdirSync(areaTemporal).length >= 0;
+    if (adjuntosTemporalesExisten) {
+      if (fs.existsSync(rutas.adjuntos)) {
+        fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+        fs.renameSync(rutas.adjuntos, previaAdjuntos);
+      }
+      fs.renameSync(areaTemporal, rutas.adjuntos);
+    }
+    const db = abrirBase(rutaDb);
+    try {
+      const inventario = inventarioAdjuntosRegistrado(db);
+      const faltantes = inventario.filter(r => !fs.existsSync(path.join(rutas.adjuntos, r.rutaRelativa)));
+      if (faltantes.length > 0) {
+        if (fs.existsSync(basePrevia)) {
+          db.close();
+          fs.copyFileSync(basePrevia, rutaDb);
+          if (fs.existsSync(previaAdjuntos)) {
+            fs.rmSync(rutas.adjuntos, { recursive: true, force: true });
+            fs.renameSync(previaAdjuntos, rutas.adjuntos);
+          }
+        }
+      }
+    } finally {
+      if (db.open) {
+        db.close();
+      }
+    }
+    fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+    fs.rmSync(basePrevia, { force: true });
+    fs.rmSync(marcador, { force: true });
+  }
+}
+
 export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versionApp: string): Promise<ContextoApp> {
+  const marcador = path.join(rutas.raiz, 'restauracion-en-curso.json');
+  if (fs.existsSync(marcador)) {
+    resolverRestauracionInterrumpida(rutas, rutaDb, marcador);
+  }
   if (fs.existsSync(rutaDb)) {
     const versionPrevio = (() => {
       const previa = abrirBase(rutaDb);
@@ -90,12 +147,10 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
   return ctx;
 }
 
-export function manejarRestauracion(ctx: ContextoApp, nombre: string): {
-  ok: boolean;
-  detalle: string;
-  respaldo: string;
-  copiaPrevia: string;
-} {
+export async function manejarRestauracion(
+  ctx: ContextoApp,
+  nombre: string
+): Promise<{ ok: boolean; detalle: string; respaldo: string; copiaPrevia: string }> {
   if (!nombre.startsWith('respaldo-') || nombre.includes(path.sep) || nombre.includes('..')) {
     throw new ErrorRespaldo('Nombre de respaldo inválido');
   }
@@ -108,17 +163,68 @@ export function manejarRestauracion(ctx: ContextoApp, nombre: string): {
     adjuntos?: Array<{ rutaRelativa: string; hashSha256: string }>;
   };
   const adjuntosEsperados = manifiesto.adjuntos ?? [];
+  const { inventarioAdjuntosRegistrado, validarRutasRelativas } = await import('./adjuntos');
+  const dbRespaldo = abrirBase(ruta);
+  try {
+    const inventarioBase = inventarioAdjuntosRegistrado(dbRespaldo);
+    validarRutasRelativas(inventarioBase.map(r => r.rutaRelativa));
+    validarRutasRelativas(adjuntosEsperados.map(a => a.rutaRelativa));
+    if (inventarioBase.length !== adjuntosEsperados.length) {
+      throw new ErrorRespaldo(
+        `Inventario discordante: la base del respaldo registra ${inventarioBase.length} adjunto(s) y el manifiesto declara ${adjuntosEsperados.length}`
+      );
+    }
+    const esperadosPorRuta = new Map(adjuntosEsperados.map(a => [a.rutaRelativa, a.hashSha256]));
+    for (const registro of inventarioBase) {
+      const esperado = esperadosPorRuta.get(registro.rutaRelativa);
+      if (!esperado) {
+        throw new ErrorRespaldo(
+          `La base del respaldo registra el adjunto ${registro.nombreOriginal} (${registro.rutaRelativa}) que el manifiesto no declara`
+        );
+      }
+      if (esperado !== registro.hashSha256) {
+        throw new ErrorRespaldo(
+          `El adjunto ${registro.nombreOriginal} (${registro.rutaRelativa}) tiene hash distinto entre la base del respaldo y el manifiesto`
+        );
+      }
+    }
+    const rutasManifiesto = new Set(adjuntosEsperados.map(a => a.rutaRelativa));
+    if (rutasManifiesto.size !== adjuntosEsperados.length) {
+      throw new ErrorRespaldo('El manifiesto declara rutas de adjuntos duplicadas');
+    }
+  } finally {
+    dbRespaldo.close();
+  }
   const areaAdjuntosTemporal = `${ctx.rutas.adjuntos}.restauracion-tmp`;
   fs.rmSync(areaAdjuntosTemporal, { recursive: true, force: true });
   fs.mkdirSync(areaAdjuntosTemporal, { recursive: true });
   restaurarAdjuntosRespaldo(`${ruta}-adjuntos`, areaAdjuntosTemporal, adjuntosEsperados);
   let resultado: { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string };
   const previaAdjuntos = `${ctx.rutas.adjuntos}.antes-restauracion`;
+  const marcador = path.join(ctx.rutas.raiz, 'restauracion-en-curso.json');
+  fs.writeFileSync(
+    marcador,
+    JSON.stringify(
+      {
+        respaldo: nombre,
+        fase: 'iniciada',
+        rutaDb: ctx.rutaDb,
+        adjuntos: ctx.rutas.adjuntos,
+        previaAdjuntos,
+        areaTemporal: areaAdjuntosTemporal,
+        creadoEn: new Date().toISOString()
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
   let baseSustituida = false;
   let adjuntosPreviosPreservados = false;
   try {
     resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb);
     baseSustituida = true;
+    fs.writeFileSync(marcador, JSON.stringify({ respaldo: nombre, fase: 'base-activada', rutaDb: ctx.rutaDb, adjuntos: ctx.rutas.adjuntos, previaAdjuntos, areaTemporal: areaAdjuntosTemporal, creadoEn: new Date().toISOString() }, null, 2), 'utf8');
     fs.rmSync(previaAdjuntos, { recursive: true, force: true });
     if (fs.existsSync(ctx.rutas.adjuntos)) {
       fs.renameSync(ctx.rutas.adjuntos, previaAdjuntos);
@@ -165,6 +271,7 @@ export function manejarRestauracion(ctx: ContextoApp, nombre: string): {
       fallos.push(`reapertura: ${String(errRe instanceof Error ? errRe.message : errRe)}`);
     }
     fs.rmSync(areaAdjuntosTemporal, { recursive: true, force: true });
+    fs.rmSync(marcador, { force: true });
     if (fallos.length > 0) {
       throw new ErrorRespaldo(
         `Restauración fallida y recuperación incompleta (${fallos.join('; ')}); copias previas preservadas en ${previaAdjuntos} y ${ctx.rutaDb}.antes-restauracion`
@@ -173,6 +280,7 @@ export function manejarRestauracion(ctx: ContextoApp, nombre: string): {
     throw err;
   }
   fs.rmSync(previaAdjuntos, { recursive: true, force: true });
+  fs.rmSync(marcador, { force: true });
   registrarRestauracion(ctx.db, { respaldo: resultado.respaldo, copiaPrevia: resultado.copiaPrevia });
   return resultado;
 }

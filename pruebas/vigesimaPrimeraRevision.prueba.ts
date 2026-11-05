@@ -63,7 +63,7 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
 
     ctx.db.close();
     const ctxRestauracion = await crearContextoBase(rutas, ruta, 'prueba');
-    const resultado = manejarRestauracion(ctxRestauracion, previa!.nombre);
+    const resultado = await manejarRestauracion(ctxRestauracion, previa!.nombre);
     expect(resultado.ok).toBe(true);
     const compraPrevia = ctxRestauracion.db
       .prepare("SELECT COUNT(*) AS n FROM compra WHERE clave_idempotencia = 'c-r21'")
@@ -114,7 +114,7 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
         this.db = abrirBase(rutaDestinoDb);
       }
     };
-    const resultado = manejarRestauracion(ctxLimpio, copias[0].nombre);
+    const resultado = await manejarRestauracion(ctxLimpio, copias[0].nombre);
     expect(resultado.ok).toBe(true);
     const adjuntosRestaurados = ctxLimpio.db.prepare('SELECT COUNT(*) AS n FROM adjunto').get() as { n: number };
     expect(adjuntosRestaurados.n).toBe(1);
@@ -141,7 +141,7 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
       }
     };
     const adjuntosAntes = fs.existsSync(rutasDestino2.adjuntos) ? fs.readdirSync(rutasDestino2.adjuntos) : [];
-    expect(() => manejarRestauracion(ctxLimpio2, copias[0].nombre)).toThrow(/no coincide con el hash/);
+    await expect(manejarRestauracion(ctxLimpio2, copias[0].nombre)).rejects.toThrow(/no coincide con el hash/);
     const adjuntosDespues = fs.readdirSync(rutasDestino2.adjuntos);
     expect(adjuntosDespues).toEqual(adjuntosAntes);
     ctxLimpio2.db.close();
@@ -171,7 +171,7 @@ describe('vigesimaprimera revisión: recuperación desde los flujos reales', () 
 });
 
 describe('vigesimaprimera revisión: documentos heredados', () => {
-  it('una cotización aprobada en v9 recibe instantánea al migrar y no cambia al editar el cliente', () => {
+  it('una cotización aprobada en v9 recibe instantánea al migrar y no cambia al editar el cliente', async () => {
     const ruta = path.join(dir, 'operativa4.db');
     const db = baseV9(ruta);
     const cliente = crearContraparte(db, { nombre: 'Cliente heredado sintético', esCliente: true, esProveedor: false, responsable: 'p' });
