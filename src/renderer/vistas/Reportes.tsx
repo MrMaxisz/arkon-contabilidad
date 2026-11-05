@@ -28,10 +28,66 @@ interface AuxiliarEfectivo {
   conciliaMayor: boolean;
 }
 
+interface DocumentoDetalle {
+  folio: string;
+  fecha: string;
+  concepto: string;
+  totalMinor: string;
+  aplicadoMinor: string;
+  saldoMinor: string;
+}
+
+interface DetalleContraparte {
+  contraparteId: number;
+  contraparteNombre: string;
+  saldoMinor: string;
+  documentos: DocumentoDetalle[];
+}
+
+interface ContraparteOpcion { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
+
 export default function Reportes() {
   const [auxiliarContrapartes, setAuxiliarContrapartes] = useState<AuxiliarContrapartes | null>(null);
   const [auxiliarEfectivo, setAuxiliarEfectivo] = useState<AuxiliarEfectivo | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
+  const [contrapartes, setContrapartes] = useState<ContraparteOpcion[]>([]);
+  const [tipoDetalle, setTipoDetalle] = useState<'cliente' | 'proveedor'>('cliente');
+  const [contraparteId, setContraparteId] = useState(0);
+  const [corte, setCorte] = useState('');
+  const [detalle, setDetalle] = useState<DetalleContraparte | null>(null);
+
+  const cargarDetalle = useCallback(() => {
+    if (!contraparteId) {
+      setDetalle(null);
+      return;
+    }
+    void api()
+      .invocar('auxiliar:contraparteDetalle', {
+        tipo: tipoDetalle,
+        contraparteId,
+        hastaFecha: corte || undefined
+      })
+      .then(r => setDetalle(r as DetalleContraparte))
+      .catch(err => setMensaje(`Error al consultar detalle: ${String(err instanceof Error ? err.message : err)}`));
+  }, [tipoDetalle, contraparteId, corte]);
+
+  useEffect(() => {
+    void api().invocar('contraparte:listar').then(r => setContrapartes(r as ContraparteOpcion[]));
+  }, []);
+
+  useEffect(() => {
+    cargarDetalle();
+  }, [cargarDetalle]);
+
+  async function guardarCsv(tipo: 'cliente' | 'proveedor' | 'efectivo') {
+    setMensaje(null);
+    try {
+      const r = (await api().guardarCsvAuxiliar(tipo)) as { guardado: boolean; ruta?: string };
+      setMensaje(r.guardado && r.ruta ? `Auxiliar guardado en ${r.ruta}.` : 'Guardado cancelado.');
+    } catch (err) {
+      setMensaje(`Error al guardar: ${String(err instanceof Error ? err.message : err)}`);
+    }
+  }
 
   const cargar = useCallback(() => {
     void api()
@@ -127,9 +183,61 @@ export default function Reportes() {
             : 'El auxiliar de caja y bancos NO concilia con el mayor.'}
         </p>
       )}
+      <h2>Detalle por documentos</h2>
+      <div className="fila">
+        <label>Tipo
+          <select value={tipoDetalle} onChange={e => { setTipoDetalle(e.target.value as 'cliente' | 'proveedor'); setContraparteId(0); }}>
+            <option value="cliente">Cliente</option>
+            <option value="proveedor">Proveedor</option>
+          </select>
+        </label>
+        <label style={{ minWidth: 280 }}>
+          {tipoDetalle === 'cliente' ? 'Cliente' : 'Proveedor'}
+          <select value={contraparteId} onChange={e => setContraparteId(Number(e.target.value))}>
+            <option value={0}>— Seleccione —</option>
+            {contrapartes
+              .filter(c => tipoDetalle === 'cliente' ? c.esCliente : c.esProveedor)
+              .map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </label>
+        <label>Fecha de corte
+          <input type="date" value={corte} onChange={e => setCorte(e.target.value)} />
+        </label>
+      </div>
+      {detalle && (
+        <>
+          <p className="menor">Saldo al corte: ${detalle.saldoMinor}</p>
+          {detalle.documentos.length === 0 ? (
+            <p className="vacio">Sin documentos al corte seleccionado.</p>
+          ) : (
+            <table>
+              <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th className="numero">Total</th><th className="numero">Aplicado</th><th className="numero">Saldo</th></tr></thead>
+              <tbody>
+                {detalle.documentos.map(d => (
+                  <tr key={d.folio}>
+                    <td>{d.folio}</td>
+                    <td>{d.fecha}</td>
+                    <td>{d.concepto}</td>
+                    <td className="numero">${d.totalMinor}</td>
+                    <td className="numero">${d.aplicadoMinor}</td>
+                    <td className="numero">${d.saldoMinor}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+
+      <h2>Exportación</h2>
+      <div className="fila">
+        <button onClick={() => void guardarCsv('cliente')}>Guardar auxiliar de clientes…</button>
+        <button onClick={() => void guardarCsv('proveedor')}>Guardar auxiliar de proveedores…</button>
+        <button onClick={() => void guardarCsv('efectivo')}>Guardar auxiliar de caja y bancos…</button>
+      </div>
       <p className="menor">
         Los auxiliares derivan de asientos y aplicaciones; no almacenan saldos independientes.
-        El cierre contable de ejercicio se completa después con reglas explícitas.
+        El CSV se genera desde el mismo modelo mostrado. El cierre contable de ejercicio se completa después con reglas explícitas.
       </p>
     </div>
   );

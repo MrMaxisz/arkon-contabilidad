@@ -5,6 +5,7 @@ import { despachar, type ContextoApp } from './comandos';
 import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento } from './servicios/adjuntos';
+import { exportarCsvAuxiliar } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -77,6 +78,33 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       responsable
     });
     return { registrado: true, adjunto };
+  });
+
+  ipcMain.handle('arkon:guardarCsvAuxiliar', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const tipo = p.tipo;
+    if (!['cliente', 'proveedor', 'efectivo'].includes(String(tipo))) {
+      throw new Error('Tipo de auxiliar inválido');
+    }
+    const exportacion = exportarCsvAuxiliar(ctx.db, tipo as 'cliente' | 'proveedor' | 'efectivo');
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const opciones = {
+      title: 'Guardar auxiliar',
+      defaultPath: `auxiliar-${tipo}.csv`,
+      filters: [{ name: 'CSV', extensions: ['csv'] }]
+    };
+    const destino = ventanaPrincipal
+      ? await dialog.showSaveDialog(ventanaPrincipal, opciones)
+      : await dialog.showSaveDialog(opciones);
+    if (destino.canceled || !destino.filePath) {
+      return { guardado: false };
+    }
+    const rutaFinal = destino.filePath.toLowerCase().endsWith('.csv') ? destino.filePath : `${destino.filePath}.csv`;
+    fs.writeFileSync(rutaFinal, `${exportacion.csv}\n`, 'utf8');
+    return { guardado: true, ruta: rutaFinal, version: exportacion.version };
   });
 
   ipcMain.handle('arkon:pdfCotizacion', async (evento, solicitud) => {

@@ -419,7 +419,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaDestinoId: entero(p, 'cuentaDestinoId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: texto(p, 'referencia'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
       aplicaciones: p.aplicaciones as never,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
@@ -433,7 +433,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaOrigenId: entero(p, 'cuentaOrigenId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: texto(p, 'referencia'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
       aplicaciones: p.aplicaciones as never,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
@@ -447,7 +447,7 @@ export const comandos: Record<string, Manejador> = {
       cuentaDestinoId: entero(p, 'cuentaDestinoId'),
       monto: texto(p, 'monto'),
       concepto: texto(p, 'concepto'),
-      referencia: texto(p, 'referencia'),
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
       claveIdempotencia: texto(p, 'claveIdempotencia'),
       responsable: texto(p, 'responsable')
     });

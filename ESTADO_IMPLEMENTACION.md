@@ -364,3 +364,29 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 - Arrancar por este archivo y `docs/PENDIENTES.md`; el plan maestro es `PLAN_SISTEMA_CONTABLE_ARKON_PARA_VIBE.md` (proporcionado por el propietario).
 - Todo cambio de esquema va en `src/main/db/migraciones.ts` como nueva versión; nunca editar una migración ya aplicada.
 - Pruebas siempre con datos sintéticos en base temporal (`pruebas/utilidades.ts`), nunca en la base operativa.
+
+## Bloque auditoría 31 (ajustes en interfaz, detalle de auxiliares con corte temporal, exportación CSV)
+
+### Corregido
+
+- **P1 regresión de `referencia`**: `cobro:registrar`, `pago:registrar` y `transferencia:registrar` vuelven a aceptar `referencia` opcional (`src/main/comandos.ts`); la exigencia queda solo en `ajuste:registrar`. Prueba de regresión por despachar real en `pruebas/auditoria31.prueba.ts`: cobro/pago/transferencia sin referencia contabilizan; ajuste sin referencia rechaza sin asientos espurios.
+- **Bug de parámetros en `auxiliarContraparteDetalle`** (`src/main/servicios/fiscal.ts`): el orden de parámetros con corte era incorrecto (`contraparteId` se enlazaba al filtro de fecha), por lo que el corte devolvía cero documentos. Corregido a `[hastaFecha, hastaFecha, contraparteId, hastaFecha]`; SQL parametrizado, sin concatenación de entrada.
+- **CSV**: `escaparCsv` serializa comillas, comas y saltos de línea; verificado con parser CSV independiente en `pruebas/auditoria29.prueba.ts` (nombre sintético con comas, comillas y salto de línea).
+
+### Añadido
+
+- **Vista Ajustes** (`src/renderer/vistas/Ajustes.tsx`): fecha, concepto, referencia de soporte obligatoria, responsable, líneas con cuentas activas de movimiento y debe/haber, validación/cuadre, clave de idempotencia por operación, cancelación y mensajes de error; usa el motor central (`ajuste:registrar` → `contabilizarAsiento`).
+- **Vista Reportes** (`src/renderer/vistas/Reportes.tsx`): detalle por documento de auxiliar con fecha de corte (aplicaciones y anticipos posteriores al corte no afectan el saldo mostrado), conciliación y botón GUARDAR CSV por diálogo nativo (`arkon:guardarCsvAuxiliar` en `src/main/ipc.ts`, puente en `src/preload/index.ts`, contrato en `src/renderer/api.ts`), contenido derivado del mismo modelo mostrado.
+
+### Comprobación
+
+- `npm run typecheck` (ambas capas) → sin errores.
+- `npx vitest run` → 157/157 (33 archivos).
+- `npm run build` → OK.
+
+### Pendiente tras este bloque
+
+- Cierre mensual/anual completo (prevalidación, cuentas de resultados, continuidad al ejercicio siguiente); el bloqueo de período actual no es cierre.
+- Estado periódico: refresco tras guardado y fallo reciente visible; próxima ejecución.
+- Selector de documento existente en adjuntos (hoy folio libre).
+- Paquete fiscal (F-07/F-14/F-11) contra especificación oficial; instalador NSIS y recorridos reales en Windows offline.

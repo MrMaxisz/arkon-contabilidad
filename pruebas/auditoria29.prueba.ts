@@ -266,7 +266,7 @@ describe('auditoría 29: auxiliar con detalle, corte temporal y exportación', (
     const csv = exportarCsvAuxiliar(ctx.db, 'cliente');
     expect(csv.version).toBe('auxiliar-interno-v1');
     expect(csv.csv).toContain('cliente,saldo');
-    expect(csv.csv).toContain('"Cliente Export",75.00');
+    expect(csv.csv).toContain('Cliente Export,75.00');
     expect(csv.csv).toContain('TOTAL,75.00');
 
     const csvEfectivo = exportarCsvAuxiliar(ctx.db, 'efectivo');
@@ -277,4 +277,68 @@ describe('auditoría 29: auxiliar con detalle, corte temporal y exportación', (
       abiertas.splice(idx, 1);
     }
   });
+
+  it('exportarCsvAuxiliar escapa comillas, comas y saltos verificables con parser independiente', () => {
+    const ctx = contexto();
+    const cliente = crearContraparte(ctx.db, { nombre: 'Demo, "Cliente" sintético\nlínea dos', esCliente: true, esProveedor: false, responsable: 'p' });
+    registrarVenta(ctx.db, {
+      contraparteId: cliente,
+      fechaOperacion: '2026-12-01',
+      concepto: 'Venta escape',
+      tipoIngreso: 'instalaciones',
+      base: '25.00',
+      tasa: '0',
+      claveIdempotencia: 'v-esc',
+      responsable: 'p'
+    });
+    const csv = exportarCsvAuxiliar(ctx.db, 'cliente');
+    const filas = parsearCsv(csv.csv);
+    const fila = filas.find(f => f[0].includes('Demo'));
+    expect(fila?.[0]).toBe('Demo, "Cliente" sintético\nlínea dos');
+    expect(fila?.[1]).toBe('25.00');
+    ctx.db.close();
+    const idx2 = abiertas.findIndex(d => !d.open);
+    if (idx2 >= 0) {
+      abiertas.splice(idx2, 1);
+    }
+  });
 });
+
+function parsearCsv(texto: string): string[][] {
+  const filas: string[][] = [];
+  let fila: string[] = [];
+  let campo = '';
+  let entreComillas = false;
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
+    if (entreComillas) {
+      if (c === '"') {
+        if (texto[i + 1] === '"') {
+          campo += '"';
+          i++;
+        } else {
+          entreComillas = false;
+        }
+      } else {
+        campo += c;
+      }
+    } else if (c === '"') {
+      entreComillas = true;
+    } else if (c === ',') {
+      fila.push(campo);
+      campo = '';
+    } else if (c === '\n') {
+      fila.push(campo);
+      filas.push(fila);
+      fila = [];
+      campo = '';
+    } else {
+      campo += c;
+    }
+  }
+  if (campo.length > 0 || fila.length > 0) {
+    fila.push(campo);
+    filas.push(fila);
+  }
+  return filas;
+}

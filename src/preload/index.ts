@@ -97,5 +97,11 @@ contextBridge.exposeInMainWorld('arkon', {
       return Promise.reject(new Error('El adjunto requiere entidad, identificador y responsable'));
     }
     return ipcRenderer.invoke('arkon:registrarAdjunto', { entidad, entidadId, responsable });
+  },
+  guardarCsvAuxiliar(tipo: 'cliente' | 'proveedor' | 'efectivo'): Promise<unknown> {
+    if (!['cliente', 'proveedor', 'efectivo'].includes(tipo)) {
+      return Promise.reject(new Error('Tipo de auxiliar inválido'));
+    }
+    return ipcRenderer.invoke('arkon:guardarCsvAuxiliar', { tipo });
   }
 });

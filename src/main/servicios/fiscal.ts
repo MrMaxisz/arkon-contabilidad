@@ -926,20 +926,24 @@ export function auxiliarContraparteDetalle(
 ): AuxiliarContraparteDetalle {
   const esCliente = tipo === 'cliente';
   const tabla = esCliente ? 'venta' : 'compra';
-  const filtroFecha = hastaFecha ? `AND x.fecha_operacion <= '${hastaFecha}'` : '';
+  const docTipo = esCliente ? 'venta' : 'compra';
+  const filtroFechaDoc = hastaFecha ? 'AND x.fecha_operacion <= ?' : '';
+  const filtroFechaMov = hastaFecha ? 'AND t.fecha_operacion <= ?' : '';
+  const filtroFechaAnt = hastaFecha ? 'AND aa.fecha_operacion <= ?' : '';
+  const params = hastaFecha ? [hastaFecha, hastaFecha, contraparteId, hastaFecha] : [contraparteId];
   const documentos = db
     .prepare(
       `SELECT x.folio, x.fecha_operacion, x.concepto, x.total_minor,
               COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
                 JOIN tesoreria_movimiento t ON t.id = a.movimiento_id AND t.estado = 'registrado'
-                WHERE a.documento_tipo = '${esCliente ? 'venta' : 'compra'}' AND a.documento_id = x.id), 0)
+                WHERE a.documento_tipo = '${docTipo}' AND a.documento_id = x.id ${filtroFechaMov}), 0)
               + COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
-                WHERE aa.documento_tipo = '${esCliente ? 'venta' : 'compra'}' AND aa.documento_id = x.id AND aa.estado = 'registrada'), 0) AS aplicado
+                WHERE aa.documento_tipo = '${docTipo}' AND aa.documento_id = x.id AND aa.estado = 'registrada' ${filtroFechaAnt}), 0) AS aplicado
        FROM ${tabla} x
-       WHERE x.contraparte_id = ? AND x.estado = 'registrada' ${filtroFecha}
+       WHERE x.contraparte_id = ? AND x.estado = 'registrada' ${filtroFechaDoc}
        ORDER BY x.fecha_operacion, x.id`
     )
-    .all(contraparteId) as Array<{
+    .all(...params) as Array<{
     folio: string;
     fecha_operacion: string;
     concepto: string;
@@ -964,6 +968,13 @@ export function auxiliarContraparteDetalle(
   };
 }
 
+function escaparCsv(valor: string): string {
+  if (/[",\n\r]/.test(valor)) {
+    return `"${valor.replace(/"/g, '""')}"`;
+  }
+  return valor;
+}
+
 export function exportarCsvAuxiliar(
   db: Database.Database,
   tipo: 'cliente' | 'proveedor' | 'efectivo'
@@ -973,7 +984,7 @@ export function exportarCsvAuxiliar(
     const aux = auxiliarEfectivo(db);
     lineas.push('cuenta,nombre,saldo');
     for (const c of aux.cuentas) {
-      lineas.push(`${c.codigo},"${c.nombre}",${c.saldoMinor}`);
+      lineas.push(`${escaparCsv(c.codigo)},${escaparCsv(c.nombre)},${c.saldoMinor}`);
     }
     lineas.push(`TOTAL,,${aux.totalMinor}`);
   } else {
@@ -982,7 +993,7 @@ export function exportarCsvAuxiliar(
     const etiqueta = tipo === 'cliente' ? 'cliente' : 'proveedor';
     lineas.push(`${etiqueta},saldo`);
     for (const f of filas) {
-      lineas.push(`"${f.contraparteNombre}",${f.saldoMinor}`);
+      lineas.push(`${escaparCsv(f.contraparteNombre)},${f.saldoMinor}`);
     }
     const total = tipo === 'cliente' ? aux.totalClientesMinor : aux.totalProveedoresMinor;
     lineas.push(`TOTAL,${total}`);
