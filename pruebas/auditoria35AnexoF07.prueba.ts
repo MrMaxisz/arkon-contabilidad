@@ -149,14 +149,15 @@ describe('auditoría 35: Anexo 1 F-07 v14 con bloqueo de faltantes y vía audita
     expect(diagnostico.listos).toHaveLength(0);
     const faltantes = diagnostico.folios[0].faltantes;
     for (const esperado of [
-      'NIT o NRC',
+      'NIT (14 dígitos) o NRC válido',
       'clase de documento',
       'número de resolución',
       'número de serie',
       'número de documento autorizado',
       'tratamiento de la venta sin IVA',
       'tipo de operación Renta',
-      'tipo de ingreso Renta'
+      'tipo de ingreso Renta',
+      'cobertura de vigencia con IVA inscrito'
     ]) {
       expect(faltantes.some(f => f.includes(esperado))).toBe(true);
     }
@@ -194,10 +195,10 @@ describe('auditoría 35: Anexo 1 F-07 v14 con bloqueo de faltantes y vía audita
       'completitud sintética'
     );
     const diagnostico = diagnosticarAnexo1Ventas(db, '2026-11');
-    expect(diagnostico.listos).toContain('V-000001');
+    expect(diagnostico.listos).toHaveLength(0);
     expect(diagnostico.bloqueado).toBe(true);
-    expect(diagnostico.motivo).toContain('activación formal');
-    expect(() => exportarAnexo1VentasPresentacion(db, '2026-11')).toThrow(/activación formal/);
+    expect(diagnostico.folios[0].faltantes.some(f => f.includes('cobertura de vigencia'))).toBe(true);
+    expect(() => exportarAnexo1VentasPresentacion(db, '2026-11')).toThrow(/bloqueado/);
     db.close();
   });
 

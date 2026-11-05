@@ -49,11 +49,32 @@ beforeEach(() => {
         return Promise.resolve({
           version: 'anexo-f07-v14-anexo1-esquema2',
           mes: '2026-11',
-          folios: [{ folio: 'V-000001', faltantes: ['NIT o NRC del cliente', 'número de resolución (columna D)'] }],
+          folios: [{ folio: 'V-000001', documentoId: 7, faltantes: ['NIT (14 dígitos) o NRC válido del cliente', 'número de resolución (columna D)'] }],
           listos: [],
           bloqueado: true,
           motivo: 'Hay folios con metadatos fiscales incompletos',
           fuente: 'Manual F-07 v14'
+        });
+      case 'fiscal:metadatosLeer':
+        return Promise.resolve({
+          id: 7,
+          folio: 'V-000001',
+          fecha: '2026-11-05',
+          contraparte: 'Cliente Sintético A35',
+          clase_documento_fiscal: null,
+          numero_resolucion: null,
+          serie_documento: null,
+          numero_documento_autorizado: null,
+          tratamiento_venta: null,
+          tipo_operacion_renta: null,
+          tipo_ingreso_renta: null
+        });
+      case 'documento:listarVinculos':
+        return Promise.resolve({
+          venta: [{ id: 7, folio: 'V-000001', concepto: 'Venta sintética', fecha: '2026-11-05' }],
+          compra: [],
+          cotizacion: [],
+          proyecto: []
         });
       case 'fiscal:metadatosCompletar':
         return Promise.resolve({ ok: true });
@@ -77,7 +98,10 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
     fireEvent.change(mesInput, { target: { value: '2026-11' } });
     fireEvent.click(screen.getByText('Diagnosticar'));
 
-    await waitFor(() => screen.getByText(/V-000001: NIT o NRC del cliente · número de resolución/));
+    await waitFor(() => screen.getByText(/V-000001: NIT \(14 dígitos\) o NRC válido del cliente · número de resolución/));
+    fireEvent.click(screen.getByText('Completar…'));
+    await waitFor(() => screen.getByText(/Documento seleccionado: V-000001 del 2026-11-05 · Cliente Sintético A35/));
+    expect(invocar.mock.calls.some(c => c[0] === 'fiscal:metadatosLeer' && (c[1] as { documentoId: number }).documentoId === 7)).toBe(true);
     expect(screen.getByText(/BLOQUEADO: Hay folios con metadatos fiscales incompletos/)).toBeTruthy();
 
     fireEvent.click(screen.getByText(/Guardar anexo de presentación…/));
@@ -92,7 +116,11 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
     fireEvent.change(screen.getByPlaceholderText("2026-11"), { target: { value: '2026-11' } });
     const form = screen.getByText('Registrar metadatos').closest('form') as HTMLFormElement;
     const dentro = within(form);
-    fireEvent.change(dentro.getByLabelText(/Id de venta\n?/, { selector: 'input' }) as HTMLInputElement, { target: { value: '1' } });
+    const selectorVenta = dentro.getAllByRole('combobox').find(
+      c => Array.from((c as HTMLSelectElement).options).some(o => o.value === '7')
+    ) as HTMLSelectElement;
+    fireEvent.change(selectorVenta, { target: { value: '7' } });
+    await waitFor(() => screen.getByText(/Documento seleccionado: V-000001/));
     fireEvent.change(dentro.getByLabelText(/Resolución\n?/) as HTMLInputElement, { target: { value: 'R-SINTETICA' } });
     fireEvent.change(dentro.getByLabelText(/^Serie\n?/) as HTMLInputElement, { target: { value: 'A' } });
     fireEvent.change(dentro.getByLabelText(/Número autorizado\n?/) as HTMLInputElement, { target: { value: '000001' } });

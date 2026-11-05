@@ -39,7 +39,7 @@ function saldosCuentaCorte(db: Database, hasta: string): SaldoCuentaCorte[] {
     db
       .prepare(
         `SELECT c.codigo, c.nombre, c.tipo,
-                COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+                COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN l.debe_minor - l.haber_minor ELSE 0 END), 0) AS saldo
          FROM cuenta c
          LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
          LEFT JOIN asiento a ON a.id = l.asiento_id
@@ -222,17 +222,37 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
   }
   const mayorClientes = mayorCuentaCorte(db, '1201', hasta);
   const mayorProveedores = mayorCuentaCorte(db, '2101', hasta);
+  const mayorEfectivo = BigInt(
+    (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS s
+           FROM asiento_linea l
+           JOIN asiento a ON a.id = l.asiento_id
+           JOIN cuenta c ON c.id = l.cuenta_id
+           WHERE c.es_efectivo = 1 AND a.estado IN ('contabilizado','anulado') AND a.fecha_operacion <= ?`
+        )
+        .get(hasta) as { s: number }
+    ).s
+  );
+  let cuentasConcilian = true;
+  for (const c of saldosCorte) {
+    if (c.saldo !== mayorCuentaCorte(db, c.codigo, hasta)) {
+      cuentasConcilian = false;
+    }
+  }
   const conciliaciones = {
     clientesMayor: totalClientesCorte === mayorClientes,
     proveedoresMayor: totalProveedoresCorte === -mayorProveedores,
-    efectivoMayor: totalEfectivo === filasEfectivo.reduce((s, c) => s + c.saldo, 0n),
-    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n
+    efectivoMayor: totalEfectivo === mayorEfectivo,
+    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n && cuentasConcilian
   };
   const lineasConciliaciones = [
     `conciliacion,resultado`,
     `auxiliar-clientes-al-corte-vs-mayor-1201,${conciliaciones.clientesMayor ? 'ok' : 'descuadre'}`,
     `auxiliar-proveedores-al-corte-vs-mayor-2101,${conciliaciones.proveedoresMayor ? 'ok' : 'descuadre'}`,
     `auxiliar-efectivo-al-corte-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
+    `cuentas-exportadas-vs-mayor-al-corte,${cuentasConcilian ? 'ok' : 'descuadre'}`,
     `balance-activo-pasivo-patrimonio-resultado,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
     `total-activo,${minorATexto(activo)}`,
     `total-pasivo,${minorATexto(pasivo)}`,

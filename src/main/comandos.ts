@@ -160,8 +160,8 @@ export const comandos: Record<string, Manejador> = {
     const filtroCotizacion = busqueda ? 'AND (numero LIKE ? OR CAST(id AS TEXT) LIKE ?)' : '';
     const filtroProyecto = busqueda ? 'AND (nombre LIKE ? OR codigo LIKE ? OR CAST(id AS TEXT) LIKE ?)' : '';
     const ventas = ctx.db
-      .prepare(`SELECT folio, concepto, fecha_operacion AS fecha FROM venta WHERE 1=1 ${filtroVenta} ORDER BY id DESC LIMIT ?`)
-      .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
+      .prepare(`SELECT id, folio, concepto, fecha_operacion AS fecha FROM venta WHERE 1=1 ${filtroVenta} ORDER BY id DESC LIMIT ?`)
+      .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ id: number; folio: string; concepto: string; fecha: string }>;
     const compras = ctx.db
       .prepare(`SELECT folio, concepto, fecha_operacion AS fecha FROM compra WHERE 1=1 ${filtroCompra} ORDER BY id DESC LIMIT ?`)
       .all(...(busqueda ? [patron, patron] : []), limite) as Array<{ folio: string; concepto: string; fecha: string }>;
@@ -668,6 +668,38 @@ export const comandos: Record<string, Manejador> = {
   'fiscal:anexo1Presentacion': (ctx, payload) => {
     const p = objeto(payload);
     return exportarAnexo1VentasPresentacion(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:metadatosLeer': (ctx, payload) => {
+    const p = objeto(payload);
+    const id = entero(p, 'documentoId');
+    const fila = ctx.db
+      .prepare(
+        `SELECT v.id, v.folio, v.fecha_operacion AS fecha, c.nombre AS contraparte,
+                v.clase_documento_fiscal, v.numero_resolucion, v.serie_documento,
+                v.numero_documento_autorizado, v.tratamiento_venta,
+                v.tipo_operacion_renta, v.tipo_ingreso_renta
+         FROM venta v JOIN contraparte c ON c.id = v.contraparte_id
+         WHERE v.id = ?`
+      )
+      .get(id) as
+      | {
+          id: number;
+          folio: string;
+          fecha: string;
+          contraparte: string;
+          clase_documento_fiscal: string | null;
+          numero_resolucion: string | null;
+          serie_documento: string | null;
+          numero_documento_autorizado: string | null;
+          tratamiento_venta: string | null;
+          tipo_operacion_renta: string | null;
+          tipo_ingreso_renta: string | null;
+        }
+      | undefined;
+    if (!fila) {
+      throw new ErrorValidacion('Venta inexistente');
+    }
+    return fila;
   },
   'fiscal:metadatosCompletar': (ctx, payload) => {
     const p = objeto(payload);

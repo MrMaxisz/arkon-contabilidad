@@ -40,6 +40,7 @@ export const COMANDOS_PERMITIDOS = new Set([
   'fiscal:anexo1Ventas',
   'fiscal:anexo1Presentacion',
   'fiscal:metadatosCompletar',
+  'fiscal:metadatosLeer',
   'auxiliar:efectivo',
   'adjunto:listar',
   'adjunto:verificar',

@@ -140,43 +140,73 @@ function ventasDelMes(db: Database, mes: string): VentaAnexo[] {
     .all(`${mes}-01`, `${mes}-31`) as VentaAnexo[];
 }
 
-function faltantesDe(v: VentaAnexo): string[] {
+function faltantesDe(db: Database, v: VentaAnexo, mes: string): string[] {
   const faltantes: string[] = [];
-  const identificacion = (v.nit || '').replace(/[-|]/g, '') || (v.nrc || '').replace(/[-|]/g, '');
-  if (!identificacion) {
-    faltantes.push('NIT o NRC del cliente');
+  const nit = (v.nit || '').replace(/[-|]/g, '');
+  const nrc = (v.nrc || '').replace(/[-|]/g, '');
+  const nitValido = /^\d{14}$/.test(nit);
+  const nrcValido = /^\d{1,14}$/.test(nrc);
+  if (!nitValido && !nrcValido) {
+    faltantes.push('NIT (14 dígitos) o NRC válido del cliente');
   }
   if (v.tipo_documento !== 'ccf') {
     faltantes.push('tipo de documento autorizado (CCF)');
   }
-  if (!v.clase_documento_fiscal) {
-    faltantes.push('clase de documento (columna B)');
+  if (!v.clase_documento_fiscal || !CLASES_DOCUMENTO.has(v.clase_documento_fiscal)) {
+    faltantes.push('clase de documento (columna B: 1, 2 o 4)');
   }
   if (!v.numero_resolucion) {
     faltantes.push('número de resolución (columna D)');
+  } else if (v.numero_resolucion.length > 100) {
+    faltantes.push('número de resolución excede 100 caracteres (columna D)');
   }
   if (!v.serie_documento) {
     faltantes.push('número de serie (columna E)');
+  } else if (v.serie_documento.length > 100) {
+    faltantes.push('número de serie excede 100 caracteres (columna E)');
   }
   if (!v.numero_documento_autorizado) {
     faltantes.push('número de documento autorizado (columna F)');
+  } else if (v.numero_documento_autorizado.length > 100) {
+    faltantes.push('número de documento autorizado excede 100 caracteres (columna F)');
   }
   if (v.iva_minor === 0 && !v.tratamiento_venta) {
     faltantes.push('tratamiento de la venta sin IVA (exenta o no sujeta)');
   }
-  if (!v.tipo_operacion_renta) {
-    faltantes.push('tipo de operación Renta (columna R)');
+  if (mes >= '2025-01') {
+    if (!v.tipo_operacion_renta || !TIPOS_OPERACION_RENTA.has(v.tipo_operacion_renta)) {
+      faltantes.push('tipo de operación Renta (columna R)');
+    }
+    if (!v.tipo_ingreso_renta || !TIPOS_INGRESO_RENTA.has(v.tipo_ingreso_renta)) {
+      faltantes.push('tipo de ingreso Renta (columna S)');
+    }
   }
-  if (!v.tipo_ingreso_renta) {
-    faltantes.push('tipo de ingreso Renta (columna S)');
+  const vigencia = db
+    .prepare(
+      `SELECT id FROM vigencia_fiscal
+       WHERE inscrito_iva = 1 AND desde <= ? AND (hasta IS NULL OR hasta >= ?)`
+    )
+    .get(v.fecha, v.fecha) as { id: number } | undefined;
+  if (!vigencia) {
+    faltantes.push('cobertura de vigencia con IVA inscrito para la fecha del documento');
   }
   return faltantes;
+}
+
+function controlInterno(v: VentaAnexo): string {
+  if (v.clase_documento_fiscal === '2') {
+    return v.numero_documento_autorizado ?? '';
+  }
+  if (v.clase_documento_fiscal === '4') {
+    return '';
+  }
+  return v.folio;
 }
 
 export interface DiagnosticoAnexo1 {
   version: string;
   mes: string;
-  folios: Array<{ folio: string; faltantes: string[] }>;
+  folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
   listos: string[];
   bloqueado: boolean;
   motivo: string;
@@ -188,29 +218,20 @@ export function diagnosticarAnexo1Ventas(db: Database, mes: string): Diagnostico
     throw new ErrorAnexo(`Mes inválido (AAAA-MM): ${mes}`);
   }
   const ventas = ventasDelMes(db, mes);
-  const folios: Array<{ folio: string; faltantes: string[] }> = [];
+  const folios: Array<{ folio: string; documentoId: number; faltantes: string[] }> = [];
   const listos: string[] = [];
   for (const v of ventas) {
-    const f = faltantesDe(v);
+    const f = faltantesDe(db, v, mes);
     if (f.length > 0) {
-      folios.push({ folio: v.folio, faltantes: f });
+      folios.push({ folio: v.folio, documentoId: v.id, faltantes: f });
     } else {
       listos.push(v.folio);
     }
   }
-  const vigencia = db
-    .prepare(
-      `SELECT id FROM vigencia_fiscal
-       WHERE inscrito_iva = 1 AND desde <= ? AND (hasta IS NULL OR hasta >= ?)`
-    )
-    .get(`${mes}-01`, `${mes}-01`) as { id: number } | undefined;
-  const bloqueado = folios.length > 0 || !vigencia;
+  const bloqueado = folios.length > 0;
   const motivos: string[] = [];
-  if (!vigencia) {
-    motivos.push('No existe vigencia con IVA inscrito que cubra el mes; el anexo de presentación permanece bloqueado hasta la activación formal');
-  }
   if (folios.length > 0) {
-    motivos.push('Hay folios con metadatos fiscales incompletos; complételos por la vía auditada antes de generar el archivo de presentación');
+    motivos.push('Hay folios con metadatos fiscales incompletos o sin cobertura de vigencia; complételos por la vía auditada antes de generar el archivo de presentación');
   }
   const motivo = motivos.join(' ');
   return {
@@ -254,11 +275,18 @@ export function exportarAnexo1VentasPresentacion(db: Database, mes: string): Res
   const ventas = ventasDelMes(db, mes);
   const lineas: string[] = [];
   for (const v of ventas) {
-    const identificacion = (v.nit || '').replace(/[-|]/g, '') || (v.nrc || '').replace(/[-|]/g, '');
+    const revalidacion = faltantesDe(db, v, mes);
+    if (revalidacion.length > 0) {
+      throw new ErrorAnexo(`El folio ${v.folio} dejó de ser válido al exportar: ${revalidacion.join(', ')}`);
+    }
+    const nit = (v.nit || '').replace(/[-|]/g, '');
+    const nrc = (v.nrc || '').replace(/[-|]/g, '');
+    const identificacion = /^\d{14}$/.test(nit) ? nit : nrc;
     const gravada = v.iva_minor > 0;
     const exentas = !gravada && v.tratamiento_venta === 'exenta' ? v.base_minor : 0;
     const noSujetas = !gravada && v.tratamiento_venta === 'no_sujeta' ? v.base_minor : 0;
     const gravadas = gravada ? v.base_minor : 0;
+    const aplicaRenta = mes >= '2025-01';
     const fila = [
       fechaDdMmAaaa(v.fecha),
       v.clase_documento_fiscal ?? '',
@@ -266,7 +294,7 @@ export function exportarAnexo1VentasPresentacion(db: Database, mes: string): Res
       v.numero_resolucion ?? '',
       v.serie_documento ?? '',
       v.numero_documento_autorizado ?? '',
-      v.folio,
+      controlInterno(v),
       identificacion,
       v.nombre,
       minorATexto(BigInt(exentas)),
@@ -277,12 +305,15 @@ export function exportarAnexo1VentasPresentacion(db: Database, mes: string): Res
       '0.00',
       minorATexto(BigInt(v.total_minor)),
       '',
-      v.tipo_operacion_renta ?? '',
-      v.tipo_ingreso_renta ?? '',
+      aplicaRenta ? v.tipo_operacion_renta ?? '' : '0',
+      aplicaRenta ? v.tipo_ingreso_renta ?? '' : '0',
       '1'
     ];
     if (fila.length !== 20) {
       throw new ErrorAnexo(`Fila con columnas incorrectas para ${v.folio}`);
+    }
+    if (fila.some(c => c.length > 100)) {
+      throw new ErrorAnexo(`Fila con contenido fuera de límites para ${v.folio}`);
     }
     lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
   }

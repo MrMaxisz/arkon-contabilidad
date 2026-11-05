@@ -86,12 +86,15 @@ export default function Impuestos() {
   const [estadoResultados, setEstadoResultados] = useState<EstadoResultados | null>(null);
   const [anexoMes, setAnexoMes] = useState('');
   const [anexoDiagnostico, setAnexoDiagnostico] = useState<{
-    folios: Array<{ folio: string; faltantes: string[] }>;
+    folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
     listos: string[];
     bloqueado: boolean;
     motivo: string;
   } | null>(null);
-  const [metaFolio, setMetaFolio] = useState('');
+  const [metaDocumentoId, setMetaDocumentoId] = useState(0);
+  const [metaBusqueda, setMetaBusqueda] = useState('');
+  const [ventasSelector, setVentasSelector] = useState<Array<{ id: number; folio: string; concepto: string; fecha: string }>>([]);
+  const [metaActual, setMetaActual] = useState<{ folio: string; fecha: string; contraparte: string; clase_documento_fiscal: string | null } | null>(null);
   const [metaClase, setMetaClase] = useState('1');
   const [metaResolucion, setMetaResolucion] = useState('');
   const [metaSerie, setMetaSerie] = useState('');
@@ -101,6 +104,15 @@ export default function Impuestos() {
   const [metaIngresoRenta, setMetaIngresoRenta] = useState('');
   const [metaResponsable, setMetaResponsable] = useState('');
   const [metaMotivo, setMetaMotivo] = useState('');
+  useEffect(() => {
+    void api()
+      .invocar('documento:listarVinculos', { busqueda: '', limite: 200 })
+      .then(r => {
+        const vinculos = r as { venta: Array<{ id: number; folio: string; concepto: string; fecha: string }> };
+        setVentasSelector(vinculos.venta ?? []);
+      })
+      .catch(() => setVentasSelector([]));
+  }, []);
   const consultaResultadosId = useRef(0);
   const mesResultadosRef = useRef(mes);
   mesResultadosRef.current = mes;
@@ -463,7 +475,8 @@ export default function Impuestos() {
           </p>
           {anexoDiagnostico.folios.map(f => (
             <p key={f.folio} className="menor">
-              {f.folio}: {f.faltantes.join(' · ')}
+              {f.folio}: {f.faltantes.join(' · ')}{' '}
+              <button type="button" onClick={() => void seleccionarDocumento(f.documentoId)}>Completar…</button>
             </p>
           ))}
         </div>
@@ -475,7 +488,7 @@ export default function Impuestos() {
         try {
           await api().invocar('fiscal:metadatosCompletar', {
             tipo: 'venta',
-            documentoId: Number(metaFolio),
+            documentoId: metaDocumentoId,
             claseDocumentoFiscal: metaClase,
             numeroResolucion: metaResolucion,
             serieDocumento: metaSerie,
@@ -487,6 +500,8 @@ export default function Impuestos() {
             motivo: metaMotivo
           });
           setMensaje({ texto: 'Metadatos fiscales registrados en bitácora.', tipo: 'ok' });
+          await seleccionarDocumento(metaDocumentoId);
+          cargarVentasSelector(metaBusqueda);
           if (/^\d{4}-\d{2}$/.test(anexoMes)) {
             await diagnosticarAnexo();
           }
@@ -495,9 +510,32 @@ export default function Impuestos() {
         }
       }}>
         <div className="fila">
-          <label>Id de venta
-            <input type="number" value={metaFolio} onChange={e => setMetaFolio(e.target.value)} required min="1" />
+          <label>Buscar venta
+            <input
+              value={metaBusqueda}
+              onChange={e => {
+                setMetaBusqueda(e.target.value);
+                cargarVentasSelector(e.target.value);
+              }}
+              placeholder="Folio o concepto"
+            />
           </label>
+          <label style={{ minWidth: 280 }}>Venta
+            <select value={String(metaDocumentoId)} onChange={e => void seleccionarDocumento(Number(e.target.value))} required>
+              <option value="0">— Seleccione venta —</option>
+              {ventasSelector.map(v => (
+                <option key={v.id} value={String(v.id)}>{v.folio} · {v.concepto} ({v.fecha})</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {metaActual && (
+          <p className="menor">
+            Documento seleccionado: {metaActual.folio} del {metaActual.fecha} · {metaActual.contraparte}.
+            {metaActual.clase_documento_fiscal ? ` Clase actual: ${metaActual.clase_documento_fiscal}.` : ' Sin metadatos previos.'}
+          </p>
+        )}
+        <div className="fila">
           <label>Clase (1/2/4)
             <select value={metaClase} onChange={e => setMetaClase(e.target.value)}>
               <option value="1">1 Imprenta/tiquetes</option>
@@ -549,10 +587,54 @@ export default function Impuestos() {
     </div>
   );
 
+  function cargarVentasSelector(busqueda: string) {
+    void api()
+      .invocar('documento:listarVinculos', { busqueda, limite: 200 })
+      .then(r => {
+        const vinculos = r as { venta: Array<{ id: number; folio: string; concepto: string; fecha: string }> };
+        setVentasSelector(vinculos.venta ?? []);
+      })
+      .catch(() => setVentasSelector([]));
+  }
+
+  async function seleccionarDocumento(documentoId: number) {
+    if (!documentoId) {
+      setMetaDocumentoId(0);
+      setMetaActual(null);
+      return;
+    }
+    try {
+      const r = (await api().invocar('fiscal:metadatosLeer', { documentoId })) as {
+        id: number;
+        folio: string;
+        fecha: string;
+        contraparte: string;
+        clase_documento_fiscal: string | null;
+        numero_resolucion: string | null;
+        serie_documento: string | null;
+        numero_documento_autorizado: string | null;
+        tratamiento_venta: string | null;
+        tipo_operacion_renta: string | null;
+        tipo_ingreso_renta: string | null;
+      };
+      setMetaDocumentoId(r.id);
+      setMetaActual(r);
+      setMetaClase(r.clase_documento_fiscal ?? '1');
+      setMetaResolucion(r.numero_resolucion ?? '');
+      setMetaSerie(r.serie_documento ?? '');
+      setMetaNumero(r.numero_documento_autorizado ?? '');
+      setMetaTratamiento(r.tratamiento_venta ?? '');
+      setMetaOperacionRenta(r.tipo_operacion_renta ?? '');
+      setMetaIngresoRenta(r.tipo_ingreso_renta ?? '');
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
   async function diagnosticarAnexo() {
     try {
       const r = (await api().invocar('fiscal:anexo1Ventas', { mes: anexoMes })) as {
-        folios: Array<{ folio: string; faltantes: string[] }>;
+        folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
         listos: string[];
         bloqueado: boolean;
         motivo: string;

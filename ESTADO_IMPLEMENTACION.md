@@ -487,3 +487,22 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 
 - Anexos 2 (consumidor final) y 3 (compras) del F-07 v14 y F-14/F-11 con la misma fuente oficial, matriz de campos y bloqueos equivalentes; sin arrastrar inferencias del Anexo 1.
 - Instalador NSIS, manual y QA Windows offline.
+
+## Bloque auditoría 36 (corte real en cuentas/efectivo, matriz de validación fiscal, selección de documento)
+
+### Corregido (hallazgos de la auditoría 36)
+
+- **P1 Corte en cuentas.csv/efectivo**: `saldosCuentaCorte` ya no suma líneas cuyo asiento quedó excluido por el LEFT JOIN (`CASE WHEN a.id IS NOT NULL`), de modo que borradores y asientos futuros no influyen; las cuentas sin movimientos se conservan en 0.00. La conciliación `efectivoMayor` compara contra un mayor independiente al corte (ya no tautología) y se añade `cuentas-exportadas-vs-mayor-al-corte`: cada fila exportada de cuentas.csv se verifica contra `mayorCuentaCorte` del mismo corte; cualquier discrepancia hace negativa la conciliación y el balance. Pruebas del repro exacto: venta 100 del 1/nov + cobro TOTAL del 5/dic → al 30/nov: cuentas.csv 1201=100.00 y 1101=0.00, efectivo TOTAL 0.00, conciliaciones ok; asiento borrador con línea en caja y asiento futuro no alteran saldos al corte.
+- **P1 Validación fiscal de contenido**: matriz compartida `faltantesDe(db, venta, mes)` usada por diagnóstico y revalidada dentro de la exportación: NIT de 14 dígitos o NRC numérico (identificación alfabética rechazada), clase 1/2/4, resolución/serie/número no vacíos y ≤100 caracteres, tratamiento explícito para IVA 0, R/S requeridos solo desde 2025-01 (períodos anteriores exportan '0' según el manual), y cobertura de vigencia con IVA inscrito **por fecha de cada documento** (no por mes-01). Reglas cruzadas por clase en la columna G: clase 2 → G=F; clase 4 → G vacía; clase 1 → G=control interno (folio). Pruebas: NIT 'ABC', resolución de 101 caracteres y vigencia parcial (1–15 nov con venta del 20) bloquean la presentación; clase 2 exporta G=F; clase 4 exporta G vacía; período 2024-11 exporta R/S=0 sin exigirlos; la mutación del NIT tras el diagnóstico se detecta al exportar.
+- **P2 Selección de documento**: el formulario de metadatos ya no exige un id numérico a mano: selector de ventas con búsqueda (`documento:listarVinculos` ahora incluye el id interno), botón "Completar…" por folio del diagnóstico que carga el documento, comando `fiscal:metadatosLeer` que muestra folio/fecha/cliente y metadatos actuales al seleccionar, y refresco de selección y diagnóstico tras guardar. Prueba del componente: diagnóstico→Completar…→documento seleccionado con metadatos previos→registro→refresco; selector con id interno distinto del número de folio.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 201/201 (45 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Pendiente (límites reales)
+
+- Anexos 2/3 del F-07 v14 y F-14/F-11 con la misma fuente oficial y matriz equivalente.
+- Instalador NSIS, manual y QA Windows offline (criterios de instalación/actualización/recuperación).
