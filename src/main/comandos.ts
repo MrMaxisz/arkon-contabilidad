@@ -12,7 +12,7 @@ export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import { generarPaqueteContador } from './servicios/paqueteContador';
-import { exportarAnexo1VentasContribuyentes } from './servicios/anexosFiscales';
+import { diagnosticarAnexo1Ventas, exportarAnexo1VentasPresentacion, completarMetadatosFiscales } from './servicios/anexosFiscales';
 import {
   crearItem,
   editarItem,
@@ -663,7 +663,32 @@ export const comandos: Record<string, Manejador> = {
   },
   'fiscal:anexo1Ventas': (ctx, payload) => {
     const p = objeto(payload);
-    return exportarAnexo1VentasContribuyentes(ctx.db, texto(p, 'mes'));
+    return diagnosticarAnexo1Ventas(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:anexo1Presentacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return exportarAnexo1VentasPresentacion(ctx.db, texto(p, 'mes'));
+  },
+  'fiscal:metadatosCompletar': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo') === 'compra' ? 'compra' : 'venta';
+    return completarMetadatosFiscales(
+      ctx.db,
+      tipo,
+      entero(p, 'documentoId'),
+      {
+        claseDocumentoFiscal: texto(p, 'claseDocumentoFiscal'),
+        numeroResolucion: texto(p, 'numeroResolucion'),
+        serieDocumento: texto(p, 'serieDocumento'),
+        numeroDocumentoAutorizado: texto(p, 'numeroDocumentoAutorizado'),
+        tratamientoVenta:
+          p.tratamientoVenta === 'exenta' || p.tratamientoVenta === 'no_sujeta' ? p.tratamientoVenta : undefined,
+        tipoOperacionRenta: texto(p, 'tipoOperacionRenta'),
+        tipoIngresoRenta: texto(p, 'tipoIngresoRenta')
+      },
+      texto(p, 'responsable'),
+      texto(p, 'motivo')
+    );
   }
 };
 

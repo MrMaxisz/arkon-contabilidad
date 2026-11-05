@@ -84,6 +84,23 @@ export default function Impuestos() {
   const [politicas, setPoliticas] = useState<{ anticipoHechoGenerador: string; ivaComprasCreditoFiscal: boolean; perfilIvaInscritoConfig: boolean } | null>(null);
   const [exportacion, setExportacion] = useState<{ mes: string; tipo: string; csv: string; version: string; advertencia: string } | null>(null);
   const [estadoResultados, setEstadoResultados] = useState<EstadoResultados | null>(null);
+  const [anexoMes, setAnexoMes] = useState('');
+  const [anexoDiagnostico, setAnexoDiagnostico] = useState<{
+    folios: Array<{ folio: string; faltantes: string[] }>;
+    listos: string[];
+    bloqueado: boolean;
+    motivo: string;
+  } | null>(null);
+  const [metaFolio, setMetaFolio] = useState('');
+  const [metaClase, setMetaClase] = useState('1');
+  const [metaResolucion, setMetaResolucion] = useState('');
+  const [metaSerie, setMetaSerie] = useState('');
+  const [metaNumero, setMetaNumero] = useState('');
+  const [metaTratamiento, setMetaTratamiento] = useState('');
+  const [metaOperacionRenta, setMetaOperacionRenta] = useState('');
+  const [metaIngresoRenta, setMetaIngresoRenta] = useState('');
+  const [metaResponsable, setMetaResponsable] = useState('');
+  const [metaMotivo, setMetaMotivo] = useState('');
   const consultaResultadosId = useRef(0);
   const mesResultadosRef = useRef(mes);
   mesResultadosRef.current = mes;
@@ -420,6 +437,142 @@ export default function Impuestos() {
           </tbody>
         </table>
       )}
+      <h2>Anexo 1 F-07 v14 (ventas a contribuyentes)</h2>
+      <p className="aviso error">
+        Estructura oficial F-07 v14 (DGII, Enero 2025). El archivo de presentación permanece BLOQUEADO
+        mientras falten metadatos fiscales o no exista vigencia con IVA inscrito que cubra el mes;
+        ARKON no está constituida ni inscrita. El diagnóstico es interno y no genera archivo.
+      </p>
+      <div className="fila">
+        <label>Período del anexo (AAAA-MM)
+          <input value={anexoMes} onChange={e => setAnexoMes(e.target.value)} placeholder="2026-11" />
+        </label>
+        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void diagnosticarAnexo()}>
+          Diagnosticar
+        </button>
+        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void guardarAnexo()}>
+          Guardar anexo de presentación…
+        </button>
+      </div>
+      {anexoDiagnostico && (
+        <div>
+          <p className="menor">
+            Folios listos: {anexoDiagnostico.listos.length}. {anexoDiagnostico.bloqueado
+              ? `BLOQUEADO: ${anexoDiagnostico.motivo}`
+              : 'Sin faltantes para el mes.'}
+          </p>
+          {anexoDiagnostico.folios.map(f => (
+            <p key={f.folio} className="menor">
+              {f.folio}: {f.faltantes.join(' · ')}
+            </p>
+          ))}
+        </div>
+      )}
+      <h3>Completar metadatos fiscales (vía auditada)</h3>
+      <form onSubmit={async e => {
+        e.preventDefault();
+        setMensaje(null);
+        try {
+          await api().invocar('fiscal:metadatosCompletar', {
+            tipo: 'venta',
+            documentoId: Number(metaFolio),
+            claseDocumentoFiscal: metaClase,
+            numeroResolucion: metaResolucion,
+            serieDocumento: metaSerie,
+            numeroDocumentoAutorizado: metaNumero,
+            tratamientoVenta: metaTratamiento || undefined,
+            tipoOperacionRenta: metaOperacionRenta,
+            tipoIngresoRenta: metaIngresoRenta,
+            responsable: metaResponsable,
+            motivo: metaMotivo
+          });
+          setMensaje({ texto: 'Metadatos fiscales registrados en bitácora.', tipo: 'ok' });
+          if (/^\d{4}-\d{2}$/.test(anexoMes)) {
+            await diagnosticarAnexo();
+          }
+        } catch (err) {
+          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+        }
+      }}>
+        <div className="fila">
+          <label>Id de venta
+            <input type="number" value={metaFolio} onChange={e => setMetaFolio(e.target.value)} required min="1" />
+          </label>
+          <label>Clase (1/2/4)
+            <select value={metaClase} onChange={e => setMetaClase(e.target.value)}>
+              <option value="1">1 Imprenta/tiquetes</option>
+              <option value="2">2 Formulario único</option>
+              <option value="4">4 DTE</option>
+            </select>
+          </label>
+          <label>Resolución<input value={metaResolucion} onChange={e => setMetaResolucion(e.target.value)} required /></label>
+          <label>Serie<input value={metaSerie} onChange={e => setMetaSerie(e.target.value)} required /></label>
+        </div>
+        <div className="fila">
+          <label>Número autorizado<input value={metaNumero} onChange={e => setMetaNumero(e.target.value)} required /></label>
+          <label>Tratamiento sin IVA
+            <select value={metaTratamiento} onChange={e => setMetaTratamiento(e.target.value)}>
+              <option value="">— Solo si IVA 0 —</option>
+              <option value="exenta">Exenta</option>
+              <option value="no_sujeta">No sujeta</option>
+            </select>
+          </label>
+          <label>Tipo operación Renta (R)
+            <select value={metaOperacionRenta} onChange={e => setMetaOperacionRenta(e.target.value)} required>
+              <option value="">— Seleccione —</option>
+              <option value="1">1 Gravada</option>
+              <option value="2">2 No gravada o exento</option>
+              <option value="3">3 Excluido</option>
+              <option value="4">4 Mixta</option>
+              <option value="12">12 Retenido F910</option>
+              <option value="13">13 Excluido art. 6 LISR</option>
+            </select>
+          </label>
+          <label>Tipo ingreso Renta (S)
+            <select value={metaIngresoRenta} onChange={e => setMetaIngresoRenta(e.target.value)} required>
+              <option value="">— Seleccione —</option>
+              <option value="1">1 Profesiones</option>
+              <option value="2">2 Servicios</option>
+              <option value="3">3 Comerciales</option>
+              <option value="4">4 Industriales</option>
+              <option value="5">5 Agropecuarias</option>
+              <option value="10">10 Otras</option>
+            </select>
+          </label>
+        </div>
+        <div className="fila">
+          <label>Responsable<input value={metaResponsable} onChange={e => setMetaResponsable(e.target.value)} required /></label>
+          <label style={{ flex: 2 }}>Motivo<input value={metaMotivo} onChange={e => setMetaMotivo(e.target.value)} required /></label>
+          <button className="primario" type="submit">Registrar metadatos</button>
+        </div>
+      </form>
     </div>
   );
+
+  async function diagnosticarAnexo() {
+    try {
+      const r = (await api().invocar('fiscal:anexo1Ventas', { mes: anexoMes })) as {
+        folios: Array<{ folio: string; faltantes: string[] }>;
+        listos: string[];
+        bloqueado: boolean;
+        motivo: string;
+      };
+      setAnexoDiagnostico(r);
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function guardarAnexo() {
+    try {
+      const r = (await api().guardarAnexo1Ventas(anexoMes)) as { guardado: boolean; ruta?: string; filas: number };
+      if (r.guardado && r.ruta) {
+        setMensaje({ texto: `Anexo guardado en ${r.ruta} (${r.filas} filas).`, tipo: 'ok' });
+      } else {
+        setMensaje({ texto: 'Guardado del anexo cancelado.', tipo: 'ok' });
+      }
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
 }

@@ -38,6 +38,8 @@ export const COMANDOS_PERMITIDOS = new Set([
   'cierre:reabrir',
   'paquete:generar',
   'fiscal:anexo1Ventas',
+  'fiscal:anexo1Presentacion',
+  'fiscal:metadatosCompletar',
   'auxiliar:efectivo',
   'adjunto:listar',
   'adjunto:verificar',

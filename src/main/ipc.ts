@@ -6,7 +6,7 @@ import { guardarExportacionArchivo } from './servicios/fiscal';
 import { generarHtmlCotizacion } from './servicios/cotizaciones';
 import { registrarAdjunto, validarVinculoDocumento, verificarAdjunto } from './servicios/adjuntos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
-import { exportarAnexo1VentasContribuyentes } from './servicios/anexosFiscales';
+import { exportarAnexo1VentasPresentacion } from './servicios/anexosFiscales';
 import { registroEvento } from './servicios/bitacora';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
@@ -138,7 +138,7 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     if (!mes) {
       throw new Error('El anexo requiere mes (AAAA-MM)');
     }
-    const anexo = exportarAnexo1VentasContribuyentes(ctx.db, mes);
+    const anexo = exportarAnexo1VentasPresentacion(ctx.db, mes);
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const opciones = {
       title: 'Guardar Anexo 1 (Ventas a contribuyentes) F-07 v14',
@@ -155,15 +155,15 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     registroEvento(ctx.db, 'sistema', 'anexo_f07_anexo1', 'archivo_csv', destino.filePath, {
       mes,
       filas: anexo.filas,
-      incompletos: anexo.incompletos.length
+      version: anexo.version,
+      fuente: anexo.fuente
     });
     return {
       guardado: true,
       ruta: destino.filePath,
       version: anexo.version,
       filas: anexo.filas,
-      incompletos: anexo.incompletos,
-      advertencia: anexo.advertencia
+      fuente: anexo.fuente
     };
   });
 

@@ -467,3 +467,23 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 
 - Anexos 2 (consumidor final), 3 (compras) y F-14 (retenciones) con la misma especificación oficial ya identificada; decisiones del contador para activación formal.
 - Instalador NSIS y recorridos gráficos reales en Windows offline (el arranque real del preload debe confirmarse en Windows como hiciste; aquí se probó el artefacto del build).
+
+## Bloque auditoría 35 (paquete coherente al corte, Anexo 1 con bloqueo y vía auditada, formato, UI)
+
+### Corregido (hallazgos de la auditoría 35)
+
+- **Fallo de suite en Windows**: la prueba del bundle del preload usa ahora la API JS de esbuild (`build()` de 'esbuild') en lugar de `execFileSync` con `.cmd` (EINVAL en Node 24/Windows). La verificación del artefacto real se conserva.
+- **P1 Paquete histórico**: `generarPaqueteContador` reescrito (v2) con coherencia total al corte: el universo de contrapartes sale de documentos registrados con fecha ≤ hasta (no de saldos actuales), los saldos de cuentas/balance/conciliaciones se calculan acumulados al corte (`fecha_operacion <= hasta`, estados contabilizado/anulado), y resultados/asientos usan el rango exacto desde–hasta (ya no meses enteros). Conciliaciones comparan auxiliares al corte contra el mayor del MISMO corte (1201/2101/efectivo). Pruebas: cobro TOTAL posterior al corte no vacía el auxiliar (100.00 al corte, 0.00 actual) ni falsea la conciliación; rango parcial 10–20 excluye la venta del día 1 de resultados pero la mantiene en saldos acumulados; anticipo aplicado después del corte no reduce la deuda al corte; rechazos de rango/fechas.
+- **P1 Anexo fiscal sin bloqueo/inferencia**: separación estricta entre diagnóstico interno y archivo de presentación. `diagnosticarAnexo1Ventas` (comando `fiscal:anexo1Ventas`) enumera TODOS los campos faltantes por folio (NIT/NRC, clase B, resolución D, serie E, número autorizado F, tratamiento sin IVA, R, S) y no genera archivo. `exportarAnexo1VentasPresentacion` (canal `arkon:guardarAnexo1Ventas`) RECHAZA si algún folio está incompleto o no hay vigencia con IVA inscrito que cubra el mes; sin inferencias: IVA 0 ya no asigna la base a exentas — exige `tratamiento_venta` explícito registrado por la vía auditada. Nueva migración v15 con columnas de metadatos fiscales explícitos y `completarMetadatosFiscales` (comando `fiscal:metadatosCompletar`) que valida contra los catálogos del manual oficial (clase 1/2/4; R: 1/2/3/4/12/13; S: 1-13; tratamiento exenta/no_sujeta) y registra bitácora con motivo. Pruebas: diagnóstico completo sin archivo; bloqueo sin vigencia aunque los metadatos estén completos; generación solo con vigencia sintética aislada + metadatos completos; venta sin IVA usa la columna del tratamiento explícito; anuladas y consumidor final excluidas; catálogos validados.
+- **P2 Formo y recorrido**: serialización con escape para separador ';' (comillas dobladas, saltos y comillas protegidos) y validación de 20 columnas por fila; verificado con parser CSV independiente (nombre sintético con `;`, comillas y salto ocupa UNA línea física y 20 campos). UI conectada de verdad en `Impuestos.tsx` (verificada esta vez): advertencia permanente, diagnóstico con faltantes específicos por folio, formulario de metadatos por vía auditada (clase/resolución/serie/número/tratamiento/R/S/responsable/motivo) que refresca el diagnóstico, y guardado de presentación cuyo bloqueo se muestra como error. Prueba del componente real: diagnóstico→faltantes→bloqueo visible; y vía auditada→bitácora→refresco. Etiqueta renombrada a "Período del anexo" para no colisionar con las pruebas aprobadas de la vista.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 196/196 (44 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Pendiente (límites reales)
+
+- Anexos 2 (consumidor final) y 3 (compras) del F-07 v14 y F-14/F-11 con la misma fuente oficial, matriz de campos y bloqueos equivalentes; sin arrastrar inferencias del Anexo 1.
+- Instalador NSIS, manual y QA Windows offline.

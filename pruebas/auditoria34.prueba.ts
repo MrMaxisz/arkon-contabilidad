@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { build } from 'esbuild';
 import { abrirBase, prepararRutasDatos } from '../src/main/db/conexion';
 import { aplicarMigraciones } from '../src/main/db/aplicarMigraciones';
 import { migraciones } from '../src/main/db/migraciones';
@@ -80,21 +80,18 @@ function idCuenta(db: BetterSqlite3.Database, codigo: string): number {
 }
 
 describe('auditoría 34: bundle del preload autocontenido', () => {
-  it('el artefacto del build del preload no requiere módulos locales (sandbox-safe)', () => {
+  it('el artefacto del build del preload no requiere módulos locales (sandbox-safe)', async () => {
     const salida = path.join(dir, 'preload', 'index.js');
     fs.mkdirSync(path.dirname(salida), { recursive: true });
-    execFileSync(
-      process.platform === 'win32' ? 'node_modules\\.bin\\esbuild.cmd' : 'node_modules/.bin/esbuild',
-      [
-        'src/preload/index.ts',
-        '--bundle',
-        '--platform=node',
-        '--format=cjs',
-        '--external:electron',
-        `--outfile=${salida}`
-      ],
-      { stdio: 'pipe' }
-    );
+    await build({
+      entryPoints: ['src/preload/index.ts'],
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      external: ['electron'],
+      outfile: salida,
+      logLevel: 'silent'
+    });
     const bundle = fs.readFileSync(salida, 'utf8');
     const requires = Array.from(bundle.matchAll(/require\((['"])(.+?)\1\)/g)).map(m => m[2]);
     expect(requires.every(r => r === 'electron')).toBe(true);

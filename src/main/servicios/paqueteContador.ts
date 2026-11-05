@@ -1,13 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { validarFechaCalendario } from '../../shared/fechas';
-import { saldosPorCuenta, balanceResumen } from './estadosFinancieros';
-import {
-  auxiliarContrapartes,
-  auxiliarEfectivo,
-  auxiliarContraparteDetalle,
-  estadoResultados
-} from './fiscal';
+import { minorATexto } from '../../shared/dinero';
+import { auxiliarContraparteDetalle } from './fiscal';
 import { escaparCsv } from './fiscal';
 
 export class ErrorPaquete extends Error {}
@@ -32,6 +27,48 @@ export interface PaqueteContador {
   limitaciones: string[];
 }
 
+interface SaldoCuentaCorte {
+  codigo: string;
+  nombre: string;
+  tipo: string;
+  saldo: bigint;
+}
+
+function saldosCuentaCorte(db: Database, hasta: string): SaldoCuentaCorte[] {
+  return (
+    db
+      .prepare(
+        `SELECT c.codigo, c.nombre, c.tipo,
+                COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+         FROM cuenta c
+         LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
+         LEFT JOIN asiento a ON a.id = l.asiento_id
+           AND a.estado IN ('contabilizado','anulado')
+           AND a.fecha_operacion <= ?
+         WHERE c.es_grupo = 0
+         GROUP BY c.id, c.codigo, c.nombre, c.tipo
+         ORDER BY c.codigo`
+      )
+      .all(hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>
+  ).map(f => ({ codigo: f.codigo, nombre: f.nombre, tipo: f.tipo, saldo: BigInt(f.saldo) }));
+}
+
+function mayorCuentaCorte(db: Database, codigo: string, hasta: string): bigint {
+  return BigInt(
+    (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS s
+           FROM asiento_linea l
+           JOIN asiento a ON a.id = l.asiento_id
+           JOIN cuenta c ON c.id = l.cuenta_id
+           WHERE c.codigo = ? AND a.estado IN ('contabilizado','anulado') AND a.fecha_operacion <= ?`
+        )
+        .get(codigo, hasta) as { s: number }
+    ).s
+  );
+}
+
 export function generarPaqueteContador(db: Database, desde: string, hasta: string): PaqueteContador {
   validarFechaCalendario(desde);
   validarFechaCalendario(hasta);
@@ -41,30 +78,43 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
   const limitaciones = [
     'Paquete interno de trabajo para el contador responsable. NO es un anexo ni declaración oficial.',
     'ARKON Ingeniería Eléctrica no está constituida como entidad jurídica ni inscrita como contribuyente de IVA; los datos son de control administrativo.',
-    'El auxiliar de caja y bancos se exporta a la fecha de generación, sin corte temporal por período.',
+    'Saldos de cuentas, balance y conciliaciones calculados ACUMULADOS al corte (hasta); movimientos, asientos y resultados calculados del rango exacto desde–hasta.',
     'Las retenciones y el tratamiento fiscal de anticipos permanecen como control interno pendiente de la política del contador.',
     'Cifras en USD con dos decimales; los importes provienen del mayor contable y de las aplicaciones de documentos.'
   ];
 
   const archivos: ArchivoPaquete[] = [];
 
-  const cuentas = saldosPorCuenta(db);
+  const saldosCorte = saldosCuentaCorte(db, hasta);
   const lineasCuentas = ['codigo,nombre,tipo,saldo'];
-  for (const c of cuentas) {
-    lineasCuentas.push(`${escaparCsv(c.codigo)},${escaparCsv(c.nombre)},${escaparCsv(c.tipo)},${c.saldoMinor}`);
+  for (const c of saldosCorte) {
+    lineasCuentas.push(`${escaparCsv(c.codigo)},${escaparCsv(c.nombre)},${escaparCsv(c.tipo)},${minorATexto(c.saldo)}`);
   }
   archivos.push({ nombre: 'cuentas.csv', contenido: lineasCuentas.join('\n') });
 
-  const auxiliares = auxiliarContrapartes(db);
+  let totalClientesCorte = 0n;
+  let totalProveedoresCorte = 0n;
   for (const tipo of ['cliente', 'proveedor'] as const) {
-    const filas = tipo === 'cliente' ? auxiliares.clientes : auxiliares.proveedores;
+    const etiqueta = tipo === 'cliente' ? 'clientes' : 'proveedores';
+    const tabla = tipo === 'cliente' ? 'venta' : 'compra';
+    const universo = db
+      .prepare(
+        `SELECT DISTINCT p.id, p.nombre
+         FROM contraparte p
+         JOIN ${tabla} x ON x.contraparte_id = p.id
+           AND x.estado = 'registrada' AND x.fecha_operacion <= ?
+         WHERE ${tipo === 'cliente' ? 'p.es_cliente' : 'p.es_proveedor'} = 1
+         ORDER BY p.nombre`
+      )
+      .all(hasta) as Array<{ id: number; nombre: string }>;
     const lineas: string[] = ['contraparte,folio,fecha,concepto,total,aplicado,saldo'];
-    for (const f of filas) {
-      const detalle = auxiliarContraparteDetalle(db, tipo, f.contraparteId, hasta);
+    let totalTipo = 0n;
+    for (const p of universo) {
+      const detalle = auxiliarContraparteDetalle(db, tipo, p.id, hasta);
       for (const d of detalle.documentos) {
         lineas.push(
           [
-            escaparCsv(f.contraparteNombre),
+            escaparCsv(p.nombre),
             escaparCsv(d.folio),
             d.fecha,
             escaparCsv(d.concepto),
@@ -74,36 +124,49 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
           ].join(',')
         );
       }
-      lineas.push(`${escaparCsv(f.contraparteNombre)},TOTAL,,,,,${detalle.saldoMinor}`);
+      lineas.push(`${escaparCsv(p.nombre)},TOTAL,,,,,${detalle.saldoMinor}`);
+      totalTipo += parse(detalle.saldoMinor);
     }
-    const etiqueta = tipo === 'cliente' ? 'clientes' : 'proveedores';
+    if (tipo === 'cliente') {
+      totalClientesCorte = totalTipo;
+    } else {
+      totalProveedoresCorte = totalTipo;
+    }
     archivos.push({ nombre: `auxiliar-${etiqueta}.csv`, contenido: lineas.join('\n') });
   }
 
-  const efectivo = auxiliarEfectivo(db);
+  const filasEfectivo = saldosCorte.filter(c => c.codigo === '1101' || c.codigo === '1102' || c.codigo === '1103');
   const lineasEfectivo = ['cuenta,nombre,saldo'];
-  for (const c of efectivo.cuentas) {
-    lineasEfectivo.push(`${escaparCsv(c.codigo)},${escaparCsv(c.nombre)},${c.saldoMinor}`);
+  let totalEfectivo = 0n;
+  for (const c of filasEfectivo) {
+    lineasEfectivo.push(`${escaparCsv(c.codigo)},${escaparCsv(c.nombre)},${minorATexto(c.saldo)}`);
+    totalEfectivo += c.saldo;
   }
-  lineasEfectivo.push(`TOTAL,,${efectivo.totalMinor}`);
+  lineasEfectivo.push(`TOTAL,,${minorATexto(totalEfectivo)}`);
   archivos.push({ nombre: 'auxiliar-efectivo.csv', contenido: lineasEfectivo.join('\n') });
 
-  const lineasResultados = ['mes,codigo,nombre,tipo,importe'];
-  const meses: string[] = [];
-  let cursor = desde.slice(0, 7);
-  const finMes = hasta.slice(0, 7);
-  while (cursor <= finMes) {
-    meses.push(cursor);
-    const [a = 0, m = 0] = cursor.split('-').map(Number);
-    cursor = m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
+  const filasResultados = db
+    .prepare(
+      `SELECT c.codigo, c.nombre, c.tipo,
+              COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS saldo
+       FROM asiento_linea l
+       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       JOIN cuenta c ON c.id = l.cuenta_id
+       WHERE c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+         AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+       GROUP BY c.id, c.codigo, c.nombre, c.tipo
+       ORDER BY c.codigo`
+    )
+    .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>;
+  const lineasResultados = ['desde,hasta,codigo,nombre,tipo,importe'];
+  let netoResultados = 0n;
+  for (const f of filasResultados) {
+    netoResultados += BigInt(f.saldo);
+    lineasResultados.push(
+      `${desde},${hasta},${escaparCsv(f.codigo)},${escaparCsv(f.nombre)},${f.tipo},${minorATexto(BigInt(f.saldo))}`
+    );
   }
-  for (const mes of meses) {
-    const estado = estadoResultados(db, mes);
-    for (const f of estado.filas) {
-      lineasResultados.push(`${mes},${escaparCsv(f.codigo)},${escaparCsv(f.nombre)},${f.tipo},${f.importeMinor}`);
-    }
-    lineasResultados.push(`${mes},TOTAL,,,${estado.resultadoMinor}`);
-  }
+  lineasResultados.push(`${desde},${hasta},TOTAL,,,${minorATexto(netoResultados)}`);
   archivos.push({ nombre: 'estado-resultados.csv', contenido: lineasResultados.join('\n') });
 
   const asientos = db
@@ -135,35 +198,56 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
         a.estado,
         escaparCsv(a.origen_tipo ?? ''),
         escaparCsv(a.responsable),
-        (BigInt(a.debe) / 100n).toString() + '.' + (BigInt(a.debe) % 100n).toString().padStart(2, '0'),
-        (BigInt(a.haber) / 100n).toString() + '.' + (BigInt(a.haber) % 100n).toString().padStart(2, '0')
+        minorATexto(BigInt(a.debe)),
+        minorATexto(BigInt(a.haber))
       ].join(',')
     );
   }
   archivos.push({ nombre: 'asientos.csv', contenido: lineasAsientos.join('\n') });
 
-  const balance = balanceResumen(db);
+  let activo = 0n;
+  let pasivo = 0n;
+  let patrimonio = 0n;
+  let resultado = 0n;
+  for (const c of saldosCorte) {
+    if (c.tipo === 'activo') {
+      activo += c.saldo;
+    } else if (c.tipo === 'pasivo') {
+      pasivo += c.saldo;
+    } else if (c.tipo === 'patrimonio') {
+      patrimonio += c.saldo;
+    } else {
+      resultado += c.saldo;
+    }
+  }
+  const mayorClientes = mayorCuentaCorte(db, '1201', hasta);
+  const mayorProveedores = mayorCuentaCorte(db, '2101', hasta);
   const conciliaciones = {
-    clientesMayor: auxiliares.conciliaMayor,
-    proveedoresMayor: auxiliares.conciliaMayor,
-    efectivoMayor: efectivo.conciliaMayor,
-    balanceCuadra: balance.cuadra
+    clientesMayor: totalClientesCorte === mayorClientes,
+    proveedoresMayor: totalProveedoresCorte === -mayorProveedores,
+    efectivoMayor: totalEfectivo === filasEfectivo.reduce((s, c) => s + c.saldo, 0n),
+    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n
   };
   const lineasConciliaciones = [
     `conciliacion,resultado`,
-    `auxiliares-clientes-proveedores-vs-mayor,${conciliaciones.clientesMayor ? 'ok' : 'descuadre'}`,
-    `auxiliar-efectivo-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
-    `balance-activo-pasivo-patrimonio,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
-    `total-activo,${balance.totalActivoMinor}`,
-    `total-pasivo,${balance.totalPasivoMinor}`,
-    `total-patrimonio,${balance.totalPatrimonioMinor}`,
-    `resultado-del-periodo,${balance.totalResultadoMinor}`
+    `auxiliar-clientes-al-corte-vs-mayor-1201,${conciliaciones.clientesMayor ? 'ok' : 'descuadre'}`,
+    `auxiliar-proveedores-al-corte-vs-mayor-2101,${conciliaciones.proveedoresMayor ? 'ok' : 'descuadre'}`,
+    `auxiliar-efectivo-al-corte-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
+    `balance-activo-pasivo-patrimonio-resultado,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
+    `total-activo,${minorATexto(activo)}`,
+    `total-pasivo,${minorATexto(pasivo)}`,
+    `total-patrimonio,${minorATexto(patrimonio)}`,
+    `resultado-acumulado-al-corte,${minorATexto(-resultado)}`,
+    `total-clientes-al-corte,${minorATexto(totalClientesCorte)}`,
+    `mayor-1201-al-corte,${minorATexto(mayorClientes)}`,
+    `total-proveedores-al-corte,${minorATexto(totalProveedoresCorte)}`,
+    `mayor-2101-al-corte,${minorATexto(mayorProveedores)}`
   ];
   archivos.push({ nombre: 'conciliaciones.csv', contenido: lineasConciliaciones.join('\n') });
 
   const leeme = [
     'PAQUETE INTERNO PARA EL CONTADOR — ARKON CONTABILIDAD',
-    `Versión del paquete: paquete-contador-v1`,
+    'Versión del paquete: paquete-contador-v2',
     `Período: ${desde} a ${hasta}`,
     `Generado: ${new Date().toISOString()}`,
     '',
@@ -176,7 +260,7 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
   archivos.unshift({ nombre: 'LEEME.txt', contenido: leeme });
 
   return {
-    version: 'paquete-contador-v1',
+    version: 'paquete-contador-v2',
     generadoEn: new Date().toISOString(),
     desde,
     hasta,
@@ -184,4 +268,12 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     conciliaciones,
     limitaciones
   };
+}
+
+function parse(texto: string): bigint {
+  const negativo = texto.startsWith('-');
+  const limpio = texto.replace('-', '');
+  const [entero = '0', decimales = '00'] = limpio.split('.');
+  const minor = BigInt(entero) * 100n + BigInt(decimales.padEnd(2, '0').slice(0, 2));
+  return negativo ? -minor : minor;
 }

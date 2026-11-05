@@ -2,43 +2,134 @@ import type BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { validarFechaCalendario } from '../../shared/fechas';
 import { minorATexto } from '../../shared/dinero';
+import { registroEvento } from './bitacora';
 
 export class ErrorAnexo extends Error {}
 
-export interface ResultadoAnexo1 {
-  csv: string;
-  version: string;
-  mes: string;
-  filas: number;
-  incompletos: Array<{ folio: string; faltantes: string[] }>;
-  advertencia: string;
-  fuente: string;
-}
-
-const FUENTE_OFICIAL =
+export const FUENTE_OFICIAL_ANEXO1 =
   'Manual de usuario para carga de archivo de los anexos de la declaración F-07 v14 (DGII, Ministerio de Hacienda El Salvador, Enero 2025), Anexo 1: Detalle de Ventas a Contribuyentes, columnas A-T';
 
-function dosDecimales(minor: bigint): string {
-  return minorATexto(minor);
+const CLASES_DOCUMENTO = new Set(['1', '2', '4']);
+const TIPOS_OPERACION_RENTA = new Set(['1', '2', '3', '4', '12', '13']);
+const TIPOS_INGRESO_RENTA = new Set(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '13']);
+const TRATAMIENTOS_VENTA = new Set(['exenta', 'no_sujeta']);
+
+export interface EntradaMetadatosFiscales {
+  claseDocumentoFiscal: string;
+  numeroResolucion: string;
+  serieDocumento: string;
+  numeroDocumentoAutorizado: string;
+  tratamientoVenta?: 'exenta' | 'no_sujeta';
+  tipoOperacionRenta: string;
+  tipoIngresoRenta: string;
 }
 
-function fechaDdMmAaaa(iso: string): string {
-  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
-}
-
-export function exportarAnexo1VentasContribuyentes(db: Database, mes: string): ResultadoAnexo1 {
-  if (!/^\d{4}-\d{2}$/.test(mes)) {
-    throw new ErrorAnexo(`Mes inválido (AAAA-MM): ${mes}`);
+export function completarMetadatosFiscales(
+  db: Database,
+  tipo: 'venta' | 'compra',
+  documentoId: number,
+  entrada: EntradaMetadatosFiscales,
+  responsable: string,
+  motivo: string
+): void {
+  if (!responsable?.trim()) {
+    throw new ErrorAnexo('Completar metadatos fiscales exige responsable');
   }
-  validarFechaCalendario(`${mes}-01`);
-  const inicio = `${mes}-01`;
-  const fin = `${mes}-31`;
+  if (!motivo?.trim()) {
+    throw new ErrorAnexo('Completar metadatos fiscales exige motivo');
+  }
+  if (!CLASES_DOCUMENTO.has(entrada.claseDocumentoFiscal)) {
+    throw new ErrorAnexo(`Clase de documento inválida (1, 2 o 4): ${entrada.claseDocumentoFiscal}`);
+  }
+  if (!entrada.numeroResolucion?.trim() || !entrada.serieDocumento?.trim() || !entrada.numeroDocumentoAutorizado?.trim()) {
+    throw new ErrorAnexo('Los metadatos fiscales exigen resolución, serie y número autorizados');
+  }
+  if (entrada.tipoOperacionRenta !== undefined && !TIPOS_OPERACION_RENTA.has(entrada.tipoOperacionRenta)) {
+    throw new ErrorAnexo(`Tipo de operación (Renta) inválido: ${entrada.tipoOperacionRenta}`);
+  }
+  if (!TIPOS_INGRESO_RENTA.has(entrada.tipoIngresoRenta)) {
+    throw new ErrorAnexo(`Tipo de ingreso (Renta) inválido: ${entrada.tipoIngresoRenta}`);
+  }
+  if (entrada.tratamientoVenta !== undefined && !TRATAMIENTOS_VENTA.has(entrada.tratamientoVenta)) {
+    throw new ErrorAnexo(`Tratamiento de venta inválido (exenta o no_sujeta): ${entrada.tratamientoVenta}`);
+  }
+  const tabla = tipo === 'venta' ? 'venta' : 'compra';
+  const doc = db.prepare(`SELECT id, folio, estado FROM ${tabla} WHERE id = ?`).get(documentoId) as
+    | { id: number; folio: string; estado: string }
+    | undefined;
+  if (!doc) {
+    throw new ErrorAnexo(`Documento inexistente: ${documentoId}`);
+  }
+  if (doc.estado !== 'registrada') {
+    throw new ErrorAnexo(`Solo se completan metadatos de documentos registrados: ${doc.folio}`);
+  }
+  const tx = db.transaction(() => {
+    if (tipo === 'venta') {
+      db.prepare(
+        `UPDATE venta SET clase_documento_fiscal = ?, numero_resolucion = ?, serie_documento = ?,
+         numero_documento_autorizado = ?, tratamiento_venta = ?, tipo_operacion_renta = ?, tipo_ingreso_renta = ?
+         WHERE id = ?`
+      ).run(
+        entrada.claseDocumentoFiscal,
+        entrada.numeroResolucion.trim(),
+        entrada.serieDocumento.trim(),
+        entrada.numeroDocumentoAutorizado.trim(),
+        entrada.tratamientoVenta ?? null,
+        entrada.tipoOperacionRenta,
+        entrada.tipoIngresoRenta,
+        documentoId
+      );
+    } else {
+      db.prepare(
+        `UPDATE compra SET clase_documento_fiscal = ?, numero_resolucion = ?, serie_documento = ?, numero_documento_autorizado = ?
+         WHERE id = ?`
+      ).run(
+        entrada.claseDocumentoFiscal,
+        entrada.numeroResolucion.trim(),
+        entrada.serieDocumento.trim(),
+        entrada.numeroDocumentoAutorizado.trim(),
+        documentoId
+      );
+    }
+    registroEvento(db, responsable, 'metadatos_fiscales_completados', tipo, String(documentoId), {
+      folio: doc.folio,
+      motivo,
+      nota: 'Metadatos documentales/tributarios explícitos según manual F-07 v14; no altera importes ni asiento'
+    });
+  });
+  tx();
+}
 
-  const ventas = db
+interface VentaAnexo {
+  id: number;
+  folio: string;
+  fecha: string;
+  base_minor: number;
+  iva_minor: number;
+  total_minor: number;
+  nit: string;
+  nrc: string;
+  nombre: string;
+  tipo_documento: string;
+  clase_documento_fiscal: string | null;
+  numero_resolucion: string | null;
+  serie_documento: string | null;
+  numero_documento_autorizado: string | null;
+  tratamiento_venta: string | null;
+  tipo_operacion_renta: string | null;
+  tipo_ingreso_renta: string | null;
+}
+
+function ventasDelMes(db: Database, mes: string): VentaAnexo[] {
+  validarFechaCalendario(`${mes}-01`);
+  return db
     .prepare(
-      `SELECT v.id, v.folio, v.fecha_operacion AS fecha, v.tipo_ingreso, v.base_minor, v.iva_minor, v.total_minor,
+      `SELECT v.id, v.folio, v.fecha_operacion AS fecha, v.base_minor, v.iva_minor, v.total_minor,
               COALESCE(c.nit, '') AS nit, COALESCE(c.nrc, '') AS nrc, c.nombre,
-              COALESCE(v.tipo_documento, '') AS tipo_documento
+              COALESCE(v.tipo_documento, '') AS tipo_documento,
+              v.clase_documento_fiscal, v.numero_resolucion, v.serie_documento,
+              v.numero_documento_autorizado, v.tratamiento_venta,
+              v.tipo_operacion_renta, v.tipo_ingreso_renta
        FROM venta v
        JOIN contraparte c ON c.id = v.contraparte_id
        WHERE v.estado = 'registrada'
@@ -46,84 +137,160 @@ export function exportarAnexo1VentasContribuyentes(db: Database, mes: string): R
          AND v.fecha_operacion >= ? AND v.fecha_operacion <= ?
        ORDER BY v.fecha_operacion, v.id`
     )
-    .all(inicio, fin) as Array<{
-    id: number;
-    folio: string;
-    fecha: string;
-    tipo_ingreso: string;
-    base_minor: number;
-    iva_minor: number;
-    total_minor: number;
-    nit: string;
-    nrc: string;
-    nombre: string;
-    tipo_documento: string;
-  }>;
+    .all(`${mes}-01`, `${mes}-31`) as VentaAnexo[];
+}
 
-  const lineas: string[] = [];
-  const incompletos: Array<{ folio: string; faltantes: string[] }> = [];
+function faltantesDe(v: VentaAnexo): string[] {
+  const faltantes: string[] = [];
+  const identificacion = (v.nit || '').replace(/[-|]/g, '') || (v.nrc || '').replace(/[-|]/g, '');
+  if (!identificacion) {
+    faltantes.push('NIT o NRC del cliente');
+  }
+  if (v.tipo_documento !== 'ccf') {
+    faltantes.push('tipo de documento autorizado (CCF)');
+  }
+  if (!v.clase_documento_fiscal) {
+    faltantes.push('clase de documento (columna B)');
+  }
+  if (!v.numero_resolucion) {
+    faltantes.push('número de resolución (columna D)');
+  }
+  if (!v.serie_documento) {
+    faltantes.push('número de serie (columna E)');
+  }
+  if (!v.numero_documento_autorizado) {
+    faltantes.push('número de documento autorizado (columna F)');
+  }
+  if (v.iva_minor === 0 && !v.tratamiento_venta) {
+    faltantes.push('tratamiento de la venta sin IVA (exenta o no sujeta)');
+  }
+  if (!v.tipo_operacion_renta) {
+    faltantes.push('tipo de operación Renta (columna R)');
+  }
+  if (!v.tipo_ingreso_renta) {
+    faltantes.push('tipo de ingreso Renta (columna S)');
+  }
+  return faltantes;
+}
 
+export interface DiagnosticoAnexo1 {
+  version: string;
+  mes: string;
+  folios: Array<{ folio: string; faltantes: string[] }>;
+  listos: string[];
+  bloqueado: boolean;
+  motivo: string;
+  fuente: string;
+}
+
+export function diagnosticarAnexo1Ventas(db: Database, mes: string): DiagnosticoAnexo1 {
+  if (!/^\d{4}-\d{2}$/.test(mes)) {
+    throw new ErrorAnexo(`Mes inválido (AAAA-MM): ${mes}`);
+  }
+  const ventas = ventasDelMes(db, mes);
+  const folios: Array<{ folio: string; faltantes: string[] }> = [];
+  const listos: string[] = [];
   for (const v of ventas) {
-    const gravadas = v.iva_minor > 0 ? v.base_minor : 0;
-    const exentas = v.iva_minor > 0 ? 0 : v.base_minor;
-    const noSujetas = 0;
-
-    const faltantes: string[] = [];
-    if (v.iva_minor === 0) {
-      faltantes.push('tratamiento de la base sin IVA (exenta vs no sujeta) sin desglose en la venta');
+    const f = faltantesDe(v);
+    if (f.length > 0) {
+      folios.push({ folio: v.folio, faltantes: f });
+    } else {
+      listos.push(v.folio);
     }
-    const identificacion = (v.nit || '').replace(/[-|]/g, '') || (v.nrc || '').replace(/[-|]/g, '');
-    if (!identificacion) {
-      faltantes.push('NIT o NRC del cliente');
-    }
-    const tipoDocumento = v.tipo_documento === 'ccf' ? '03' : v.tipo_documento === 'otro' ? '' : '';
-    if (!tipoDocumento) {
-      faltantes.push('tipo de documento autorizado (CCF)');
-    }
-    if (faltantes.length > 0) {
-      incompletos.push({ folio: v.folio, faltantes });
-    }
+  }
+  const vigencia = db
+    .prepare(
+      `SELECT id FROM vigencia_fiscal
+       WHERE inscrito_iva = 1 AND desde <= ? AND (hasta IS NULL OR hasta >= ?)`
+    )
+    .get(`${mes}-01`, `${mes}-01`) as { id: number } | undefined;
+  const bloqueado = folios.length > 0 || !vigencia;
+  const motivos: string[] = [];
+  if (!vigencia) {
+    motivos.push('No existe vigencia con IVA inscrito que cubra el mes; el anexo de presentación permanece bloqueado hasta la activación formal');
+  }
+  if (folios.length > 0) {
+    motivos.push('Hay folios con metadatos fiscales incompletos; complételos por la vía auditada antes de generar el archivo de presentación');
+  }
+  const motivo = motivos.join(' ');
+  return {
+    version: 'anexo-f07-v14-anexo1-esquema2',
+    mes,
+    folios,
+    listos,
+    bloqueado,
+    motivo,
+    fuente: FUENTE_OFICIAL_ANEXO1
+  };
+}
 
-    const total = dosDecimales(BigInt(v.total_minor));
+function escaparCampo(valor: string): string {
+  if (/[";\n\r]/.test(valor)) {
+    return `"${valor.replace(/"/g, '""')}"`;
+  }
+  return valor;
+}
 
-    const aplicaRenta = mes >= '2025-01';
-    const tipoOperacion = aplicaRenta ? (v.iva_minor > 0 ? '1' : '2') : '0';
-    const tipoIngreso = aplicaRenta ? '2' : '0';
+function fechaDdMmAaaa(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
 
-    lineas.push(
-      [
-        fechaDdMmAaaa(v.fecha),
-        '',
-        tipoDocumento,
-        '',
-        '',
-        '',
-        v.folio,
-        identificacion,
-        v.nombre,
-        dosDecimales(BigInt(exentas)),
-        dosDecimales(BigInt(noSujetas)),
-        dosDecimales(BigInt(gravadas)),
-        dosDecimales(BigInt(v.iva_minor)),
-        '0.00',
-        '0.00',
-        total,
-        '',
-        tipoOperacion,
-        tipoIngreso,
-        '1'
-      ].join(';')
+export interface ResultadoAnexo1Presentacion {
+  csv: string;
+  version: string;
+  mes: string;
+  filas: number;
+  fuente: string;
+}
+
+export function exportarAnexo1VentasPresentacion(db: Database, mes: string): ResultadoAnexo1Presentacion {
+  const diagnostico = diagnosticarAnexo1Ventas(db, mes);
+  if (diagnostico.bloqueado) {
+    const detalle = diagnostico.folios.map(f => `${f.folio}: ${f.faltantes.join(', ')}`).join('; ');
+    throw new ErrorAnexo(
+      `El anexo de presentación está bloqueado. ${diagnostico.motivo}${detalle ? ` Faltantes: ${detalle}` : ''}`
     );
   }
-
+  const ventas = ventasDelMes(db, mes);
+  const lineas: string[] = [];
+  for (const v of ventas) {
+    const identificacion = (v.nit || '').replace(/[-|]/g, '') || (v.nrc || '').replace(/[-|]/g, '');
+    const gravada = v.iva_minor > 0;
+    const exentas = !gravada && v.tratamiento_venta === 'exenta' ? v.base_minor : 0;
+    const noSujetas = !gravada && v.tratamiento_venta === 'no_sujeta' ? v.base_minor : 0;
+    const gravadas = gravada ? v.base_minor : 0;
+    const fila = [
+      fechaDdMmAaaa(v.fecha),
+      v.clase_documento_fiscal ?? '',
+      '03',
+      v.numero_resolucion ?? '',
+      v.serie_documento ?? '',
+      v.numero_documento_autorizado ?? '',
+      v.folio,
+      identificacion,
+      v.nombre,
+      minorATexto(BigInt(exentas)),
+      minorATexto(BigInt(noSujetas)),
+      minorATexto(BigInt(gravadas)),
+      minorATexto(BigInt(v.iva_minor)),
+      '0.00',
+      '0.00',
+      minorATexto(BigInt(v.total_minor)),
+      '',
+      v.tipo_operacion_renta ?? '',
+      v.tipo_ingreso_renta ?? '',
+      '1'
+    ];
+    if (fila.length !== 20) {
+      throw new ErrorAnexo(`Fila con columnas incorrectas para ${v.folio}`);
+    }
+    lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
+  }
   return {
     csv: lineas.join('\n'),
-    version: 'anexo-f07-v14-anexo1-esquema1',
+    version: 'anexo-f07-v14-anexo1-esquema2',
     mes,
     filas: lineas.length,
-    incompletos,
-    advertencia:
-      'Estructura oficial F-07 v14 Anexo 1. ARKON no está constituida ni inscrita en IVA: este archivo NO debe presentarse a Hacienda sin la activación formal del contador. Las columnas de clase de documento, resolución, serie y número autorizado quedan vacías porque ARKON no tiene autorización de documentos; los folios con datos faltantes se listan en incompletos.',
-    fuente: FUENTE_OFICIAL
+    fuente: FUENTE_OFICIAL_ANEXO1
   };
 }

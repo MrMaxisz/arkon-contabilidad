@@ -130,7 +130,7 @@ describe('auditoría 34: abrirAdjunto sin éxito falso', () => {
     expect(r.archivos).toContain('LEEME.txt');
     expect(r.archivos).toContain('auxiliar-clientes.csv');
     const leeme = fs.readFileSync(path.join(r.ruta, 'LEEME.txt'), 'utf8');
-    expect(leeme).toContain('paquete-contador-v1');
+    expect(leeme).toContain('paquete-contador-v2');
     const clientes = fs.readFileSync(path.join(r.ruta, 'auxiliar-clientes.csv'), 'utf8');
     expect(clientes).toContain('contraparte,folio,fecha,concepto,total,aplicado,saldo');
     const bitacora = abiertas[0]

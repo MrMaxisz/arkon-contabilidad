@@ -534,5 +534,22 @@ WHERE a.origen_tipo = 'cierre'
       AND ce.anio = CAST(substr(a.fecha_operacion, 1, 4) AS INTEGER)
   );
 `
-  }
+  },
+  {
+    version: 15,
+    nombre: 'metadatos_fiscales_documentos',
+    sql: `
+ALTER TABLE venta ADD COLUMN clase_documento_fiscal TEXT;
+ALTER TABLE venta ADD COLUMN numero_resolucion TEXT;
+ALTER TABLE venta ADD COLUMN serie_documento TEXT;
+ALTER TABLE venta ADD COLUMN numero_documento_autorizado TEXT;
+ALTER TABLE venta ADD COLUMN tratamiento_venta TEXT;
+ALTER TABLE venta ADD COLUMN tipo_operacion_renta TEXT;
+ALTER TABLE venta ADD COLUMN tipo_ingreso_renta TEXT;
+ALTER TABLE compra ADD COLUMN clase_documento_fiscal TEXT;
+ALTER TABLE compra ADD COLUMN numero_resolucion TEXT;
+ALTER TABLE compra ADD COLUMN serie_documento TEXT;
+ALTER TABLE compra ADD COLUMN numero_documento_autorizado TEXT;
+`
+  },
 ];
