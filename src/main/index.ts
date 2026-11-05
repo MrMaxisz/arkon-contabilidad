@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { prepararRutasDatos } from './db/conexion';
 import { sembrarCatalogoBase } from './servicios/cuentas';
@@ -69,7 +69,6 @@ if (!obtuvoUnico) {
       }, 60_000);
     } catch (err) {
       if (err instanceof ErrorRecuperacionPendiente) {
-        const { dialog } = require('electron') as typeof import('electron');
         await dialog.showMessageBox({
           type: 'error',
           title: 'ARKON Contabilidad — recuperación pendiente',
@@ -98,6 +97,32 @@ if (!obtuvoUnico) {
     ventana.on('closed', () => {
       ipcMain.removeHandler('arkon');
     });
+  }).catch(async (err: unknown) => {
+    // Error fatal de arranque (p. ej. módulo nativo con ABI incompatible): visible y salida controlada.
+    const detalle = err instanceof Error ? `${err.message}\n\n${err.stack ?? ''}` : String(err);
+    try {
+      await dialog.showMessageBox({
+        type: 'error',
+        title: 'ARKON Contabilidad — error de arranque',
+        message: 'La aplicación no pudo iniciar. El proceso se cerrará de forma controlada.',
+        detail: `Si el detalle menciona NODE_MODULE_VERSION, el módulo nativo (better-sqlite3) fue compilado para otra versión de Node/Electron: reinstale el paquete o regenere el instalador con el ABI correcto.\n\n${detalle}`,
+        buttons: ['Cerrar']
+      });
+    } catch {
+      // Sin diálogo disponible (arranque muy temprano): registrar en stderr antes de salir.
+      process.stderr.write(`ARKON error de arranque: ${detalle}\n`);
+    }
+    app.exit(1);
+  });
+
+  process.on('uncaughtException', (err: Error) => {
+    process.stderr.write(`ARKON excepción no capturada: ${err.message}\n${err.stack ?? ''}\n`);
+    try {
+      dialog.showErrorBox('ARKON Contabilidad — error inesperado', `${err.message}\n\n${err.stack ?? ''}`);
+    } catch {
+      // Sin diálogo: ya se registró en stderr.
+    }
+    app.exit(1);
   });
 
   app.on('window-all-closed', () => {

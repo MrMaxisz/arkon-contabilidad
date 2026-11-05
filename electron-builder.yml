@@ -7,6 +7,9 @@ files:
   - package.json
 asarUnpack:
   - node_modules/better-sqlite3
+npmRebuild: false
+# npmRebuild=false: el ABI se fija con scripts/rebuild-electron.mjs + probe ANTES de empaquetar;
+# electron-builder NO debe reconstruir contra el ABI de Node y sobrescribir el probe.
 win:
   target:
     - nsis

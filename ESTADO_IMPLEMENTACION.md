@@ -704,3 +704,36 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Este entorno es Linux: NO ejecuté el instalador NSIS, ni la instalación/actualización real, ni el recorrido gráfico. La instalación y el recorrido GUI quedan para el auditor en Windows con `scripts/aceptacion-dos-versiones.ps1` y la matriz del manual. El NSIS local sin firma del auditor (sha256 5ECE…9a08, 85,876,374 bytes) sigue siendo artefacto de QA no publicado.
+
+## Bloque P1 arranque Windows ABI (auditoría 45, hallazgo del ejecutable REAL instalado)
+
+### Causa y correcciones
+
+- **Causa confirmada por el auditor**: el NSIS instalado contenía `better_sqlite3.node` compilado con ABI de Node (NODE_MODULE_VERSION 137) en lugar del ABI de Electron 33.4.11 (130); la promesa rechazada de `app.whenReady` dejaba el proceso sin ventana ni mensaje. Corregido en DOS frentes:
+
+**1. Captura de error fatal de arranque (producto)** — `src/main/index.ts`:
+- La cadena de `app.whenReady()` ahora tiene `.catch()`: error fatal → **diálogo visible** con detalle (mención explícita de NODE_MODULE_VERSION y la acción a seguir: regenerar instalador con el ABI correcto) → `app.exit(1)` de forma controlada (sin bloqueo de instancia silencioso); si el diálogo no está disponible (arranque temprano), se registra en stderr antes de salir.
+- `process.on('uncaughtException')`: registra en stderr + `dialog.showErrorBox` + salida controlada.
+- El error de recuperación pendiente reutiliza el mismo diálogo (sin require dinámico).
+
+**2. Pipeline reproducible de ABI (guardas reales)**:
+- `scripts/rebuild-electron.mjs`: reconstrucción EXPLÍCITA para el runtime de Electron (por defecto 33.4.11/x64/win32, parametrizable) con `prebuild-install` y fallback a `npm rebuild --runtime=electron`; registra el hash SHA-256 del binario en `abi-electron.json`.
+- `scripts/probe-electron-abi.mjs`: **PROBE con Electron REAL antes de empaquetar** — carga better-sqlite3 dentro de Electron, abre SQLite `:memory:`, INSERT/SELECT; si el ABI no corresponde, el pipeline FALLA (exit 2) y no se empaqueta; registra resultado en `probe-electron.json`.
+- `scripts/verificar-abi-artefacto.mjs`: tras el NSIS, localiza `better_sqlite3.node` **dentro del artefacto desempaquetado** (win-unpacked) y compara su SHA-256 contra el registrado por el probe — detecta cualquier mezcla de ABI Node/Electron dentro del paquete.
+- `npm run dist:win:qa`: pipeline completo en orden obligatorio **rebuild:electron → probe → build → NSIS → verificación de artefacto**; falla en cualquier paso sin generar instalador.
+- `electron-builder.yml`: **`npmRebuild: false`** documentado — electron-builder NO debe reconstruir contra el ABI de Node y sobrescribir el binario ya probado con Electron.
+- Manual actualizado con el pipeline, la advertencia de no mezclar ABI (no ejecutar `rebuild:node` entre el probe y el empaquetado) y el diagnóstico del diálogo de arranque.
+
+### Pruebas
+
+- `pruebas/probeElectron.prueba.ts` (3 pruebas en la suite oficial): orden obligatorio del pipeline dist:win:qa; `npmRebuild: false` presente; y ejecución real del binario de Electron con el script del probe — en este sandbox Linux Electron no carga por bibliotecas gráficas ausentes (libglib), limitación detectada y documentada en la propia prueba; si el entorno puede ejecutar Electron, el probe es concluyente (PASA o falla controlada con NODE_MODULE_VERSION).
+
+### Comprobación
+
+- `npm run typecheck` → sin errores.
+- `npx vitest run` → 230/230 (52 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Límites exactos
+
+- Este sandbox es Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El pipeline queda listo para tu verificación en Windows: `npm run dist:win:qa` (rebuild→probe→NSIS→verificación de artefacto con hashes) y arranque del instalado en perfil QA — el fallo de arranque ahora será un diálogo visible con NODE_MODULE_VERSION en lugar de un proceso silencioso. Tu mitigación local (prebuild-install electron 33.4.11, native SHA 359CBD…B17, probe PASA) coincide con el pipeline automatizado.

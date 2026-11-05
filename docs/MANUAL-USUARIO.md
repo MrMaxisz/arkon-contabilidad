@@ -52,10 +52,19 @@ que decida el contador responsable.
 ## Instalación, actualización, respaldo y rollback (pasos reales)
 
 ### Instalación inicial (Windows, offline)
-1. Ejecutar el instalador NSIS generado en `paquete\` (p. ej. `ARKON Contabilidad Setup 0.1.0.exe`).
-   Para QA local sin firma (winCodeSign no disponible por permisos de enlaces simbólicos):
+1. Generar el instalador con el pipeline verificado de ABI (recomendado):
+   `npm run dist:win:qa` — ejecuta en orden: reconstrucción de better-sqlite3 para Electron
+   (33.4.11, x64, win32) → **probe con Electron real** (SQLite :memory:, falla el pipeline si
+   el ABI no corresponde) → build → NSIS → verificación de que el binario DENTRO del artefacto
+   coincide con el del probe (registros `abi-electron.json` y `probe-electron.json` con hashes).
+   Alternativa sin firma para QA local (winCodeSign no disponible por permisos de enlaces simbólicos):
    `node node_modules\electron-builder\out\cli\cli.js --win nsis --publish never --config.win.signAndEditExecutable=false .`
    — artefacto LOCAL SIN FIRMA con icono predeterminado, válido SOLO para QA; no es firma oficial.
+   **Importante**: NO regenerar con `npm run rebuild:node` después del probe ni antes de terminar
+   el empaquetado (mezclaría el ABI de Node con el de Electron y el instalado no arrancaría,
+   mostrando NODE_MODULE_VERSION 137 vs 130). Si la app instalada muestra el diálogo de error de
+   arranque con NODE_MODULE_VERSION, el instalador se generó con el ABI incorrecto: regenerarlo
+   con `dist:win:qa`.
 2. Elegir destino de instalación (por defecto `%LOCALAPPDATA%\Programs\ARKON Contabilidad`).
 3. Al abrir, los datos se crean en `%LOCALAPPDATA%\ARKON Contabilidad\` (fuera de OneDrive).
 
