@@ -36,16 +36,27 @@ export function operacionRespaldoDisponible(): boolean {
   return !operacionRespaldoEnCurso;
 }
 
+export function adquirirOperacionRespaldo(): boolean {
+  if (operacionRespaldoEnCurso) {
+    return false;
+  }
+  operacionRespaldoEnCurso = true;
+  return true;
+}
+
+export function liberarOperacionRespaldo(): void {
+  operacionRespaldoEnCurso = false;
+}
+
 export async function crearRespaldo(
   db: Database.Database,
   dirRespaldos: string,
   versionApp: string,
   dirAdjuntos?: string
 ): Promise<InfoRespaldo> {
-  if (operacionRespaldoEnCurso) {
+  if (!adquirirOperacionRespaldo()) {
     throw new ErrorRespaldo('Otra operación de respaldo/restauración está en curso');
   }
-  operacionRespaldoEnCurso = true;
   try {
     fs.mkdirSync(dirRespaldos, { recursive: true });
     const marca = new Date().toISOString().replace(/[:.]/g, '-');
@@ -99,7 +110,7 @@ export async function crearRespaldo(
       estado: 'disponible'
     };
   } finally {
-    operacionRespaldoEnCurso = false;
+    liberarOperacionRespaldo();
   }
 }
 

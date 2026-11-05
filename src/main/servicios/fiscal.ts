@@ -5,6 +5,7 @@ import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
+import { periodoDeFecha } from './motorAsientos';
 import { saldoPendienteDocumento } from './saldos';
 
 export class ErrorFiscal extends Error {}
@@ -900,4 +901,170 @@ export function auxiliarEfectivo(db: Database.Database): AuxiliarEfectivo {
     totalMinor: minorATexto(totalAuxiliar),
     conciliaMayor: totalAuxiliar === totalMayor
   };
+}
+
+export interface DetalleAuxiliarDocumento {
+  folio: string;
+  fecha: string;
+  concepto: string;
+  totalMinor: string;
+  aplicadoMinor: string;
+  saldoMinor: string;
+}
+
+export interface AuxiliarContraparteDetalle {
+  contraparteId: number;
+  contraparteNombre: string;
+  saldoMinor: string;
+  documentos: DetalleAuxiliarDocumento[];
+}
+
+export function auxiliarContraparteDetalle(
+  db: Database.Database,
+  tipo: 'cliente' | 'proveedor',
+  contraparteId: number,
+  hastaFecha?: string
+): AuxiliarContraparteDetalle {
+  const esCliente = tipo === 'cliente';
+  const tabla = esCliente ? 'venta' : 'compra';
+  const filtroFecha = hastaFecha ? `AND x.fecha_operacion <= '${hastaFecha}'` : '';
+  const documentos = db
+    .prepare(
+      `SELECT x.folio, x.fecha_operacion, x.concepto, x.total_minor,
+              COALESCE((SELECT SUM(a.monto_minor) FROM aplicacion a
+                JOIN tesoreria_movimiento t ON t.id = a.movimiento_id AND t.estado = 'registrado'
+                WHERE a.documento_tipo = '${esCliente ? 'venta' : 'compra'}' AND a.documento_id = x.id), 0)
+              + COALESCE((SELECT SUM(aa.monto_minor) FROM aplicacion_anticipo aa
+                WHERE aa.documento_tipo = '${esCliente ? 'venta' : 'compra'}' AND aa.documento_id = x.id AND aa.estado = 'registrada'), 0) AS aplicado
+       FROM ${tabla} x
+       WHERE x.contraparte_id = ? AND x.estado = 'registrada' ${filtroFecha}
+       ORDER BY x.fecha_operacion, x.id`
+    )
+    .all(contraparteId) as Array<{
+    folio: string;
+    fecha_operacion: string;
+    concepto: string;
+    total_minor: number;
+    aplicado: number;
+  }>;
+  const detalle = documentos.map(d => ({
+    folio: d.folio,
+    fecha: d.fecha_operacion,
+    concepto: d.concepto,
+    totalMinor: minorATexto(BigInt(d.total_minor)),
+    aplicadoMinor: minorATexto(BigInt(d.aplicado)),
+    saldoMinor: minorATexto(BigInt(d.total_minor) - BigInt(d.aplicado))
+  }));
+  const saldoTotal = detalle.reduce((s, d) => s + parseMontoMinor(d.saldoMinor), 0n);
+  const nombre = (db.prepare('SELECT nombre FROM contraparte WHERE id = ?').get(contraparteId) as { nombre: string }).nombre;
+  return {
+    contraparteId,
+    contraparteNombre: nombre,
+    saldoMinor: minorATexto(saldoTotal),
+    documentos: detalle
+  };
+}
+
+export function exportarCsvAuxiliar(
+  db: Database.Database,
+  tipo: 'cliente' | 'proveedor' | 'efectivo'
+): { csv: string; version: string } {
+  const lineas: string[] = [];
+  if (tipo === 'efectivo') {
+    const aux = auxiliarEfectivo(db);
+    lineas.push('cuenta,nombre,saldo');
+    for (const c of aux.cuentas) {
+      lineas.push(`${c.codigo},"${c.nombre}",${c.saldoMinor}`);
+    }
+    lineas.push(`TOTAL,,${aux.totalMinor}`);
+  } else {
+    const aux = auxiliarContrapartes(db);
+    const filas = tipo === 'cliente' ? aux.clientes : aux.proveedores;
+    const etiqueta = tipo === 'cliente' ? 'cliente' : 'proveedor';
+    lineas.push(`${etiqueta},saldo`);
+    for (const f of filas) {
+      lineas.push(`"${f.contraparteNombre}",${f.saldoMinor}`);
+    }
+    const total = tipo === 'cliente' ? aux.totalClientesMinor : aux.totalProveedoresMinor;
+    lineas.push(`TOTAL,${total}`);
+  }
+  return {
+    csv: lineas.join('\n'),
+    version: 'auxiliar-interno-v1'
+  };
+}
+
+export interface EntradaAjuste {
+  fechaOperacion: string;
+  concepto: string;
+  lineas: Array<{ cuentaCodigo: string; debeMinor: string; haberMinor: string }>;
+  referencia?: string;
+  claveIdempotencia: string;
+  responsable: string;
+}
+
+export function registrarAjuste(
+  db: Database.Database,
+  entrada: EntradaAjuste
+): { id: number; folio: string; duplicado: boolean; estado: string } {
+  const previo = db
+    .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
+    .get(`${entrada.claveIdempotencia}:ajuste`) as { id: number; folio: string } | undefined;
+  if (previo) {
+    return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
+  }
+  const lineas = entrada.lineas.map(l => {
+    const cuenta = db
+      .prepare('SELECT id, tipo, es_grupo, activa FROM cuenta WHERE codigo = ?')
+      .get(l.cuentaCodigo) as { id: number; tipo: string; es_grupo: number; activa: number } | undefined;
+    if (!cuenta || cuenta.es_grupo === 1 || cuenta.activa === 0) {
+      throw new ErrorFiscal(`Cuenta inválida para ajuste: ${l.cuentaCodigo}`);
+    }
+    return {
+      cuentaId: cuenta.id,
+      debe: l.debeMinor ? parseMontoMinor(l.debeMinor) : 0n,
+      haber: l.haberMinor ? parseMontoMinor(l.haberMinor) : 0n
+    };
+  });
+  let totalDebe = 0n;
+  let totalHaber = 0n;
+  for (const l of lineas) {
+    totalDebe += l.debe;
+    totalHaber += l.haber;
+  }
+  if (totalDebe !== totalHaber || totalDebe === 0n) {
+    throw new ErrorFiscal('Ajuste descuadrado o vacío');
+  }
+  const n = (db.prepare("SELECT COUNT(*) AS n FROM asiento WHERE origen_tipo = 'ajuste'").get() as { n: number }).n;
+  const folio = `AJ-${String(n + 1).padStart(6, '0')}`;
+  const tx = db.transaction(() => {
+    const periodo = periodoDeFecha(db, entrada.fechaOperacion);
+    const info = db
+      .prepare(
+        `INSERT INTO asiento (folio, fecha_operacion, periodo_id, ambito_id, concepto, origen_tipo, origen_id,
+          clave_idempotencia, estado, responsable, motivo)
+         VALUES (?, ?, ?, 'administrativo', ?, 'ajuste', ?, ?, 'borrador', ?, ?)`
+      )
+      .run(
+        folio,
+        entrada.fechaOperacion,
+        periodo.id,
+        entrada.concepto,
+        folio,
+        `${entrada.claveIdempotencia}:ajuste`,
+        entrada.responsable,
+        entrada.referencia ?? null
+      );
+    const asientoId = Number(info.lastInsertRowid);
+    const insertar = db.prepare(
+      'INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)'
+    );
+    for (const l of lineas) {
+      insertar.run(asientoId, l.cuentaId, l.debe, l.haber);
+    }
+    db.prepare("UPDATE asiento SET estado = 'contabilizado', contabilizado_en = datetime('now') WHERE id = ?").run(asientoId);
+    registroEvento(db, entrada.responsable, 'ajuste_registrado', 'asiento', String(asientoId), { folio, concepto: entrada.concepto });
+    return { id: asientoId, folio, duplicado: false, estado: 'contabilizado' };
+  });
+  return tx();
 }

@@ -34,7 +34,10 @@ import {
   estadoResultados,
   rentabilidadProyectos,
   auxiliarContrapartes,
-  auxiliarEfectivo
+  auxiliarEfectivo,
+  auxiliarContraparteDetalle,
+  exportarCsvAuxiliar,
+  registrarAjuste
 } from './servicios/fiscal';
 import { crearContraparte, listarContrapartes, crearProyecto, listarProyectos, registrarCompra, listarCompras, registrarVenta, listarVentas, anularDocumento, perfilIvaInscrito, ivaComprasCreditoFiscal, completarClasificacionDocumento, editarContraparte, cambiarEstadoContraparte, desactivarCuenta } from './servicios/operacion';
 import { crearCotizacion, crearRevision, aprobarCotizacion, anularCotizacion, listarCotizaciones, lineasDeCotizacion, actualizarCotizacionBorrador, generarHtmlCotizacion } from './servicios/cotizaciones';
@@ -536,6 +539,39 @@ export const comandos: Record<string, Manejador> = {
   'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
   'auxiliar:contrapartes': ctx => auxiliarContrapartes(ctx.db),
   'auxiliar:efectivo': ctx => auxiliarEfectivo(ctx.db),
+  'auxiliar:contraparteDetalle': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo') === 'proveedor' ? 'proveedor' : 'cliente';
+    return auxiliarContraparteDetalle(ctx.db, tipo, entero(p, 'contraparteId'), typeof p.hastaFecha === 'string' && p.hastaFecha ? p.hastaFecha : undefined);
+  },
+  'auxiliar:exportarCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo');
+    if (!['cliente', 'proveedor', 'efectivo'].includes(tipo)) {
+      throw new ErrorValidacion('Tipo de auxiliar inválido');
+    }
+    return exportarCsvAuxiliar(ctx.db, tipo as 'cliente' | 'proveedor' | 'efectivo');
+  },
+  'ajuste:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    const lineas = p.lineas as Array<{ cuentaCodigo: string; debeMinor: string; haberMinor: string }>;
+    if (!Array.isArray(lineas) || lineas.length < 2) {
+      throw new ErrorValidacion('El ajuste requiere al menos dos líneas');
+    }
+    for (const l of lineas) {
+      if (typeof l.cuentaCodigo !== 'string' || !l.cuentaCodigo) {
+        throw new ErrorValidacion('Cada línea requiere código de cuenta');
+      }
+    }
+    return registrarAjuste(ctx.db, {
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      concepto: texto(p, 'concepto'),
+      lineas,
+      referencia: typeof p.referencia === 'string' ? p.referencia : undefined,
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
   'fiscal:politicas': ctx => ({
     anticipoHechoGenerador: politicaAnticipoHechoGenerador(ctx.db),
     ivaComprasCreditoFiscal: ivaComprasCreditoFiscal(ctx.db),

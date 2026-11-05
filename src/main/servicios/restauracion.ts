@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import type { Database as TipoDatabase } from 'better-sqlite3';
 import { aplicarMigraciones, versionEsquemaActual } from '../db/aplicarMigraciones';
-import { restaurarRespaldo, registrarRestauracion, ErrorRespaldo } from './respaldo';
+import { restaurarRespaldo, registrarRestauracion, ErrorRespaldo, adquirirOperacionRespaldo, liberarOperacionRespaldo } from './respaldo';
 import { restaurarAdjuntosRespaldo, copiarAdjuntosRespaldo, retencionRespaldosAutomaticos } from './adjuntos';
 
 export interface ContextoApp {
@@ -250,6 +250,10 @@ export async function manejarRestauracion(
   ctx: ContextoApp,
   nombre: string
 ): Promise<{ ok: boolean; detalle: string; respaldo: string; copiaPrevia: string }> {
+  if (!adquirirOperacionRespaldo()) {
+    throw new ErrorRespaldo('Otra operación de respaldo/restauración está en curso');
+  }
+  try {
   if (!nombre.startsWith('respaldo-') || nombre.includes(path.sep) || nombre.includes('..')) {
     throw new ErrorRespaldo('Nombre de respaldo inválido');
   }
@@ -383,6 +387,9 @@ export async function manejarRestauracion(
   fs.rmSync(marcador, { force: true });
   registrarRestauracion(ctx.db, { respaldo: resultado.respaldo, copiaPrevia: resultado.copiaPrevia });
   return resultado;
+  } finally {
+    liberarOperacionRespaldo();
+  }
 }
 
 export function restaurarAdjuntosDesdeRespaldo(
@@ -392,8 +399,6 @@ export function restaurarAdjuntosDesdeRespaldo(
 ): void {
   restaurarAdjuntosRespaldo(`${rutaRespaldo}-adjuntos`, dirAdjuntosDestino, esperados);
 }
-
-let operacionEnCurso = false;
 
 export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<{ creado: boolean; nombre?: string; omitidoPor?: string }> {
   const marcador = path.join(ctx.rutas.raiz, 'restauracion-en-curso.json');
@@ -417,10 +422,9 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
       return { creado: false, omitidoPor: `último respaldo automático hace ${Math.floor(transcurridoMin)} min (intervalo ${intervalo})` };
     }
   }
-  if (operacionEnCurso) {
+  if (!adquirirOperacionRespaldo()) {
     return { creado: false, omitidoPor: 'otra operación de respaldo/restauración en curso' };
   }
-  operacionEnCurso = true;
   try {
     const marca = new Date().toISOString().replace(/[:.]/g, '-');
     const nombreArchivo = `respaldo-automatico-${marca}.db`;
@@ -468,6 +472,6 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
     return { creado: true, nombre: nombreArchivo };
   } finally {
-    operacionEnCurso = false;
+    liberarOperacionRespaldo();
   }
 }

@@ -1,6 +1,17 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (auditoría 28 de Codex; integridad Windows + auxiliares completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (auditoría 29 de Codex; coordinador único + ajustes + auxiliares con detalle y exportación). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Auditoría 29 (Codex) — coordinador único + bloque 3 avanzado — aplicado y probado
+
+- **[P2] Coordinador único**: `adquirirOperacionRespaldo/liberarOperacionRespaldo` en respaldo.ts, compartido por manual, automática y `manejarRestauracion` (que lo adquiere al inicio en try/finally). Regresiones: manual en curso bloquea automática y restauración; automática en curso bloquea manual.
+- **Auxiliares con detalle por documento**: `auxiliarContraparteDetalle` con corte temporal (`hastaFecha`), saldos por documento (total/aplicado/saldo) incluyendo anticipos; `exportarCsvAuxiliar` para cliente/proveedor/efectivo desde el mismo modelo. Pruebas: corte temporal excluye documentos posteriores, saldos correctos con aplicaciones.
+- **Ajustes**: `registrarAjuste` con folio AJ-000001, idempotencia por clave, validación de cuadre y cuentas, referencia de soporte, patrón borrador→líneas→contabilizado (compatible con triggers). Pruebas: idempotencia, descuadrado rechazado, persistencia tras reabrir desde despachar.
+- **Comandos**: `auxiliar:contraparteDetalle`, `auxiliar:exportarCsv`, `ajuste:registrar` en despachar y preload.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **154/154 en verde** (32 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
+
+Pendiente del bloque 3: vista de ajustes en la interfaz, exportación de reportes a archivo desde la vista, cierre mensual/anual con tratamiento de cuentas de resultados y continuidad.
 
 ## Auditoría 28 (Codex) — integridad Windows + auxiliares completos — aplicado y probado
 
