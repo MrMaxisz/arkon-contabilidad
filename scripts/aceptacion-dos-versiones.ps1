@@ -58,7 +58,7 @@ try {
   Write-Host "Destino instalación QA: $DestinoInstalacion"
 
   Requiere 'Reconstruir better-sqlite3 para Node' { npm run rebuild:node }
-  Requiere 'Compilar herramienta CLI de semilla' { npx tsc -p tsconfig.node.json --outDir dist }
+  Requiere 'Compilar herramienta CLI de semilla (tsconfig.scripts, desde salida vacía)' { npm run build:cli }
 
   Write-Host @"
 

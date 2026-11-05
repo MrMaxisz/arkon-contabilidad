@@ -806,3 +806,26 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Sandbox Linux: el harness de prueba valida el mecanismo CJS/JSON con Node (ABI 127); el POSITIVO con Electron real se ejecuta en Windows (donde el producto probe ya pasó según tu verificación). Instalación/actualización/recorrido offline Windows siguen pendientes de tu QA real de dos versiones.
+
+## Bloque auditoría 49 (aislamiento Node/Electron en la suite, normalización de rutas, compilación previa y documentación alineada)
+
+### Corregido (hallazgos de la auditoría 49)
+
+1. **Aislamiento Node/Electron en la suite**: el POSITIVO de `probeElectron.prueba.ts` es ahora una **prueba de mecanismo en Node en todos los SO** — valida que el harness CJS/JSON carga el módulo del ABI *actual* (el de Node tras `npm test`, ABI 137) con `abi === process.versions.modules` y `versionRuntime === process.versions.node`, sin intentar cargar en Electron un binario de Node (el fallo en Windows). La **integración con Electron real** queda en el producto (`scripts/probe-electron-abi.mjs`) que se ejecuta DESPUÉS del rebuild explícito — nunca reconstruyendo para Electron antes de la suite. El NEGATIVO (binario sintético) sigue siendo real. Todo el userdata del test vive dentro del directorio temporal propio del test (eliminado el hermano con PID del worker); timeout y cierre garantizados.
+2. **Normalización en actualizar-windows.ps1**: `IsPathRooted` + `GetFullPath` del Perfil ANTES de las exclusiones — `base/../ARKON Contabilidad` (desvío) ahora coincide con el operativo tras normalizar y se rechaza, igual que subrutas y OneDrive; la normalización ocurre antes de mkdir/marcador. Misma validación que aceptacion-dos-versiones.
+3. **Compilación previa a la suite**: `qa-windows.ps1` y `actualizar-windows.ps1` compilan `build:main` y `build:cli` ANTES de `npm test` (las pruebas dependientes de dist fallaban en checkout limpio); `aceptacion-dos-versiones.ps1` usa `npm run build:cli` (tsconfig.scripts) en lugar del obsoleto `tsc -p tsconfig.node.json --outDir dist` que ya no incluye scripts.
+4. **Documentación alineada**: PENDIENTES y QA-WINDOWS ya no referencian `dist:win` sin pipeline (solo `dist:win:qa` con guardas o `distwin-guard`); eliminado el carácter de control del manual; instrucciones de preparación/empaquetado/instalación/aceptación alineadas con el pipeline verificado.
+
+### Pruebas
+
+- `guardasPipeline.prueba.ts` (16 pruebas): las 12 previas más 4 nuevas — orden IsPathRooted→GetFullPath→exclusiones en actualizar-windows; build:main/build:cli antes de npm test en ambos scripts; aceptación usa build:cli y no tsconfig.node; documentación sin dist:win sin pipeline y sin caracteres de control. `probeElectron.prueba.ts` (3): mecanismo POSITIVO en Node (ABI actual verificado), NEGATIVO real, orden del pipeline.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → 246/246 (53 archivos).
+- `npm run build` → OK; CLI compilado.
+
+### Límites exactos
+
+- Sandbox Linux: la prueba de mecanismo corre con Node; la integración con Electron real (positivo ABI130) es el producto probe verificado por ti en Windows (48). Instalación/actualización/recorrido offline Windows siguen pendientes de tu QA real de dos versiones. No se tocó la app abierta ni la base del propietario.

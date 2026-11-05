@@ -59,7 +59,10 @@ if ($existente) {
 
 try {
   Requiere 'Instalar dependencias reproducibles' { npm ci }
-  Requiere 'Typecheck de las tres capas' { npm run typecheck }
+  Requiere 'Typecheck de las cuatro capas' { npm run typecheck }
+  # Compilar main y CLI ANTES de la suite: las pruebas dependientes de dist fallan en checkout limpio.
+  Requiere 'Compilar main (requisito de pruebas que importan dist)' { npm run build:main }
+  Requiere 'Compilar CLI de semilla (requisito de pruebas del pipeline)' { npm run build:cli }
   if (-not $SaltarSuite) {
     # npm test reconstruye better-sqlite3 para Node (ABI de Node) y ejecuta la suite.
     Requiere 'Suite con ABI de Node (rebuild incluido en npm test)' { npm test }

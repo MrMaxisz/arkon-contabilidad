@@ -19,7 +19,7 @@
 - Recorrido de los flujos principales en el ejecutable empaquetado (aquí solo se verificó empaquetado `--dir` y pruebas del motor): captura con idempotencia, anulación con diálogo, respaldo y restauración desde la interfaz.
 - Pruebas automatizadas de los recorridos de interfaz (requieren entorno de UI; hoy la lógica está probada a nivel de servicios).
 - Confirmar la ruta efectiva de datos en Windows (`%LOCALAPPDATA%\ARKON Contabilidad`) fuera de OneDrive.
-- Nota de flujo: `dist:win` reconstruye better-sqlite3 contra Electron; ejecutar `npm run rebuild:node` antes de `npm test` (ya incluido en el script `test`).
+- Nota de flujo: `npm run dist:win:qa` reconstruye better-sqlite3 PARA ELECTRON con probe y verificación de artefacto; `npm test` reconstruye para Node (rebuild:node incluido). Nunca mezclar: tras el QA de Electron, ejecutar `npm run rebuild:node` antes de la suite.
 
 ## Inventario de pendientes (actualizado contra el codigo)
 

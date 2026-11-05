@@ -86,7 +86,7 @@ que decida el contador responsable.
   Respaldo y reportar el hallazgo (el manifiesto del respaldo sirve de evidencia).
 
 ### QA de dos versiones (perfiles sintéticos, sin tocar la base operativa)
-Ver `scriptsceptacion-dos-versiones.ps1`: siembra un perfil QA (contraparte, venta, adjunto con
+Ver `scriptsceptacion-dos-versiones.ps1`: siembra un perfil QA (contraparte, venta, adjunto con
 hash, bitácora), crea respaldo con manifiesto esperado, guía la instalación del NSIS nuevo y
 verifica el perfil tras actualizar con estados PASA/FALLA (exit 2 si falla). Nada se aprueba solo
 por proceso activo. `scripts\qa-windows.ps1` añade marcador QA para reabrir el mismo perfil.

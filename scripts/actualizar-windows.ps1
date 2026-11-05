@@ -13,6 +13,10 @@ $envAnteriorRuta = $env:ARKON_RUTA_DATOS
 if (-not $Perfil) {
   $Perfil = Join-Path $env:LOCALAPPDATA ("ARKON-QA-UPD-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 }
+# Normalizar ANTES de excluir: sin IsPathRooted/GetFullPath, 'base/../ARKON Contabilidad'
+# no coincide textualmente con el operativo pero GetFullPath sí.
+if (-not [System.IO.Path]::IsPathRooted($Perfil)) { throw "El perfil QA debe ser ABSOLUTO: $Perfil" }
+$Perfil = [System.IO.Path]::GetFullPath($Perfil)
 if ($Perfil -like "*OneDrive*") {
   throw "El perfil QA no puede estar bajo OneDrive: $Perfil"
 }
@@ -46,7 +50,9 @@ function Requiere([string]$paso, [scriptblock]$bloque) {
 
 try {
   Requiere 'Instalar dependencias reproducibles' { npm ci }
-  Requiere 'Typecheck de las tres capas' { npm run typecheck }
+  Requiere 'Typecheck de las cuatro capas' { npm run typecheck }
+  Requiere 'Compilar main (requisito de pruebas que importan dist)' { npm run build:main }
+  Requiere 'Compilar CLI de semilla (requisito de pruebas del pipeline)' { npm run build:cli }
   Requiere 'Suite con ABI de Node' { npm test }
   Requiere 'Build main + preload + renderer' { npm run build }
   Requiere 'Pipeline ABI completo (rebuild→probe→build→NSIS→verificación)' { npm run dist:win:qa }

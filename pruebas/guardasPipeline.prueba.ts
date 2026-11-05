@@ -275,3 +275,46 @@ describe('auditoría 46: guardas del pipeline de distribución', () => {
     expect(ts.include).not.toContain('scripts/**/*.ts');
   });
 });
+
+describe('auditoría 49: normalización de rutas y compilación previa en scripts', () => {
+  it('actualizar-windows.ps1 normaliza con IsPathRooted/GetFullPath antes de excluir', () => {
+    const ps1 = fs.readFileSync(path.join(process.cwd(), 'scripts', 'actualizar-windows.ps1'), 'utf8');
+    const idxRooted = ps1.indexOf('[System.IO.Path]::IsPathRooted($Perfil)');
+    const idxFull = ps1.indexOf('$Perfil = [System.IO.Path]::GetFullPath($Perfil)');
+    const idxOperativo = ps1.indexOf('base operativa');
+    expect(idxRooted).toBeGreaterThan(-1);
+    expect(idxFull).toBeGreaterThan(idxRooted);
+    expect(idxOperativo).toBeGreaterThan(idxFull);
+  });
+
+  it('qa-windows.ps1 y actualizar-windows.ps1 compilan main y CLI ANTES de la suite', () => {
+    for (const archivo of ['scripts/qa-windows.ps1', 'scripts/actualizar-windows.ps1']) {
+      const ps1 = fs.readFileSync(path.join(process.cwd(), archivo), 'utf8');
+      const idxMain = ps1.indexOf('npm run build:main');
+      const idxCli = ps1.indexOf('npm run build:cli');
+      const idxSuite = ps1.indexOf('npm test');
+      expect(idxMain).toBeGreaterThan(-1);
+      expect(idxCli).toBeGreaterThan(-1);
+      expect(idxSuite).toBeGreaterThan(idxCli);
+    }
+  });
+
+  it('aceptacion-dos-versiones.ps1 usa build:cli (tsconfig.scripts) y no tsconfig.node para el CLI', () => {
+    const ps1 = fs.readFileSync(path.join(process.cwd(), 'scripts', 'aceptacion-dos-versiones.ps1'), 'utf8');
+    expect(ps1).toContain('npm run build:cli');
+    expect(ps1).not.toContain('tsc -p tsconfig.node.json --outDir dist');
+  });
+
+  it('la documentación no referencia dist:win sin pipeline ni contiene caracteres de control', () => {
+    for (const archivo of ['docs/PENDIENTES.md', 'docs/QA-WINDOWS.md', 'docs/MANUAL-USUARIO.md']) {
+      const contenido = fs.readFileSync(path.join(process.cwd(), archivo), 'utf8');
+      // dist:win solo puede aparecer como dist:win:qa (pipeline con guardas) o distwin-guard.
+      const coincidencias = Array.from(contenido.matchAll(/dist:win(?!:qa)/g));
+      for (const m of coincidencias) {
+        const contexto = contenido.slice(Math.max(0, m.index - 30), m.index + 40);
+        expect(contexto).toContain('distwin-guard');
+      }
+      expect(contenido).not.toMatch(/[\x00-\x08\x0b\x0c\x0e-\x1f]/);
+    }
+  });
+});

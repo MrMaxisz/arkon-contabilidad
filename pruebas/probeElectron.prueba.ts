@@ -55,7 +55,7 @@ try {
   };
   const esElectron = Boolean(process.versions.electron);
   if (esElectron) {
-    require('electron').app.setPath('userData', ${JSON.stringify(require('node:path').join(require('node:os').tmpdir(), 'arkon-probe-userdata-' + String(process.pid)))});
+    require('electron').app.setPath('userData', ${JSON.stringify(path.join(dir, 'userdata'))});
     require('electron').app.whenReady().then(correr).catch((e) => salir({ ok: false, error: 'whenReady: ' + e.message }));
   } else {
     correr();
@@ -90,12 +90,17 @@ try {
 }
 
 describe('auditoría 48: harness CJS/JSON del probe de ABI', () => {
-  it('POSITIVO: el módulo nativo real carga SQLite :memory: y reporta ABI en JSON', () => {
+  // PRUEBA DE MECANISMO (Node, todos los SO): el flujo npm test recompila el native para el ABI de
+  // Node (137), y en Windows NO puede cargarse en Electron (130). El POSITIVO aquí valida el
+  // mecanismo del harness (JSON, timeout, cierre) con el runtime de Node y el módulo del ABI actual;
+  // la INTEGRACIÓN con Electron real la hace el producto (scripts/probe-electron-abi.mjs) DESPUÉS
+  // del rebuild explícito para Electron — nunca reconstruyendo para Electron antes de la suite.
+  it('POSITIVO (mecanismo, Node): el módulo nativo del ABI actual carga SQLite :memory: y reporta ABI en JSON', () => {
     const r = ejecutarHarness(path.join(process.cwd(), 'node_modules', 'better-sqlite3'));
     expect(r.payload).not.toBeNull();
     expect(r.payload!.ok).toBe(true);
-    expect(r.payload!.abi).toMatch(/^\d+$/);
-    expect(r.payload!.versionRuntime).toBeTruthy();
+    expect(r.payload!.abi).toBe(String(process.versions.modules));
+    expect(r.payload!.versionRuntime).toBe(process.versions.node);
   });
 
   it('NEGATIVO: un binario .node sintético e inválido falla de forma controlada con JSON de error', () => {
