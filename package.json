@@ -10,16 +10,17 @@
     "typecheck:renderer": "tsc --noEmit -p tsconfig.renderer.json",
     "build:main": "tsc -p tsconfig.node.json",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer && npm run build:cli",
     "test": "npm run rebuild:node && vitest run",
     "rebuild:node": "npm rebuild better-sqlite3",
     "start": "npm run build && electron .",
-    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win": "node scripts/distwin-guard.mjs",
     "build:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/index.js",
     "build:qa": "tsc -p tsconfig.node.json --outDir dist && node dist/scripts/semilla-qa.js",
     "probe:electron": "node scripts/probe-electron-abi.mjs",
     "rebuild:electron": "node scripts/rebuild-electron.mjs",
-    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs"
+    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && node scripts/build:cli && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs",
+    "build:cli": "tsc -p tsconfig.scripts.json --outDir dist"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
@@ -42,5 +43,6 @@
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
-  }
+  },
+  "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.preload.json && tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.scripts.json"
 }

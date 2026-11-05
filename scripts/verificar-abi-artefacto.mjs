@@ -8,6 +8,16 @@ import path from 'node:path';
 
 const raiz = process.argv[2] ?? path.join(process.cwd(), 'paquete', 'win-unpacked');
 const registro = JSON.parse(readFileSync(path.join(process.cwd(), 'abi-electron.json'), 'utf8'));
+const probePath = path.join(process.cwd(), 'probe-electron.json');
+if (!existsSync(probePath)) {
+  console.error('FALLA: no existe probe-electron.json. Un registro abi-electron.json declarado NO basta: el probe con Electron real debe haber PASADO antes de empaquetar.');
+  process.exit(2);
+}
+const probe = JSON.parse(readFileSync(probePath, 'utf8'));
+if (probe.resultado !== 'PASA') {
+  console.error(`FALLA: el probe de ABI no pasó (resultado: ${probe.resultado}).`);
+  process.exit(2);
+}
 
 function buscar(directorio) {
   for (const entrada of readdirSync(directorio)) {

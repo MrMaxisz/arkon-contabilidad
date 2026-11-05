@@ -32,18 +32,53 @@ interface ManifiestoSemilla {
   respaldoNombre?: string;
 }
 
+const MARCADOR_QA = 'QA-MARCADOR-ARKON.txt';
+
+function normalizarRuta(ruta: string): string {
+  // Normalización case-insensitive para Windows: 'arkon contabilidad' === 'ARKON Contabilidad'.
+  return path.normalize(ruta).replace(/\\/g, '/').toLowerCase();
+}
+
 function validarPerfil(perfil: string): void {
   if (!path.isAbsolute(perfil)) {
     throw new Error(`El perfil debe ser una ruta ABSOLUTA: ${perfil}`);
   }
-  const normalizado = path.normalize(perfil);
-  if (normalizado.includes('OneDrive')) {
-    throw new Error(`El perfil no puede estar bajo OneDrive: ${normalizado}`);
+  const normalizado = normalizarRuta(perfil);
+  if (normalizado.includes('onedrive')) {
+    throw new Error(`El perfil no puede estar bajo OneDrive: ${perfil}`);
   }
   const local = process.env.LOCALAPPDATA;
-  if (local && normalizado === path.normalize(path.join(local, 'ARKON Contabilidad'))) {
-    throw new Error(`El perfil no puede ser la base operativa: ${normalizado}`);
+  if (local) {
+    const operativo = normalizarRuta(path.join(local, 'ARKON Contabilidad'));
+    if (normalizado === operativo) {
+      throw new Error(`El perfil no puede ser la base operativa: ${perfil}`);
+    }
+    if (normalizado.startsWith(operativo + '/')) {
+      throw new Error(`El perfil no puede ser subruta de la base operativa: ${perfil}`);
+    }
   }
+}
+
+function exigirMarcadorQa(perfil: string, crearSiNuevo: boolean): void {
+  const rutaMarcador = path.join(perfil, MARCADOR_QA);
+  if (fs.existsSync(rutaMarcador)) {
+    const contenido = fs.readFileSync(rutaMarcador, 'utf8');
+    if (!contenido.includes('Perfil QA de ARKON Contabilidad')) {
+      throw new Error(`Marcador QA inválido en ${rutaMarcador}: el perfil existe pero no es un perfil QA válido`);
+    }
+    return;
+  }
+  if (!crearSiNuevo) {
+    throw new Error(`El perfil no tiene marcador QA (${rutaMarcador}); no se puede reutilizar sin marcador válido`);
+  }
+  // Crear marcador SOLO si el perfil está vacío (nuevo): un perfil existente con datos y sin
+  // marcador se rechaza para no operar sobre datos no sembrados.
+  const entradas = fs.existsSync(perfil) ? fs.readdirSync(perfil).filter(e => e !== MARCADOR_QA) : [];
+  if (entradas.length > 0) {
+    throw new Error(`El perfil ${perfil} ya existe con contenido y sin marcador QA; rechazado para no tocar datos desconocidos`);
+  }
+  fs.mkdirSync(perfil, { recursive: true });
+  fs.writeFileSync(rutaMarcador, `Perfil QA de ARKON Contabilidad; semilla sintética; ${new Date().toISOString()}`, 'utf8');
 }
 
 function contexto(perfil: string) {
@@ -67,6 +102,8 @@ function contexto(perfil: string) {
 
 function sembrar(perfil: string, manifiestoRuta: string): void {
   validarPerfil(perfil);
+  validarPerfil(manifiestoRuta);
+  exigirMarcadorQa(perfil, true);
   const ctx = contexto(perfil);
   sembrarCatalogoBase(ctx.db);
   ctx.db
@@ -119,6 +156,7 @@ function sembrar(perfil: string, manifiestoRuta: string): void {
 
 async function respaldar(perfil: string, manifiestoRuta: string): Promise<void> {
   validarPerfil(perfil);
+  exigirMarcadorQa(perfil, false);
   const ctx = contexto(perfil);
   const respaldo = await crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp, ctx.rutas.adjuntos);
   const manifiesto = JSON.parse(fs.readFileSync(manifiestoRuta, 'utf8')) as ManifiestoSemilla;
@@ -129,10 +167,24 @@ async function respaldar(perfil: string, manifiestoRuta: string): Promise<void> 
   ctx.db.close();
 }
 
-function verificar(perfil: string, manifiestoRuta: string): void {
+async function verificar(perfil: string, manifiestoRuta: string): Promise<void> {
   validarPerfil(perfil);
+  exigirMarcadorQa(perfil, false);
   const esperado = JSON.parse(fs.readFileSync(manifiestoRuta, 'utf8')) as ManifiestoSemilla;
-  const ctx = contexto(perfil);
+  // Verificación de LECTURA: abrir la base SIN aplicar migraciones (readonly) para no
+  // recomponer con la fuente actual lo que se pretende evaluar de la versión instalada.
+  // Rutas calculadas SIN crear directorios (prepararRutasDatos hace mkdir): verificación de lectura.
+  const rutaDatos = path.join(perfil, 'datos');
+  const rutaDb = path.join(rutaDatos, 'arkon.db');
+  if (!fs.existsSync(rutaDb)) {
+    console.log(`FALLA base-existe: falta ${rutaDb}`);
+    console.log('RESULTADO VERIFICACIÓN: FALLA');
+    process.exitCode = 2;
+    return;
+  }
+  const Database = (await import('better-sqlite3')).default;
+  const db = new Database(rutaDb, { readonly: true, fileMustExist: true });
+  const rutas = prepararRutasDatos(perfil);
   let estado: 'PASA' | 'FALLA' = 'PASA' as 'PASA' | 'FALLA';
   const comprobar = (nombre: string, ok: boolean, detalle: string) => {
     console.log(`${ok ? 'PASA' : 'FALLA'} ${nombre}: ${detalle}`);
@@ -141,7 +193,7 @@ function verificar(perfil: string, manifiestoRuta: string): void {
     }
   };
 
-  const venta = ctx.db
+  const venta = db
     .prepare('SELECT folio, total_minor, estado FROM venta WHERE folio = ?')
     .get(esperado.ventaFolio) as { folio: string; total_minor: number; estado: string } | undefined;
   comprobar('venta-existe', Boolean(venta), venta ? `${venta.folio} ${venta.estado}` : `falta ${esperado.ventaFolio}`);
@@ -151,17 +203,17 @@ function verificar(perfil: string, manifiestoRuta: string): void {
     venta ? minorATexto(BigInt(venta.total_minor)) : '—'
   );
 
-  const cliente = ctx.db
+  const cliente = db
     .prepare('SELECT nombre FROM contraparte WHERE id = ?')
     .get(esperado.contraparteId) as { nombre: string } | undefined;
   comprobar('contraparte-existe', Boolean(cliente), cliente?.nombre ?? 'falta');
 
-  const adjunto = ctx.db
+  const adjunto = db
     .prepare('SELECT ruta_relativa, hash_sha256 FROM adjunto WHERE hash_sha256 = ?')
     .get(esperado.adjuntoHash) as { ruta_relativa: string; hash_sha256: string } | undefined;
   comprobar('adjunto-registrado', Boolean(adjunto), adjunto?.ruta_relativa ?? 'falta');
   if (adjunto) {
-    const rutaAdjunto = path.join(ctx.rutas.adjuntos, adjunto.ruta_relativa);
+    const rutaAdjunto = path.join(rutas.adjuntos, adjunto.ruta_relativa);
     const existe = fs.existsSync(rutaAdjunto);
     comprobar('adjunto-archivo', existe, rutaAdjunto);
     if (existe) {
@@ -170,20 +222,39 @@ function verificar(perfil: string, manifiestoRuta: string): void {
     }
   }
 
-  const eventos = listarEventos(ctx.db, 500);
+  const eventos = listarEventos(db, 500);
   comprobar(
     'bitacora-conserva',
     eventos.length >= esperado.eventosEsperados,
     `${eventos.length} eventos (esperados >= ${esperado.eventosEsperados})`
   );
 
-  if (esperado.respaldoHash) {
-    const respaldoExiste = fs.existsSync(path.join(ctx.rutas.respaldos, esperado.respaldoNombre ?? ''));
-    comprobar('respaldo-previo-presente', respaldoExiste, esperado.respaldoNombre ?? '—');
+  if (esperado.respaldoHash && esperado.respaldoNombre) {
+    const rutaRespaldo = path.join(rutas.respaldos, esperado.respaldoNombre);
+    const respaldoExiste = fs.existsSync(rutaRespaldo);
+    comprobar('respaldo-previo-presente', respaldoExiste, esperado.respaldoNombre);
+    if (respaldoExiste) {
+      try {
+        const hashRespaldo = crypto.createHash('sha256').update(fs.readFileSync(rutaRespaldo)).digest('hex');
+        comprobar('respaldo-hash', hashRespaldo === esperado.respaldoHash, hashRespaldo.slice(0, 12) + '…');
+        const rutaManifiestoRespaldo = `${rutaRespaldo}.manifest.json`;
+        comprobar('respaldo-manifiesto', fs.existsSync(rutaManifiestoRespaldo), rutaManifiestoRespaldo);
+        if (fs.existsSync(rutaManifiestoRespaldo)) {
+          const manifiestoRespaldo = JSON.parse(fs.readFileSync(rutaManifiestoRespaldo, 'utf8')) as { hashSha256?: string };
+          comprobar(
+            'respaldo-manifiesto-hash',
+            manifiestoRespaldo.hashSha256 === esperado.respaldoHash,
+            manifiestoRespaldo.hashSha256?.slice(0, 12) + '…'
+          );
+        }
+      } catch (err) {
+        comprobar('respaldo-lectura', false, String(err instanceof Error ? err.message : err));
+      }
+    }
   }
 
   console.log(`RESULTADO VERIFICACIÓN: ${estado}`);
-  ctx.db.close();
+  db.close();
   if (estado === 'FALLA') {
     process.exitCode = 2;
   }
@@ -214,7 +285,7 @@ function main(): void {
   } else if (modo === 'respaldar') {
     void respaldar(perfil, manifiesto);
   } else if (modo === 'verificar') {
-    verificar(perfil, manifiesto);
+    void verificar(perfil, manifiesto);
   } else {
     console.error(`Modo desconocido: ${modo}`);
     process.exitCode = 1;

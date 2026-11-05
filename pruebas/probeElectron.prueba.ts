@@ -24,7 +24,7 @@ describe('pipeline de ABI para Electron (probe real en Windows)', () => {
   });
 
   it('el binario de Electron existe; si el entorno lo ejecuta, el probe es concluyente', () => {
-    const electronBin = path.join(process.cwd(), 'node_modules', '.bin', 'electron');
+    const electronBin = path.join(process.cwd(), 'node_modules', 'electron', 'dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
     expect(fs.existsSync(electronBin)).toBe(true);
     const script = `
       try {

@@ -24,8 +24,10 @@ export function prepararRutasDatos(raiz: string): RutasDatos {
   return rutas;
 }
 
-export function abrirBase(rutaDb: string): Database.Database {
-  const db = new Database(rutaDb);
+export function abrirBase(rutaDb: string, opciones?: { readonly?: boolean; fileMustExist?: boolean }): Database.Database {
+  const db = opciones?.readonly
+    ? new Database(rutaDb, { readonly: true, fileMustExist: opciones.fileMustExist ?? true })
+    : new Database(rutaDb);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = FULL');

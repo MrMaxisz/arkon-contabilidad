@@ -737,3 +737,28 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Este sandbox es Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El pipeline queda listo para tu verificación en Windows: `npm run dist:win:qa` (rebuild→probe→NSIS→verificación de artefacto con hashes) y arranque del instalado en perfil QA — el fallo de arranque ahora será un diálogo visible con NODE_MODULE_VERSION en lugar de un proceso silencioso. Tu mitigación local (prebuild-install electron 33.4.11, native SHA 359CBD…B17, probe PASA) coincide con el pipeline automatizado.
+
+## Bloque auditoría 46 (rutas de build, pipeline ABI funcional, guardas QA y verificación real del respaldo)
+
+### Corregido (hallazgos de la auditoría 46)
+
+- **P1-1 Rutas de build**: `tsconfig.node.json` vuelve a `rootDir: src` (solo main+shared) y los scripts CLI tienen su propio `tsconfig.scripts.json` (rootDir '.', incluye src para los imports). `npm run build` ahora termina con `build:cli` (tsc de scripts a dist) de modo que **desde salida vacía** se producen `dist/main/index.js` (entrypoint real, alineado con `package.json.main`), `dist/preload/index.js` (bundle empaquetado) y `dist/scripts/semilla-qa.js` — sin depender del dist previo. Prueba oficial de alineación de rutas incluida.
+- **P1-2 Pipeline ABI funcional**: `rebuild-electron.mjs` ejecuta prebuild-install **desde el directorio de la dependencia** (node_modules/better-sqlite3 — el CLI lee el package.json del cwd, como tu mitigación probada); `probe-electron-abi.mjs` usa el **binario real** (`node_modules/electron/dist/electron.exe` en Windows, no el .cmd que daba spawn EINVAL) con harness de perfil QA exclusivo, timeout de 60 s, y registra versión/ABI/hash realmente cargados en `probe-electron.json`; `verificar-abi-artefacto.mjs` exige `probe-electron.json` con resultado PASA además del hash — un `abi-electron.json` declarado solo ya NO basta (tu fixture con binario NODE137 y registro declarado ahora termina exit 2). `dist:win` estándar redirige a `distwin-guard.mjs`: rechaza empaquetar sin probe exitoso o con probe de más de 30 minutos (evita reinstalar Node137 tras la suite) y NO empaqueta por sí solo; el empaquetado real es `dist:win:qa` (rebuild→probe→build→NSIS→verificación de artefacto).
+- **P1-3 Guardas QA**: normalización de rutas **case-insensitive** (minúsculas + barras normalizadas: 'arkon contabilidad' === 'ARKON Contabilidad' en Windows), exclusión de la base operativa **y sus subrutas** y de OneDrive, aplicada también al manifiesto; marcador QA (`QA-MARCADOR-ARKON.txt`) se crea SOLO en un perfil nuevo vacío — un perfil existente con contenido y sin marcador se rechaza antes de abrir SQLite; respaldar/verificar exigen marcador válido (contenido falso → rechazo). Todo probado con fixtures ejecutables.
+- **P2-4 Verificación real del respaldo**: `verificar` recalcula el SHA-256 del archivo de respaldo contra el registrado (corrupción → FALLA exit 2, comprobado), valida el manifiesto del respaldo y su hash, y abre la base **en modo readonly sin aplicar migraciones** (rutas calculadas sin crear directorios) — una base ausente da FALLA sin recrear nada (lectura pura, no recomposición). Bitácora, adjuntos y hash de adjunto verificados contra el manifiesto.
+
+### Pruebas ejecutables (no contains sobre texto)
+
+- `pruebas/guardasPipeline.prueba.ts` (8 pruebas en suite oficial): perfil existente sin marcador rechazado sin abrir SQLite; marcador válido requerido para respaldar/verificar; marcador falso rechazado; **respaldo corrompido → FALLA exit 2 con hash verificado**; verificación readonly que no recrea la base; ruta relativa, base operativa case-insensitive y subrutas rechazadas; guarda dist:win sin probe y con probe caducado (exit 2); verificador de artefacto rechazado sin probe-electron.json aunque abi-electron.json declare el hash; alineación de entrypoint/tsconfig.
+- `pruebas/probeElectron.prueba.ts` actualizada al binario real (`electron/dist/electron.exe` en Windows) — en este sandbox Linux el binario existe pero no carga (libglib); la prueba detecta esa limitación del entorno y pasa solo si el probe es concluyente o la limitación está documentada.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos: node/preload/renderer/scripts) → sin errores.
+- `npm run build` desde dist vacío → `dist/main/index.js` + `dist/preload/index.js` (bundle) + `dist/scripts/semilla-qa.js`.
+- `npx vitest run` → 238/238 (53 archivos).
+- CLI ejecutado real: sembrar/respaldar/verificar PASA; respaldo corrompido → FALLA exit 2; perfil existente sin marcador → rechazo exit 1; base operativa case-insensitive y subrutas → rechazo.
+
+### Límites exactos
+
+- Sandbox Linux sin bibliotecas gráficas de Electron: NO ejecuté el probe con Electron real ni el NSIS. El pipeline queda para tu verificación en Windows: `npm run dist:win:qa` y arranque del instalado. La instalación corregida 45 (Electron130) que ya abre NO debe reinstalarse con artefactos sin verificar.

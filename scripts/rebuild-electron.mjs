@@ -11,9 +11,12 @@ const arch = process.argv[3] ?? 'x64';
 const platform = process.argv[4] ?? 'win32';
 
 console.log(`== Reconstruir better-sqlite3 para Electron ${version} (${platform}-${arch}) ==`);
+// prebuild-install/npm rebuild deben ejecutarse DESDE el directorio de la dependencia
+// (el CLI lee el package.json del cwd, no el de better-sqlite3).
+const dirDep = path.join(process.cwd(), 'node_modules', 'better-sqlite3');
 execSync(
-  `npx prebuild-install --runtime=electron --target=${version} --arch=${arch} --platform=${platform} || npm rebuild better-sqlite3 --runtime=electron --target=${version} --arch=${arch}`,
-  { stdio: 'inherit', cwd: process.cwd() }
+  `prebuild-install --runtime=electron --target=${version} --arch=${arch} --platform=${platform} || npm rebuild --runtime=electron --target=${version} --arch=${arch}`,
+  { stdio: 'inherit', cwd: dirDep }
 );
 
 const rutaNative = path.join(process.cwd(), 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
