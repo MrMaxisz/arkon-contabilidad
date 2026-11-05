@@ -56,6 +56,18 @@ export function completarMetadatosFiscales(
   if (entrada.tratamientoVenta !== undefined && !TRATAMIENTOS_VENTA.has(entrada.tratamientoVenta)) {
     throw new ErrorAnexo(`Tratamiento de venta inválido (exenta o no_sujeta): ${entrada.tratamientoVenta}`);
   }
+  if (tipo === 'compra') {
+    for (const [campo, valor] of [
+      ['tipoOperacionRenta', entrada.tipoOperacionRenta],
+      ['clasificacionRenta', entrada.clasificacionRenta],
+      ['sector', entrada.sector],
+      ['tipoCostoGasto', entrada.tipoCostoGasto]
+    ] as Array<[string, string | undefined]>) {
+      if (valor !== undefined && !/^[0-9]$/.test(valor)) {
+        throw new ErrorAnexo(`${campo} de compra inválido: numérico de un dígito (manual F-07 v14, columnas Q/R/S/T)`);
+      }
+    }
+  }
   const tabla = tipo === 'venta' ? 'venta' : 'compra';
   const doc = db.prepare(`SELECT id, folio, estado FROM ${tabla} WHERE id = ?`).get(documentoId) as
     | { id: number; folio: string; estado: string }
@@ -455,41 +467,77 @@ export function exportarAnexo2VentasConsumidorPresentacion(db: Database, mes: st
   }
   const ventas = ventasConsumidorDelMes(db, mes);
   const lineas: string[] = [];
+  const montosDe = (v: VentaConsumidor) => {
+    const gravada = v.iva_minor > 0;
+    return {
+      exentas: !gravada && v.tratamiento_venta === 'exenta' ? v.base_minor : 0,
+      noSujetas: !gravada && v.tratamiento_venta === 'no_sujeta' ? v.base_minor : 0,
+      gravadasConIva: gravada ? v.total_minor : 0,
+      total: v.total_minor
+    };
+  };
+  const filaDe = (
+    fecha: string,
+    clase: string,
+    d: string,
+    e: string,
+    f: string,
+    g: string,
+    h: string,
+    i: string,
+    montos: { exentas: number; noSujetas: number; gravadasConIva: number; total: number },
+    tipoOperacion: string | null,
+    tipoIngreso: string | null
+  ) => {
+    const aplicaRenta = mes >= '2025-01';
+    return [
+      fecha,
+      clase,
+      '01',
+      d,
+      e,
+      f,
+      g,
+      h,
+      i,
+      '',
+      minorATexto(BigInt(montos.exentas)),
+      '0.00',
+      minorATexto(BigInt(montos.noSujetas)),
+      minorATexto(BigInt(montos.gravadasConIva)),
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      '0.00',
+      minorATexto(BigInt(montos.total)),
+      aplicaRenta ? tipoOperacion ?? '' : '0',
+      aplicaRenta ? tipoIngreso ?? '' : '0',
+      '2'
+    ];
+  };
+  const dtePorDia = new Map<string, VentaConsumidor[]>();
   for (const v of ventas) {
     const revalidacion = faltantesConsumidor(db, v, mes);
     if (revalidacion.length > 0) {
       throw new ErrorAnexo(`El folio ${v.folio} dejó de ser válido al exportar: ${revalidacion.join(', ')}`);
     }
-    const gravada = v.iva_minor > 0;
-    const exentas = !gravada && v.tratamiento_venta === 'exenta' ? v.base_minor : 0;
-    const noSujetas = !gravada && v.tratamiento_venta === 'no_sujeta' ? v.base_minor : 0;
-    const gravadasConIva = gravada ? v.total_minor : 0;
-    const aplicaRenta = mes >= '2025-01';
-    const fila = [
-      fechaDdMmAaaa(v.fecha),
-      v.clase_documento_fiscal ?? '',
-      '01',
-      v.numero_resolucion ?? '',
-      v.serie_documento ?? '',
-      v.folio,
-      v.folio,
-      v.numero_documento_autorizado ?? '',
-      v.numero_documento_autorizado ?? '',
-      '',
-      minorATexto(BigInt(exentas)),
-      '0.00',
-      minorATexto(BigInt(noSujetas)),
-      minorATexto(BigInt(gravadasConIva)),
-      '0.00',
-      '0.00',
-      '0.00',
-      '0.00',
-      '0.00',
-      minorATexto(BigInt(v.total_minor)),
-      aplicaRenta ? v.tipo_operacion_renta ?? '' : '0',
-      aplicaRenta ? v.tipo_ingreso_renta ?? '' : '0',
-      '2'
-    ];
+    if (v.clase_documento_fiscal === '4') {
+      const grupo = dtePorDia.get(v.fecha) ?? [];
+      grupo.push(v);
+      dtePorDia.set(v.fecha, grupo);
+    }
+  }
+  for (const v of ventas) {
+    if (v.clase_documento_fiscal === '4') {
+      continue;
+    }
+    const montos = montosDe(v);
+    const numero = v.numero_documento_autorizado ?? '';
+    const fila =
+      v.clase_documento_fiscal === '2'
+        ? filaDe(fechaDdMmAaaa(v.fecha), v.clase_documento_fiscal ?? '', v.numero_resolucion ?? '', v.serie_documento ?? '', v.folio, v.folio, numero, numero, montos, v.tipo_operacion_renta ?? '', v.tipo_ingreso_renta ?? '')
+        : filaDe(fechaDdMmAaaa(v.fecha), v.clase_documento_fiscal ?? '', v.numero_resolucion ?? '', v.serie_documento ?? '', numero, numero, numero, numero, montos, v.tipo_operacion_renta ?? '', v.tipo_ingreso_renta ?? '');
     if (fila.length !== 23) {
       throw new ErrorAnexo(`Fila con columnas incorrectas para ${v.folio}`);
     }
@@ -498,6 +546,39 @@ export function exportarAnexo2VentasConsumidorPresentacion(db: Database, mes: st
       if (String(fila[i]).length > (limites[i] ?? Infinity)) {
         throw new ErrorAnexo(`Columna ${i + 1} excede el límite del manual para ${v.folio}`);
       }
+    }
+    lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
+  }
+  for (const [fecha, grupo] of dtePorDia) {
+    const montos = grupo.reduce(
+      (acc, v) => {
+        const m = montosDe(v);
+        return {
+          exentas: acc.exentas + m.exentas,
+          noSujetas: acc.noSujetas + m.noSujetas,
+          gravadasConIva: acc.gravadasConIva + m.gravadasConIva,
+          total: acc.total + m.total
+        };
+      },
+      { exentas: 0, noSujetas: 0, gravadasConIva: 0, total: 0 }
+    );
+    const primero = grupo[0]!;
+    const ultimo = grupo[grupo.length - 1]!;
+    const fila = filaDe(
+      fechaDdMmAaaa(fecha),
+      '4',
+      'N/A',
+      'N/A',
+      'N/A',
+      'N/A',
+      primero.numero_documento_autorizado ?? '',
+      ultimo.numero_documento_autorizado ?? '',
+      montos,
+      primero.tipo_operacion_renta ?? '',
+      primero.tipo_ingreso_renta ?? ''
+    );
+    if (fila.length !== 23) {
+      throw new ErrorAnexo('Fila DTE agrupada con columnas incorrectas');
     }
     lineas.push(fila.map(c => escaparCampo(String(c))).join(';'));
   }
@@ -570,17 +651,17 @@ function faltantesCompra(db: Database, co: CompraAnexo, mes: string): string[] {
     faltantes.push('número de documento del proveedor (columna D)');
   }
   if (mes >= '2024-02') {
-    if (!co.tipo_operacion_renta) {
-      faltantes.push('tipo de operación (columna Q)');
+    if (!/^[0-9]$/.test(co.tipo_operacion_renta ?? '')) {
+      faltantes.push('tipo de operación numérico de un dígito (columna Q)');
     }
-    if (!co.clasificacion_renta) {
-      faltantes.push('clasificación (columna R)');
+    if (!/^[0-9]$/.test(co.clasificacion_renta ?? '')) {
+      faltantes.push('clasificación numérica de un dígito (columna R)');
     }
-    if (!co.sector) {
-      faltantes.push('sector (columna S)');
+    if (!/^[0-9]$/.test(co.sector ?? '')) {
+      faltantes.push('sector numérico de un dígito (columna S)');
     }
-    if (!co.tipo_costo_gasto) {
-      faltantes.push('tipo de costo/gasto (columna T)');
+    if (!/^[0-9]$/.test(co.tipo_costo_gasto ?? '')) {
+      faltantes.push('tipo de costo/gasto numérico de un dígito (columna T)');
     }
   }
   const vigencia = db
@@ -652,7 +733,7 @@ export function exportarAnexo3ComprasPresentacion(db: Database, mes: string) {
       '0.00',
       '0.00',
       minorATexto(montos.credito),
-      minorATexto(BigInt(co.total_minor)),
+      minorATexto(montos.exentasNoSujetas + montos.gravadas),
       '',
       aplicaRentas ? co.tipo_operacion_renta ?? '' : '0',
       aplicaRentas ? co.clasificacion_renta ?? '' : '0',

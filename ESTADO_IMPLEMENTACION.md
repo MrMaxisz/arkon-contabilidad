@@ -531,3 +531,25 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 
 - F-14 (retenciones) y F-11: requieren verificación independiente del manual OFICIAL de cada formulario (el PDF de F-07 no los especifica); fuente candidata: catálogo normativo de Hacienda (transparencia.mh.gob.sv). No declarar compatibilidad sin esa verificación.
 - Ejecución real de `scripts/qa-windows.ps1` e instalador NSIS en Windows: preparado aquí, no ejecutado desde este entorno Linux.
+
+## Bloque auditoría 38 (fórmulas del manual en Anexos 2/3, recorrido UI completo, catálogos y QA Windows corregido)
+
+### Corregido (hallazgos de la auditoría 38)
+
+- **P1-1 Anexo 3, columna O**: Total de Compras = suma G:M según el manual (página impresa 19), sin crédito fiscal: G50 + J100 → O150 (el total financiero 163 se conserva en la compra). Prueba con comparación de fórmula: O = Σ(columnas 7..13) verificada numéricamente, no contra el total financiero.
+- **P1-2 Anexo 2, reglas por clase**: clase 1 → F=H y G=I (número autorizado, ya no el folio administrativo); clase 2 → control interno del/al = folio y número del/al = número autorizado; clase 4 (DTE) → agrupación diaria con D/E/F/G='N/A' y H/I = código de generación del primer/último DTE del día, montos sumados. Prueba: clase 2 con F/G=V-000001 y H/I=NUM-C2; dos DTE del 5 de noviembre se agrupan en UNA fila con 226.00 y códigos CODGEN-1..2 en extremos; el DTE del 6 queda en fila propia con 113.00; las ventas no se alteran.
+- **P1-3 Interfaz Anexos 2/3**: las secciones existen ahora de verdad (verificado con grep y prueba de componente): diagnóstico (`fiscal:anexo2Ventas`/`fiscal:anexo3Compras`), guardado nativo vía `guardarAnexoF07(2/3,...)`, y el formulario de metadatos soporta compras: selector de tipo venta/compra (que invalida lecturas en curso al cambiar), selector de compras con id interno, `fiscal:metadatosLeer` extendido con tipo (devuelve folio/fecha/cliente/metadatos incl. R/S/T), campos Clasificación/Sector/Tipo costo-gasto solo para compras, y refresco tras guardar. Prueba de componente: secciones visibles, diagnóstico Anexo 3 con faltantes, `guardarAnexoF07(2, '2026-11')` invocado, flujo de compra con lectura por tipo y campos R/S/T presentes.
+- **P2-4 Catálogos Anexo 3**: Q/R/S/T validados como numéricos de un dígito (estructura del manual: 1 carácter) en la vía auditada (rechaza X/Y/Z), en el diagnóstico y en la exportación (revalidación). Validaciones separadas venta/compra: la compra no exige campos exclusivos de venta y viceversa. Prueba: X/Y/Z rechazados al guardar; sector alterado a 'Y' bloquea diagnóstico y exportación.
+- **P2-5 QA Windows**: el script reconstruye el ABI correcto por etapa (`npm test` para Node; `npx electron-builder install-app-deps` para Electron antes de abrir, o `dist:win`), valida el arranque (espera 8 s y falla si el proceso murió), bloquea la apertura si ya hay una instancia de este repositorio, aísla también Chromium (`--user-data-dir` bajo el perfil), documenta que el instalador se genera en `paquete\` (no dist\), restaura las variables de entorno y permite reabrir el mismo perfil con `-Perfil <ruta>`. `docs/QA-WINDOWS.md` actualizado con el ciclo ABI (rebuild:node tras el QA) y sin afirmar ejecución real desde Linux.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 209/209 (46 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Pendiente (límites reales)
+
+- F-14 (retenciones) y F-11: verificación independiente del manual OFICIAL de cada formulario antes de implementar.
+- Ejecución real de `scripts/qa-windows.ps1`, del instalador NSIS y del recorrido gráfico en Windows.
+- Catálogos específicos completos de R/S/T del Anexo 3 (página 20 del manual: reglas especiales de códigos 8/9): la validación actual cubre el formato numérico de un dígito verificado en la estructura; los significados de cada código quedan como decisión documental del contador al completar metadatos.

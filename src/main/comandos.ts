@@ -680,6 +680,24 @@ export const comandos: Record<string, Manejador> = {
   'fiscal:metadatosLeer': (ctx, payload) => {
     const p = objeto(payload);
     const id = entero(p, 'documentoId');
+    const tipo = texto(p, 'tipo') === 'compra' ? 'compra' : 'venta';
+    if (tipo === 'compra') {
+      const compra = ctx.db
+        .prepare(
+          `SELECT co.id, co.folio, co.fecha_operacion AS fecha, c.nombre AS contraparte,
+                  co.clase_documento_fiscal, co.numero_resolucion, co.serie_documento,
+                  co.numero_documento_autorizado, NULL AS tratamiento_venta,
+                  co.tipo_operacion_renta, NULL AS tipo_ingreso_renta,
+                  co.clasificacion_renta, co.sector, co.tipo_costo_gasto
+           FROM compra co JOIN contraparte c ON c.id = co.contraparte_id
+           WHERE co.id = ?`
+        )
+        .get(id) as Record<string, unknown> | undefined;
+      if (!compra) {
+        throw new ErrorValidacion('Compra inexistente');
+      }
+      return compra;
+    }
     const fila = ctx.db
       .prepare(
         `SELECT v.id, v.folio, v.fecha_operacion AS fecha, c.nombre AS contraparte,

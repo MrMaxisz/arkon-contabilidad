@@ -92,10 +92,15 @@ export default function Impuestos() {
     motivo: string;
   } | null>(null);
   const [metaDocumentoId, setMetaDocumentoId] = useState(0);
+  const [metaTipo, setMetaTipo] = useState<'venta' | 'compra'>('venta');
+  const [metaClasificacion, setMetaClasificacion] = useState('');
+  const [metaSector, setMetaSector] = useState('');
+  const [metaCostoGasto, setMetaCostoGasto] = useState('');
   const [metaCargando, setMetaCargando] = useState(false);
   const consultaMeta = useRef(0);
   const [metaBusqueda, setMetaBusqueda] = useState('');
   const [ventasSelector, setVentasSelector] = useState<Array<{ id: number; folio: string; concepto: string; fecha: string }>>([]);
+  const [comprasSelector, setComprasSelector] = useState<Array<{ id: number; folio: string; concepto: string; fecha: string }>>([]);
   const [metaActual, setMetaActual] = useState<{ folio: string; fecha: string; contraparte: string; clase_documento_fiscal: string | null } | null>(null);
   const [metaClase, setMetaClase] = useState('1');
   const [metaResolucion, setMetaResolucion] = useState('');
@@ -110,10 +115,17 @@ export default function Impuestos() {
     void api()
       .invocar('documento:listarVinculos', { busqueda: '', limite: 200 })
       .then(r => {
-        const vinculos = r as { venta: Array<{ id: number; folio: string; concepto: string; fecha: string }> };
+        const vinculos = r as {
+          venta: Array<{ id: number; folio: string; concepto: string; fecha: string }>;
+          compra: Array<{ id: number; folio: string; concepto: string; fecha: string }>;
+        };
         setVentasSelector(vinculos.venta ?? []);
+        setComprasSelector(vinculos.compra ?? []);
       })
-      .catch(() => setVentasSelector([]));
+      .catch(() => {
+        setVentasSelector([]);
+        setComprasSelector([]);
+      });
   }, []);
   const consultaResultadosId = useRef(0);
   const mesResultadosRef = useRef(mes);
@@ -489,7 +501,7 @@ export default function Impuestos() {
         setMensaje(null);
         try {
           await api().invocar('fiscal:metadatosCompletar', {
-            tipo: 'venta',
+            tipo: metaTipo,
             documentoId: metaDocumentoId,
             claseDocumentoFiscal: metaClase,
             numeroResolucion: metaResolucion,
@@ -522,10 +534,26 @@ export default function Impuestos() {
               placeholder="Folio o concepto"
             />
           </label>
-          <label style={{ minWidth: 280 }}>Venta
+          <label>Tipo de documento
+            <select
+              value={metaTipo}
+              onChange={e => {
+                setMetaTipo(e.target.value as 'venta' | 'compra');
+                consultaMeta.current++;
+                setMetaDocumentoId(0);
+                setMetaActual(null);
+                setMetaCargando(false);
+                cargarSelectorPorTipo(metaBusqueda, e.target.value as 'venta' | 'compra');
+              }}
+            >
+              <option value="venta">Venta</option>
+              <option value="compra">Compra</option>
+            </select>
+          </label>
+          <label style={{ minWidth: 280 }}>Documento
             <select value={String(metaDocumentoId)} onChange={e => void seleccionarDocumento(Number(e.target.value))} required>
-              <option value="0">— Seleccione venta —</option>
-              {ventasSelector.map(v => (
+              <option value="0">— Seleccione documento —</option>
+              {(metaTipo === 'venta' ? ventasSelector : comprasSelector).map(v => (
                 <option key={v.id} value={String(v.id)}>{v.folio} · {v.concepto} ({v.fecha})</option>
               ))}
             </select>
@@ -580,6 +608,19 @@ export default function Impuestos() {
             </select>
           </label>
         </div>
+        {metaTipo === 'compra' && (
+          <div className="fila">
+            <label>Clasificación (R)
+              <input value={metaClasificacion} onChange={e => setMetaClasificacion(e.target.value)} maxLength={1} pattern="[0-9]" placeholder="0-9" />
+            </label>
+            <label>Sector (S)
+              <input value={metaSector} onChange={e => setMetaSector(e.target.value)} maxLength={1} pattern="[0-9]" placeholder="0-9" />
+            </label>
+            <label>Tipo costo/gasto (T)
+              <input value={metaCostoGasto} onChange={e => setMetaCostoGasto(e.target.value)} maxLength={1} pattern="[0-9]" placeholder="0-9" />
+            </label>
+          </div>
+        )}
         <div className="fila">
           <label>Responsable<input value={metaResponsable} onChange={e => setMetaResponsable(e.target.value)} required /></label>
           <label style={{ flex: 2 }}>Motivo<input value={metaMotivo} onChange={e => setMetaMotivo(e.target.value)} required /></label>
@@ -588,17 +629,99 @@ export default function Impuestos() {
           </button>
         </div>
       </form>
+      <h2>Anexo 2 F-07 v14 (ventas a consumidor final)</h2>
+      <div className="fila">
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo2Ventas')}
+        >
+          Diagnosticar Anexo 2
+        </button>
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void guardarAnexoGenerico(2)}
+        >
+          Guardar Anexo 2…
+        </button>
+      </div>
+      <h2>Anexo 3 F-07 v14 (compras)</h2>
+      <div className="fila">
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo3Compras')}
+        >
+          Diagnosticar Anexo 3
+        </button>
+        <button
+          type="button"
+          disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
+          onClick={() => void guardarAnexoGenerico(3)}
+        >
+          Guardar Anexo 3…
+        </button>
+      </div>
+      <p className="aviso error">
+        Los anexos 2 y 3 comparten el bloqueo del Anexo 1: requieren metadatos fiscales completos por la vía
+        auditada y cobertura de vigencia por fecha de documento; ARKON no está constituida ni inscrita en IVA.
+      </p>
     </div>
   );
 
+  async function diagnosticarAnexoGenerico(comando: string) {
+    try {
+      const r = (await api().invocar(comando, { mes: anexoMes })) as {
+        folios: Array<{ folio: string; documentoId: number; faltantes: string[] }>;
+        listos: string[];
+        bloqueado: boolean;
+        motivo: string;
+      };
+      setAnexoDiagnostico(r);
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
+  async function guardarAnexoGenerico(anexo: 2 | 3) {
+    try {
+      const r = (await api().guardarAnexoF07(anexo, anexoMes)) as { guardado: boolean; ruta?: string; filas: number };
+      if (r.guardado && r.ruta) {
+        setMensaje({ texto: `Anexo ${anexo} guardado en ${r.ruta} (${r.filas} filas).`, tipo: 'ok' });
+      } else {
+        setMensaje({ texto: `Guardado del anexo ${anexo} cancelado.`, tipo: 'ok' });
+      }
+    } catch (err) {
+      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    }
+  }
+
   function cargarVentasSelector(busqueda: string) {
+    cargarSelectorPorTipo(busqueda, 'venta');
+  }
+
+  function cargarSelectorPorTipo(busqueda: string, tipo: 'venta' | 'compra') {
     void api()
       .invocar('documento:listarVinculos', { busqueda, limite: 200 })
       .then(r => {
-        const vinculos = r as { venta: Array<{ id: number; folio: string; concepto: string; fecha: string }> };
-        setVentasSelector(vinculos.venta ?? []);
+        const vinculos = r as {
+          venta: Array<{ id: number; folio: string; concepto: string; fecha: string }>;
+          compra: Array<{ id: number; folio: string; concepto: string; fecha: string }>;
+        };
+        if (tipo === 'venta') {
+          setVentasSelector(vinculos.venta ?? []);
+        } else {
+          setComprasSelector(vinculos.compra ?? []);
+        }
       })
-      .catch(() => setVentasSelector([]));
+      .catch(() => {
+        if (tipo === 'venta') {
+          setVentasSelector([]);
+        } else {
+          setComprasSelector([]);
+        }
+      });
   }
 
   async function seleccionarDocumento(documentoId: number) {
@@ -613,7 +736,7 @@ export default function Impuestos() {
     setMetaActual(null);
     setMetaCargando(true);
     try {
-      const r = (await api().invocar('fiscal:metadatosLeer', { documentoId })) as {
+      const r = (await api().invocar('fiscal:metadatosLeer', { documentoId, tipo: metaTipo })) as {
         id: number;
         folio: string;
         fecha: string;
@@ -625,6 +748,9 @@ export default function Impuestos() {
         tratamiento_venta: string | null;
         tipo_operacion_renta: string | null;
         tipo_ingreso_renta: string | null;
+        clasificacion_renta?: string | null;
+        sector?: string | null;
+        tipo_costo_gasto?: string | null;
       };
       if (consultaMeta.current !== numeroConsulta) {
         return;
@@ -638,6 +764,9 @@ export default function Impuestos() {
       setMetaTratamiento(r.tratamiento_venta ?? '');
       setMetaOperacionRenta(r.tipo_operacion_renta ?? '');
       setMetaIngresoRenta(r.tipo_ingreso_renta ?? '');
+      setMetaClasificacion(r.clasificacion_renta ?? '');
+      setMetaSector(r.sector ?? '');
+      setMetaCostoGasto(r.tipo_costo_gasto ?? '');
     } catch (err) {
       if (consultaMeta.current === numeroConsulta) {
         setMetaDocumentoId(0);

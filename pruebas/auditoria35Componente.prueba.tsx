@@ -57,7 +57,30 @@ beforeEach(() => {
           fuente: 'Manual F-07 v14'
         });
       case 'fiscal:metadatosLeer': {
-        const datosLeer = datos as { documentoId: number };
+        const datosLeer = datos as { documentoId: number; tipo?: string };
+        if (datosLeer.tipo === 'compra') {
+          if (lecturasDiferidas.has(datosLeer.documentoId)) {
+            return new Promise(resolve => {
+              lecturasDiferidas.set(datosLeer.documentoId, resolve);
+            });
+          }
+          return Promise.resolve({
+            id: datosLeer.documentoId,
+            folio: 'CMP-000001',
+            fecha: '2026-11-07',
+            contraparte: 'Proveedor Sintético',
+            clase_documento_fiscal: null,
+            numero_resolucion: null,
+            serie_documento: null,
+            numero_documento_autorizado: null,
+            tratamiento_venta: null,
+            tipo_operacion_renta: null,
+            tipo_ingreso_renta: null,
+            clasificacion_renta: null,
+            sector: null,
+            tipo_costo_gasto: null
+          });
+        }
         if (lecturasDiferidas.has(datosLeer.documentoId)) {
           return new Promise(resolve => {
             lecturasDiferidas.set(datosLeer.documentoId, resolve);
@@ -84,9 +107,20 @@ beforeEach(() => {
             { id: 7, folio: 'V-000001', concepto: 'Venta sintética', fecha: '2026-11-05' },
             { id: 12, folio: 'V-000002', concepto: 'Venta dos sintética', fecha: '2026-11-06' }
           ],
-          compra: [],
+          compra: [{ id: 21, folio: 'CMP-000001', concepto: 'Compra sintética', fecha: '2026-11-07' }],
           cotizacion: [],
           proyecto: []
+        });
+      case 'fiscal:anexo2Ventas':
+      case 'fiscal:anexo3Compras':
+        return Promise.resolve({
+          version: 'diagnostico',
+          mes: '2026-11',
+          folios: [{ folio: 'X-000001', documentoId: 21, faltantes: ['clase de documento (columna B: 1, 2, 3 o 4)'] }],
+          listos: [],
+          bloqueado: true,
+          motivo: 'Hay documentos con metadatos fiscales incompletos',
+          fuente: 'Manual F-07 v14'
         });
       case 'fiscal:metadatosCompletar':
         return Promise.resolve({ ok: true });
@@ -173,6 +207,42 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
     fireEvent.change(selectorVenta(), { target: { value: '12' } });
     await waitFor(() => screen.getByText(/No se pudo cargar la venta 12/));
     expect((screen.getByText(/Registrar metadatos|Cargando documento/) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('secciones Anexo 2 y Anexo 3: diagnóstico, guardado por puente y flujo de compra', async () => {
+    guardarAnexo1VentasMock.mockResolvedValue({ guardado: true, ruta: 'C:\\sintetico\\anexo2.csv', filas: 2 });
+    render(<Impuestos />);
+    await waitFor(() => screen.getByText(/Anexo 2 F-07 v14/));
+    expect(screen.getByText(/Anexo 3 F-07 v14/)).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText('2026-11'), { target: { value: '2026-11' } });
+    fireEvent.click(screen.getByText('Diagnosticar Anexo 3'));
+    await waitFor(() => screen.getByText(/X-000001: clase de documento/));
+
+    fireEvent.click(screen.getByText('Guardar Anexo 2…'));
+    await waitFor(() => screen.getByText(/Anexo 2 guardado en/));
+    expect(guardarAnexo1VentasMock).toHaveBeenCalledWith(2, '2026-11');
+
+    const form = screen.getByText('Registrar metadatos').closest('form') as HTMLFormElement;
+    const dentro = within(form);
+    const selectorTipo = dentro.getAllByRole('combobox').find(
+      c => Array.from((c as HTMLSelectElement).options).some(o => o.value === 'compra')
+    ) as HTMLSelectElement;
+    fireEvent.change(selectorTipo, { target: { value: 'compra' } });
+    await waitFor(() =>
+      expect(
+        dentro.getAllByRole('combobox').some(c =>
+          Array.from((c as HTMLSelectElement).options).some(o => o.value === '21')
+        )
+      ).toBe(true)
+    );
+    const selectorCompra = dentro
+      .getAllByRole('combobox')
+      .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === '21')) as HTMLSelectElement;
+    fireEvent.change(selectorCompra, { target: { value: '21' } });
+    await waitFor(() => screen.getByText(/Documento seleccionado: CMP-000001 del 2026-11-07 · Proveedor Sintético/));
+    expect(invocar.mock.calls.some(c => c[0] === 'fiscal:metadatosLeer' && (c[1] as { tipo: string }).tipo === 'compra')).toBe(true);
+    expect(screen.getByText(/Clasificación \(R\)/)).toBeTruthy();
   });
 
   it('la vía auditada registra metadatos y refresca el diagnóstico', async () => {

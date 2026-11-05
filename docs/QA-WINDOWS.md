@@ -3,8 +3,8 @@
 Ejecutar `scripts\qa-windows.ps1` desde la raíz del repositorio en una máquina Windows con Node LTS y Python
 disponibles. El script usa `npm ci` (instalación reproducible), `npm test` (que reconstruye better-sqlite3
 para Node), `npm run build` (main + preload empaquetado con esbuild + renderer) y, con `-ConInstalador`,
-`npm run dist:win` (NSIS). La app arranca con `ARKON_RUTA_DATOS` apuntando a un perfil temporal exclusivo
-bajo `%LOCALAPPDATA%` (fuera de OneDrive); sin esa variable, la ruta operativa sigue siendo
+`npm run dist:win` (NSIS; la salida se genera en `paquete\`). La app arranca con `ARKON_RUTA_DATOS` apuntando a un perfil temporal exclusivo
+bajo `%LOCALAPPDATA%` (fuera de OneDrive) y `--user-data-dir` aislado para Chromium; sin esa variable, la ruta operativa sigue siendo
 `%LOCALAPPDATA%\ARKON Contabilidad`.
 
 ## Criterios de aceptación del recorrido manual
@@ -26,4 +26,9 @@ bajo `%LOCALAPPDATA%` (fuera de OneDrive); sin esa variable, la ruta operativa s
 
 - El sandbox de desarrollo es Linux: la suite Node/jsdom y el arranque del preload empaquetado no sustituyen
   este recorrido; el instalador NSIS solo puede verificarse en Windows.
+- ABI nativo: `npm test` reconstruye better-sqlite3 para Node; el script reconstruye para Electron con
+  `npx electron-builder install-app-deps` antes de abrir la app (o usa el propio `dist:win`). Tras el QA,
+  ejecutar `npm run rebuild:node` antes de volver a correr la suite.
+- El script bloquea la apertura si ya hay una instancia de este repositorio en ejecución y permite reabrir
+  el mismo perfil con `-Perfil <ruta>`.
 - Los datos de prueba son siempre sintéticos; nunca usar la base operativa real para QA.
