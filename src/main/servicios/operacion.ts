@@ -132,6 +132,7 @@ export interface LineaCompraEntrada {
   tasa: string;
   tratamiento: 'gravado' | 'exento' | 'no_sujeto';
   precioConIva?: boolean;
+  itemId?: number;
 }
 
 interface LineaCompraCalculada {
@@ -142,6 +143,7 @@ interface LineaCompraCalculada {
   entrada: LineaCompraEntrada;
   precioConIva: boolean;
   tasaPb: number;
+  itemId: number | null;
 }
 
 function calcularLineasCompra(db: Database.Database, lineas: LineaCompraEntrada[]): LineaCompraCalculada[] {
@@ -169,11 +171,21 @@ function calcularLineasCompra(db: Database.Database, lineas: LineaCompraEntrada[
     const bruto = multiplicarLinea(cantidad, precio);
     const tasa = parseTasa(l.tasa);
     const precioConIva = l.precioConIva === true;
+    let itemId: number | null = null;
+    if (l.itemId !== undefined && l.itemId !== null) {
+      const item = db
+        .prepare('SELECT id, activo FROM item_catalogo WHERE id = ?')
+        .get(l.itemId) as { id: number; activo: number } | undefined;
+      if (!item || item.activo === 0) {
+        throw new ErrorOperacion(`Ítem del catálogo inexistente o inactivo: ${l.itemId}`);
+      }
+      itemId = item.id;
+    }
     if (l.tratamiento !== 'gravado') {
-      return { cuentaId: cuenta.id, base: bruto, iva: 0n, total: bruto, entrada: l, precioConIva, tasaPb: 0 };
+      return { cuentaId: cuenta.id, base: bruto, iva: 0n, total: bruto, entrada: l, precioConIva, tasaPb: 0, itemId };
     }
     const d = precioConIva ? desglosarIvaIncluido(bruto, tasa) : desglosarIvaSeparado(bruto, tasa);
-    return { cuentaId: cuenta.id, base: d.base, iva: d.iva, total: d.total, entrada: l, precioConIva, tasaPb: Number(tasa.puntosBase) };
+    return { cuentaId: cuenta.id, base: d.base, iva: d.iva, total: d.total, entrada: l, precioConIva, tasaPb: Number(tasa.puntosBase), itemId };
   });
 }
 
@@ -275,8 +287,8 @@ export function registrarCompra(
       );
     const compraId = Number(info.lastInsertRowid);
     const insertarLinea = db.prepare(
-      `INSERT INTO compra_linea (compra_id, descripcion, cuenta_id, cantidad, precio_unitario_minor, tasa_puntos_base, tratamiento, base_minor, iva_minor, total_minor)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO compra_linea (compra_id, descripcion, cuenta_id, cantidad, precio_unitario_minor, tasa_puntos_base, tratamiento, base_minor, iva_minor, total_minor, item_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     for (const l of lineas) {
       insertarLinea.run(
@@ -289,7 +301,8 @@ export function registrarCompra(
         l.entrada.tratamiento,
         l.base,
         l.iva,
-        l.total
+        l.total,
+        l.itemId
       );
     }
     registroEvento(db, entrada.responsable, 'compra_registrada', 'compra', String(compraId), { folio, total: minorATexto(total) });

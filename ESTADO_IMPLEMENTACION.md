@@ -1,6 +1,23 @@
 # ESTADO DE IMPLEMENTACIÓN — ARKON Contabilidad
 
-Actualizado: 4 de noviembre de 2026 (tras la decimonovena revisión, sin hallazgos; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+Actualizado: 4 de noviembre de 2026 (tras la vigésima revisión; trabajando por bloques completos). Documento de continuidad entre sesiones. Las secciones históricas conservan la evidencia de su momento; el estado presente es esta sección y el inventario de `docs/PENDIENTES.md`.
+
+## Correcciones de la vigésima revisión + Bloque 2 (recuperación y adjuntos) — aplicados y probados
+
+Correcciones del bloque comercial (3 × P2):
+- **Precio no heredado**: al cambiar a un ítem sin precio correspondiente, el importe queda pendiente (vacío) y se exige captura explícita — sin heredar el precio de otro ítem ni asignar cero. La edición de una línea histórica conserva su propio precio documentado.
+- **Referencia al catálogo en todas las rutas**: `crearRevision` copia `item_id`; `LineaCompraEntrada` y el INSERT de `compra_linea` lo transportan (validando existencia y estado activo en capturas nuevas, sin borrar referencias históricas por desactivación posterior); el tipo público de líneas declara `itemId` y el editor lo conserva al abrir/guardar.
+- **Documento aprobado inmutable** (migración v10): al aprobar se fija `cliente_snapshot`; `generarHtmlCotizacion` usa la instantánea para aprobadas — editar el cliente ya no cambia el documento emitido; una cotización nueva usa los datos actuales.
+
+Bloque 2 — Recuperación y documentos de respaldo (parcial, núcleo probado):
+- **Adjuntos** (migración v10, tabla `adjunto`): registro con hash SHA-256 verificado tras la copia (revertida si no coincide), listado por entidad/identificador. Servicio probado.
+- **Respaldo coordinado**: `crearRespaldo` copia los adjuntos a un paquete `<respaldo>-adjuntos` y los registra con hash en el manifiesto; la restauración de adjuntos verifica manifiesto/hash y falla ante conjuntos incompletos. Probado en perfil limpio.
+- **Respaldo automático previo a migraciones**: al abrir una base con esquema antiguo se genera `respaldo-previo-migracion-<marca>.db` con manifiesto antes de migrar. Probado actualizando de v8 a v10.
+- **Retención configurable**: `respaldo_retencion_automatica` (por defecto 5) depura los respaldos automáticos más antiguos; los manuales nunca se depuran.
+
+Pendiente del bloque 2: integración de interfaz para adjuntos (comandos disponibles a nivel de servicio), respaldos automáticos periódicos al trabajar, y recorrido gráfico de restauración en el ejecutable Windows.
+
+Evidencia por nivel (Linux): **Servicios y contrato IPC**: `npm test` → **120/120 en verde** (23 archivos). **Tipos**: ambas comprobaciones sin errores. **Compilación**: `tsc` + `vite build` correctos. **Ejecutable**: recorrido gráfico Windows **pendiente**.
 
 ## Bloque 1 — Operación comercial utilizable de principio a fin (implementado y probado)
 

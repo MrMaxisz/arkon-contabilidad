@@ -169,8 +169,8 @@ export function crearRevision(db: Database.Database, cotizacionId: number, respo
     const nueva = Number(info.lastInsertRowid);
     db.prepare(
       `INSERT INTO cotizacion_linea
-       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden)
-       SELECT ?, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden
+       (cotizacion_id, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden, item_id)
+       SELECT ?, tipo, descripcion, cantidad, precio_unitario_minor, precio_con_iva, tasa_puntos_base, base_minor, iva_minor, total_minor, orden, item_id
        FROM cotizacion_linea WHERE cotizacion_id = ?`
     ).run(nueva, cotizacionId);
     registroEvento(db, responsable, 'cotizacion_revision', 'cotizacion', String(nueva), {
@@ -239,15 +239,25 @@ export function actualizarCotizacionBorrador(
 }
 
 export function aprobarCotizacion(db: Database.Database, cotizacionId: number, responsable: string): void {
+  const cliente = db
+    .prepare(
+      'SELECT p.nombre AS cliente FROM cotizacion c JOIN contraparte p ON p.id = c.contraparte_id WHERE c.id = ?'
+    )
+    .get(cotizacionId) as { cliente: string } | undefined;
+  if (!cliente) {
+    throw new ErrorCotizacion('Cotización inexistente');
+  }
   const cambiado = db
     .prepare(
-      "UPDATE cotizacion SET estado = 'aprobada', congelada = 1 WHERE id = ? AND estado = 'borrador'"
+      "UPDATE cotizacion SET estado = 'aprobada', congelada = 1, cliente_snapshot = ? WHERE id = ? AND estado = 'borrador'"
     )
-    .run(cotizacionId);
+    .run(cliente.cliente, cotizacionId);
   if (cambiado.changes === 0) {
     throw new ErrorCotizacion('Solo se aprueban cotizaciones en borrador');
   }
-  registroEvento(db, responsable, 'cotizacion_aprobada', 'cotizacion', String(cotizacionId), {});
+  registroEvento(db, responsable, 'cotizacion_aprobada', 'cotizacion', String(cotizacionId), {
+    nota: 'Instantánea documental del cliente fijada al aprobar; las líneas ya eran copia propia'
+  });
 }
 
 export function anularCotizacion(db: Database.Database, cotizacionId: number, responsable: string, motivo: string): void {
@@ -282,6 +292,7 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
   baseMinor: string;
   ivaMinor: string;
   totalMinor: string;
+  itemId: number | null;
 }> {
   const filas = db
     .prepare('SELECT * FROM cotizacion_linea WHERE cotizacion_id = ? ORDER BY orden')
@@ -316,7 +327,8 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
 export function generarHtmlCotizacion(db: Database.Database, cotizacionId: number): string {
   const cot = db
     .prepare(
-      `SELECT c.numero, c.revision, c.fecha, c.vigencia, c.estado, c.condiciones, p.nombre AS cliente
+      `SELECT c.numero, c.revision, c.fecha, c.vigencia, c.estado, c.condiciones,
+              COALESCE(c.cliente_snapshot, p.nombre) AS cliente
        FROM cotizacion c JOIN contraparte p ON p.id = c.contraparte_id WHERE c.id = ?`
     )
     .get(cotizacionId) as

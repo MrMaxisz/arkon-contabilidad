@@ -156,14 +156,14 @@ describe('traslado de líneas hacia asientos contabilizados', () => {
 });
 
 describe('ciclo de vida de la conexión en restauración', () => {
-  function contexto(rutaDb: string) {
+  async function contexto(rutaDb: string) {
     const rutas = prepararRutasDatos(path.join(dir, 'datos'));
     return crearContextoBase(rutas, rutaDb, '0.1.0-prueba');
   }
 
-  it('un rechazo previo al cierre conserva la única conexión activa', () => {
+  it('un rechazo previo al cierre conserva la única conexión activa', async () => {
     const rutaDb = path.join(dir, 'activa.db');
-    const ctx = contexto(rutaDb);
+    const ctx = await contexto(rutaDb);
     const dbOriginal = ctx.db;
     expect(() => manejarRestauracion(ctx, 'respaldo-inexistente.db')).toThrow();
     expect(ctx.db).toBe(dbOriginal);
@@ -173,7 +173,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
 
   it('la restauración exitosa deja una conexión nueva utilizable y registrada', async () => {
     const rutaDb = path.join(dir, 'activa2.db');
-    const ctx = contexto(rutaDb);
+    const ctx = await contexto(rutaDb);
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
     const dbOriginal = ctx.db;
     const resultado = manejarRestauracion(ctx, info.nombre);
@@ -194,7 +194,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
 
   it('un hash alterado rechaza la restauración sin cerrar la conexión activa', async () => {
     const rutaDb = path.join(dir, 'activa3.db');
-    const ctx = contexto(rutaDb);
+    const ctx = await contexto(rutaDb);
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
     fs.appendFileSync(path.join(ctx.rutas.respaldos, info.nombre), 'corrupcion');
     const dbOriginal = ctx.db;
@@ -208,7 +208,7 @@ describe('ciclo de vida de la conexión en restauración', () => {
 describe('catálogo de respaldos visible', () => {
   it('el listado descubre copias desde el disco, incluso tras restaurar una base sin historial', async () => {
     const rutaDb = path.join(dir, 'activa4.db');
-    const ctx = crearContextoBase(prepararRutasDatos(path.join(dir, 'datos4')), rutaDb, '0.1.0-prueba');
+    const ctx = await crearContextoBase(prepararRutasDatos(path.join(dir, 'datos4')), rutaDb, '0.1.0-prueba');
     const info = await crearRespaldo(ctx.db, ctx.rutas.respaldos, '0.1.0-prueba');
     manejarRestauracion(ctx, info.nombre);
     const lista = descubrirRespaldos(ctx.rutas.respaldos);
@@ -216,7 +216,7 @@ describe('catálogo de respaldos visible', () => {
     expect(lista.some(r => r.nombre === info.nombre)).toBe(true);
 
     const rutaLimpia = path.join(dir, 'limpia.db');
-    const ctxLimpio = crearContextoBase(prepararRutasDatos(path.join(dir, 'datos5')), rutaLimpia, '0.1.0-prueba');
+    const ctxLimpio = await crearContextoBase(prepararRutasDatos(path.join(dir, 'datos5')), rutaLimpia, '0.1.0-prueba');
     const listaLimpia = descubrirRespaldos(ctxLimpio.rutas.respaldos);
     expect(listaLimpia.some(r => r.nombre === info.nombre)).toBe(false);
     const externa = path.join(ctxLimpio.rutas.respaldos, info.nombre);

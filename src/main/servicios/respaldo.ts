@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { registroEvento } from './bitacora';
+import { copiarAdjuntosRespaldo, restaurarAdjuntosRespaldo, retencionRespaldosAutomaticos } from './adjuntos';
 import type { InfoRespaldo as InfoRespaldoContrato } from '../../shared/contratos';
 import { versionEsquemaActual } from '../db/aplicarMigraciones';
 
@@ -32,7 +33,8 @@ function verificarIntegridad(rutaDb: string): void {
 export async function crearRespaldo(
   db: Database.Database,
   dirRespaldos: string,
-  versionApp: string
+  versionApp: string,
+  dirAdjuntos?: string
 ): Promise<InfoRespaldo> {
   fs.mkdirSync(dirRespaldos, { recursive: true });
   const marca = new Date().toISOString().replace(/[:.]/g, '-');
@@ -44,9 +46,21 @@ export async function crearRespaldo(
   const hash = hashArchivo(temporal);
   fs.renameSync(temporal, destino);
   const version = versionEsquemaActual();
+  const adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(dirAdjuntos, `${destino}-adjuntos`) : [];
   fs.writeFileSync(
     `${destino}.manifest.json`,
-    JSON.stringify({ nombre, hashSha256: hash, versionApp, versionEsquema: version, creadoEn: new Date().toISOString() }, null, 2),
+    JSON.stringify(
+      {
+        nombre,
+        hashSha256: hash,
+        versionApp,
+        versionEsquema: version,
+        creadoEn: new Date().toISOString(),
+        adjuntos
+      },
+      null,
+      2
+    ),
     'utf8'
   );
   const info = db
@@ -155,11 +169,17 @@ export function restaurarRespaldo(
     throw new ErrorRespaldo('El hash del respaldo no coincide con el registrado; rechazado');
   }
   const rutaManifiesto = `${rutaRespaldo}.manifest.json`;
+  let adjuntosManifiesto: Array<{ rutaRelativa: string; hashSha256: string }> = [];
   if (fs.existsSync(rutaManifiesto)) {
-    const manifiesto = JSON.parse(fs.readFileSync(rutaManifiesto, 'utf8')) as { nombre?: string; hashSha256?: string };
+    const manifiesto = JSON.parse(fs.readFileSync(rutaManifiesto, 'utf8')) as {
+      nombre?: string;
+      hashSha256?: string;
+      adjuntos?: Array<{ rutaRelativa: string; hashSha256: string }>;
+    };
     if (manifiesto.nombre !== nombreRespaldo || manifiesto.hashSha256 !== hash) {
       throw new ErrorRespaldo('El manifiesto del respaldo no coincide con el archivo; restauración rechazada');
     }
+    adjuntosManifiesto = manifiesto.adjuntos ?? [];
   } else if (!registro) {
     throw new ErrorRespaldo('Respaldo sin manifiesto ni registro previo; restauración rechazada');
   }

@@ -191,7 +191,7 @@ export default function Cotizaciones() {
                     itemId: itemId || undefined,
                     tipo: item ? (item.tipo as 'servicio' | 'material') : l.tipo,
                     descripcion: item ? item.nombre : l.descripcion,
-                    precioUnitario: item && item.precioVentaMinor ? item.precioVentaMinor : l.precioUnitario
+                    precioUnitario: item ? (item.precioVentaMinor ?? '') : l.precioUnitario
                   };
                   setLineas(copia);
                 }}

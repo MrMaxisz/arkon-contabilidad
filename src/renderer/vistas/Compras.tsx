@@ -197,7 +197,7 @@ export default function Compras() {
                     ...l,
                     itemId: itemId || undefined,
                     descripcion: item ? item.nombre : l.descripcion,
-                    precioUnitario: item && item.precioCostoMinor ? item.precioCostoMinor : l.precioUnitario
+                    precioUnitario: item ? (item.precioCostoMinor ?? '') : l.precioUnitario
                   };
                   setLineas(copia);
                 }}

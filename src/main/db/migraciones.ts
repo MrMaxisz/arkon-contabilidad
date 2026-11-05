@@ -441,5 +441,26 @@ CREATE TABLE item_catalogo (
 ALTER TABLE cotizacion_linea ADD COLUMN item_id INTEGER REFERENCES item_catalogo(id);
 ALTER TABLE compra_linea ADD COLUMN item_id INTEGER REFERENCES item_catalogo(id);
 `
+  },
+  {
+    version: 10,
+    nombre: 'snapshot_documental_y_adjuntos',
+    sql: `
+ALTER TABLE cotizacion ADD COLUMN cliente_snapshot TEXT;
+
+CREATE TABLE adjunto (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entidad TEXT NOT NULL,
+  entidad_id TEXT NOT NULL,
+  nombre_original TEXT NOT NULL,
+  ruta_relativa TEXT NOT NULL,
+  hash_sha256 TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO configuracion (clave, valor, fuente, vigencia)
+SELECT 'respaldo_retencion_automatica', '5', 'Política operativa editable por el propietario', NULL
+WHERE NOT EXISTS (SELECT 1 FROM configuracion WHERE clave = 'respaldo_retencion_automatica');
+`
   }
 ];

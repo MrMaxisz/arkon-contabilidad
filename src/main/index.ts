@@ -17,10 +17,10 @@ function rutaDatosUsuario(): string {
 
 let ctx: ContextoApp | null = null;
 
-function crearContexto(): ContextoApp {
+async function crearContexto(): Promise<ContextoApp> {
   const rutas = prepararRutasDatos(rutaDatosUsuario());
   const rutaDb = path.join(rutas.datos, RUTA_BASE_DATOS);
-  const ctx = crearContextoBase(rutas, rutaDb, app.getVersion());
+  const ctx = await crearContextoBase(rutas, rutaDb, app.getVersion());
   ctx.db.prepare(
     "INSERT OR IGNORE INTO ambito (id, nombre, tipo) VALUES ('administrativo', 'ARKON · control administrativo previo a la constitución', 'administrativo')"
   ).run();
@@ -41,8 +41,8 @@ if (!obtuvoUnico) {
     }
   });
 
-  app.whenReady().then(() => {
-    ctx = crearContexto();
+  app.whenReady().then(async () => {
+    ctx = await crearContexto();
     const ventana = new BrowserWindow({
       width: 1280,
       height: 800,
