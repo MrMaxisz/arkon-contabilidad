@@ -8,6 +8,7 @@ interface Vigencia {
   desde: string;
   hasta: string | null;
   inscritoIva: boolean;
+  obligacionF14: boolean;
   descripcion: string | null;
   fuente: string | null;
 }
@@ -114,6 +115,7 @@ export default function Impuestos() {
   const [f14Sector, setF14Sector] = useState('');
   const [f14CostoGasto, setF14CostoGasto] = useState('');
   const [f14Nomina, setF14Nomina] = useState('');
+  const [f14PersonaNatural, setF14PersonaNatural] = useState('');
   const [f14Cargando, setF14Cargando] = useState(false);
   const consultaF14 = useRef(0);
   const [f14Responsable, setF14Responsable] = useState('');
@@ -162,6 +164,7 @@ export default function Impuestos() {
   const [desde, setDesde] = useState(fechaLocalElSalvador());
   const [hasta, setHasta] = useState('');
   const [inscritoIva, setInscritoIva] = useState(false);
+  const [obligacionF14, setObligacionF14] = useState(false);
   const [cerrandoId, setCerrandoId] = useState<number | null>(null);
   const [cierreFecha, setCierreFecha] = useState(fechaLocalElSalvador());
   const [cierreMotivo, setCierreMotivo] = useState('');
@@ -220,7 +223,7 @@ export default function Impuestos() {
     e.preventDefault();
     setMensaje(null);
     try {
-      await api().invocar('vigencia:crear', { desde, hasta: hasta || undefined, inscritoIva, fuente, responsable });
+      await api().invocar('vigencia:crear', { desde, hasta: hasta || undefined, inscritoIva, obligacionF14, fuente, responsable });
       setMensaje({ texto: 'Vigencia registrada. No recalcula el historial ni atribuye operaciones anteriores.', tipo: 'ok' });
       cargar();
     } catch (err) {
@@ -297,6 +300,7 @@ export default function Impuestos() {
           <label>Vigente desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} required /></label>
           <label>Hasta (opcional)<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
           <label><input type="checkbox" checked={inscritoIva} onChange={e => setInscritoIva(e.target.checked)} /> Inscrito en IVA desde esa fecha</label>
+          <label><input type="checkbox" checked={obligacionF14} onChange={e => setObligacionF14(e.target.checked)} /> Obligación F-14 desde esa fecha</label>
           <label style={{ flex: 2 }}>Fuente oficial<input value={fuente} onChange={e => setFuente(e.target.value)} placeholder="Referencia de la inscripción" /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
           <button className="primario" type="submit">Registrar vigencia</button>
@@ -328,13 +332,14 @@ export default function Impuestos() {
         <p className="vacio">Sin vigencias registradas: régimen administrativo previo a la constitución.</p>
       ) : (
         <table>
-          <thead><tr><th>Desde</th><th>Hasta</th><th>Inscrito IVA</th><th>Fuente</th></tr></thead>
+          <thead><tr><th>Desde</th><th>Hasta</th><th>Inscrito IVA</th><th>Obligación F-14</th><th>Fuente</th></tr></thead>
           <tbody>
             {vigencias.map(v => (
               <tr key={v.id}>
                 <td>{v.desde}</td>
                 <td>{v.hasta ?? 'Abierta'}</td>
                 <td>{v.inscritoIva ? 'Sí' : 'No'}</td>
+                <td>{v.obligacionF14 ? 'Sí' : 'No'}</td>
                 <td>{v.fuente ?? '—'}</td>
                 <td>
                   {v.hasta === null && (
@@ -765,6 +770,7 @@ export default function Impuestos() {
             sector: f14Sector,
             tipoCostoGasto: f14CostoGasto,
             involucraNomina: f14Nomina === 'si',
+            personaNatural: f14PersonaNatural === 'si',
             responsable: f14Responsable,
             motivo: f14Motivo
           });
@@ -789,6 +795,13 @@ export default function Impuestos() {
               <option value="">— Seleccione —</option>
               <option value="1">1 Domiciliado</option>
               <option value="2">2 No domiciliado</option>
+            </select>
+          </label>
+          <label>¿Persona natural?
+            <select value={f14PersonaNatural} onChange={e => setF14PersonaNatural(e.target.value)} required>
+              <option value="">— Seleccione —</option>
+              <option value="si">Sí (puede usar DUI desde 2022)</option>
+              <option value="no">No (NIT obligatorio)</option>
             </select>
           </label>
           <label>País (B)<input value={f14Pais} onChange={e => setF14Pais(e.target.value)} maxLength={4} required /></label>
@@ -886,6 +899,7 @@ export default function Impuestos() {
         sector_f14: string | null;
         tipo_costo_gasto_f14: string | null;
         involucra_nomina: number | null;
+        persona_natural: number | null;
       };
       if (consultaF14.current !== numeroConsulta) {
         return;
@@ -900,6 +914,7 @@ export default function Impuestos() {
       setF14Sector(r.sector_f14 ?? '');
       setF14CostoGasto(r.tipo_costo_gasto_f14 ?? '');
       setF14Nomina(r.involucra_nomina === null ? '' : r.involucra_nomina === 1 ? 'si' : 'no');
+      setF14PersonaNatural(r.persona_natural === null ? '' : r.persona_natural === 1 ? 'si' : 'no');
     } catch (err) {
       if (consultaF14.current === numeroConsulta) {
         setF14Id(0);

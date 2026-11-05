@@ -27,6 +27,70 @@ const CATALOGO_U_F14 = new Set(['1', '2', '3', '4', '9']);
 const CATALOGO_V_F14 = new Set(['1', '2', '3', '4', '5', '6', '7', '9']);
 const DOMICILIADO_F14 = new Set(['1', '2']);
 
+// Catálogo versionado de códigos de ingreso del F-14 v16 (APÉNDICE, páginas 17-18 del manual oficial).
+// El apéndice es una tabla de imagen no extraíble como texto; este catálogo contiene los códigos
+// verificados contra el manual y las reproducciones del auditor: 01 (servicios permanentes con
+// subordinación — nota página 7), 42 (ordinario) y 47 (nota especial art. 123 inciso tercero, página 18).
+// Cualquier código fuera del catálogo se rechaza como no verificado hasta ampliación documentada.
+const CODIGOS_INGRESO_F14_V1 = new Set(['01', '42', '47']);
+const CODIGOS_INGRESO_BLOQUEADOS_F14 = new Map<string, string>([
+  ['01', 'servicios permanentes con subordinación o dependencia laboral: requiere captura de nómina (columnas J-R), sin soporte'],
+  ['47', 'nota especial del art. 123 inciso tercero del Código Tributario (página 18): identidad particular no soportada']
+]);
+
+function errorCodigoIngresoF14(codigo: string): string | null {
+  if (!CODIGOS_INGRESO_F14_V1.has(codigo)) {
+    return `código de ingreso ${codigo} no verificado en el apéndice oficial del F-14 v16 (páginas 17-18); rechazado hasta ampliación documentada del catálogo`;
+  }
+  const bloqueado = CODIGOS_INGRESO_BLOQUEADOS_F14.get(codigo);
+  if (bloqueado) {
+    return `código de ingreso ${codigo}: ${bloqueado}`;
+  }
+  return null;
+}
+
+// Reglas de identidad del F-14 v16 (páginas 3-4): DUI solo para PERSONA NATURAL DOMICILIADA desde
+// enero 2022; antes de 2022 el NIT/NIF es obligatorio y el DUI va vacío. NIF de no domiciliado:
+// máximo 14 caracteres (formato extranjero), no se imponen 14 dígitos nacionales.
+function errorIdentidadF14(fecha: string, domiciliado: string, personaNatural: boolean, nit: string, dui: string): string | null {
+  const antesDe2022 = fecha < '2022-01-01';
+  if (antesDe2022) {
+    if (dui) {
+      return 'para períodos anteriores a enero 2022 el DUI va vacío y el NIT/NIF es obligatorio';
+    }
+    if (!nit) {
+      return 'para períodos anteriores a enero 2022 el NIT/NIF es obligatorio';
+    }
+    return null;
+  }
+  if (dui && (domiciliado !== '1' || !personaNatural)) {
+    return 'el DUI solo corresponde a persona natural domiciliada a partir de enero 2022';
+  }
+  if (domiciliado === '1' && personaNatural) {
+    if (dui && nit) {
+      return 'identificación exclusiva: complete DUI (E) o NIT (D), no ambos';
+    }
+    if (!dui && !nit) {
+      return 'persona natural domiciliada: complete DUI (9) o NIT (14)';
+    }
+    return null;
+  }
+  if (!nit) {
+    return domiciliado === '1'
+      ? 'persona jurídica domiciliada: el NIT (14 dígitos) es obligatorio y el DUI va vacío'
+      : 'sujeto no domiciliado: el NIF (máximo 14 caracteres) es obligatorio y el DUI va vacío';
+  }
+  return null;
+}
+
+function nitDomiciliadoValido(nit: string): boolean {
+  return /^\d{14}$/.test(nit);
+}
+
+function nifExtranjeroValido(nif: string): boolean {
+  return nif.length > 0 && nif.length <= 14 && !/[-|]/.test(nif);
+}
+
 // Matriz conjunta F-14 v16 (página 6): T2 (gasto) → V 1-3 con cualquier U 1-4;
 // T1 (costo) + U1 (industria) → V 4-7; T1 + U2/3/4 → V 4-5; para S 1-4.
 function combinacionF14Valida(t: string, u: string, v: string): boolean {
@@ -75,6 +139,7 @@ export interface EntradaMetadatosRetencion {
   sector: string;
   tipoCostoGasto: string;
   involucraNomina: boolean;
+  personaNatural: boolean;
 }
 
 export function completarMetadatosRetencion(
@@ -98,20 +163,24 @@ export function completarMetadatosRetencion(
   }
   const nit = entrada.nitNif?.replace(/[-|]/g, '') ?? '';
   const dui = entrada.dui?.replace(/[-|]/g, '') ?? '';
-  if (nit && !/^\d{14}$/.test(nit)) {
-    throw new ErrorF14('NIT/NIF inválido: 14 dígitos sin guiones (columna D)');
+  if (typeof entrada.personaNatural !== 'boolean') {
+    throw new ErrorF14('Debe declararse si el sujeto retenido es persona natural (reglas DUI, páginas 3-4)');
+  }
+  if (nit && entrada.domiciliado === '1' && !nitDomiciliadoValido(nit)) {
+    throw new ErrorF14('NIT de domiciliado inválido: 14 dígitos sin guiones (columna D)');
+  }
+  if (nit && entrada.domiciliado === '2' && !nifExtranjeroValido(nit)) {
+    throw new ErrorF14('NIF de no domiciliado inválido: máximo 14 caracteres sin guiones ni pleca (columna D)');
   }
   if (dui && !/^\d{9}$/.test(dui)) {
     throw new ErrorF14('DUI inválido: 9 dígitos sin guiones (columna E)');
   }
-  if (nit && dui) {
-    throw new ErrorF14('Identificación exclusiva: complete NIT/NIF (D) o DUI (E), no ambos');
-  }
-  if (!nit && !dui) {
-    throw new ErrorF14('La retención exige NIT/NIF (14) o DUI (9) del sujeto retenido');
-  }
   if (!/^\d{2}$/.test(entrada.codigoIngreso)) {
     throw new ErrorF14('Código de ingreso inválido: 2 dígitos del apéndice del F-14 (columna F)');
+  }
+  const errorCodigo = errorCodigoIngresoF14(entrada.codigoIngreso);
+  if (errorCodigo) {
+    throw new ErrorF14(errorCodigo);
   }
   if (!CATALOGO_S_F14.has(entrada.tipoOperacion)) {
     throw new ErrorF14('Tipo de operación inválido: catálogo 1-4 (o 9 por nota 9) (columna S)');
@@ -132,8 +201,8 @@ export function completarMetadatosRetencion(
   if (typeof entrada.involucraNomina !== 'boolean') {
     throw new ErrorF14('Debe declararse si la retención involucra nómina (columnas J-R del F-14)');
   }
-  const ret = db.prepare('SELECT id, folio, estado FROM retencion WHERE id = ?').get(retencionId) as
-    | { id: number; folio: string; estado: string }
+  const ret = db.prepare('SELECT id, folio, estado, fecha_operacion AS fecha FROM retencion WHERE id = ?').get(retencionId) as
+    | { id: number; folio: string; estado: string; fecha: string }
     | undefined;
   if (!ret) {
     throw new ErrorF14(`Retención inexistente: ${retencionId}`);
@@ -141,10 +210,15 @@ export function completarMetadatosRetencion(
   if (ret.estado !== 'registrada') {
     throw new ErrorF14(`Solo se completan metadatos de retenciones registradas: ${ret.folio}`);
   }
+  const errorIdentidad = errorIdentidadF14(ret.fecha, entrada.domiciliado, entrada.personaNatural, nit, dui);
+  if (errorIdentidad) {
+    throw new ErrorF14(errorIdentidad);
+  }
   const tx = db.transaction(() => {
     db.prepare(
       `UPDATE retencion SET domiciliado = ?, codigo_pais = ?, nit_nif = ?, dui = ?, codigo_ingreso = ?,
-       tipo_operacion_f14 = ?, clasificacion_f14 = ?, sector_f14 = ?, tipo_costo_gasto_f14 = ?, involucra_nomina = ?
+       tipo_operacion_f14 = ?, clasificacion_f14 = ?, sector_f14 = ?, tipo_costo_gasto_f14 = ?, involucra_nomina = ?,
+       persona_natural = ?
        WHERE id = ?`
     ).run(
       entrada.domiciliado,
@@ -157,6 +231,7 @@ export function completarMetadatosRetencion(
       entrada.sector,
       entrada.tipoCostoGasto,
       entrada.involucraNomina ? 1 : 0,
+      entrada.personaNatural ? 1 : 0,
       retencionId
     );
     registroEvento(db, responsable, 'metadatos_f14_completados', 'retencion', String(retencionId), {
@@ -185,6 +260,7 @@ interface RetencionF14 {
   sector_f14: string | null;
   tipo_costo_gasto_f14: string | null;
   involucra_nomina: number | null;
+  persona_natural: number | null;
 }
 
 function retencionesDelMes(db: Database, mes: string): RetencionF14[] {
@@ -193,7 +269,7 @@ function retencionesDelMes(db: Database, mes: string): RetencionF14[] {
     .prepare(
       `SELECT r.id, r.folio, r.fecha_operacion AS fecha, r.base_minor, r.monto_minor, c.nombre,
               r.domiciliado, r.codigo_pais, r.nit_nif, r.dui, r.codigo_ingreso,
-              r.tipo_operacion_f14, r.clasificacion_f14, r.sector_f14, r.tipo_costo_gasto_f14, r.involucra_nomina
+              r.tipo_operacion_f14, r.clasificacion_f14, r.sector_f14, r.tipo_costo_gasto_f14, r.involucra_nomina, r.persona_natural
        FROM retencion r
        JOIN contraparte c ON c.id = r.contraparte_id
        WHERE r.estado = 'registrada' AND r.tipo = 'efectuada'
@@ -211,14 +287,26 @@ function faltantesRetencion(db: Database, r: RetencionF14, mes: string): string[
   if (!/^\d{4}$/.test(r.codigo_pais ?? '')) {
     faltantes.push('código de país de 4 dígitos (columna B)');
   }
-  if ((r.nit_nif ?? '') && (r.dui ?? '')) {
-    faltantes.push('identificación exclusiva: NIT/NIF (D) o DUI (E), no ambos');
+  const errorIdentidad = errorIdentidadF14(r.fecha, r.domiciliado ?? '', r.persona_natural === 1, r.nit_nif ?? '', r.dui ?? '');
+  if (errorIdentidad) {
+    faltantes.push(errorIdentidad);
   }
-  if (!/^\d{14}$/.test(r.nit_nif ?? '') && !/^\d{9}$/.test(r.dui ?? '')) {
-    faltantes.push('NIT/NIF (14) o DUI (9) del sujeto retenido (columnas D/E)');
+  if ((r.nit_nif ?? '') && r.domiciliado === '1' && !nitDomiciliadoValido(r.nit_nif ?? '')) {
+    faltantes.push('NIT de domiciliado: 14 dígitos sin guiones (columna D)');
+  }
+  if ((r.nit_nif ?? '') && r.domiciliado === '2' && !nifExtranjeroValido(r.nit_nif ?? '')) {
+    faltantes.push('NIF de no domiciliado: máximo 14 caracteres (columna D)');
+  }
+  if (r.persona_natural === null) {
+    faltantes.push('declaración de si el sujeto retenido es persona natural (reglas DUI, páginas 3-4)');
   }
   if (!/^\d{2}$/.test(r.codigo_ingreso ?? '')) {
     faltantes.push('código de ingreso de 2 dígitos del apéndice (columna F)');
+  } else {
+    const errorCodigo = errorCodigoIngresoF14(r.codigo_ingreso ?? '');
+    if (errorCodigo) {
+      faltantes.push(errorCodigo);
+    }
   }
   if (mes >= '2024-02') {
     if (!CATALOGO_S_F14.has(r.tipo_operacion_f14 ?? '')) {
@@ -263,7 +351,7 @@ export function leerMetadatosRetencion(db: Database, retencionId: number) {
       `SELECT r.id, r.folio, r.fecha_operacion AS fecha, c.nombre AS contraparte,
               r.domiciliado, r.codigo_pais, r.nit_nif, r.dui, r.codigo_ingreso,
               r.tipo_operacion_f14, r.clasificacion_f14, r.sector_f14, r.tipo_costo_gasto_f14,
-              r.involucra_nomina
+              r.involucra_nomina, r.persona_natural
        FROM retencion r JOIN contraparte c ON c.id = r.contraparte_id
        WHERE r.id = ?`
     )

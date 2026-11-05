@@ -16,6 +16,7 @@ export interface VigenciaFiscal {
   inscritoIva: boolean;
   descripcion: string | null;
   fuente: string | null;
+  obligacionF14: boolean;
 }
 
 export function crearVigencia(
@@ -54,13 +55,14 @@ export function crearVigencia(
 
 export function listarVigencias(db: Database.Database): VigenciaFiscal[] {
   const filas = db
-    .prepare('SELECT id, desde, hasta, inscrito_iva, descripcion, fuente FROM vigencia_fiscal ORDER BY desde')
-    .all() as Array<{ id: number; desde: string; hasta: string | null; inscrito_iva: number; descripcion: string | null; fuente: string | null }>;
+    .prepare('SELECT id, desde, hasta, inscrito_iva, obligacion_f14, descripcion, fuente FROM vigencia_fiscal ORDER BY desde')
+    .all() as Array<{ id: number; desde: string; hasta: string | null; inscrito_iva: number; obligacion_f14: number; descripcion: string | null; fuente: string | null }>;
   return filas.map(f => ({
     id: f.id,
     desde: f.desde,
     hasta: f.hasta,
     inscritoIva: f.inscrito_iva === 1,
+    obligacionF14: f.obligacion_f14 === 1,
     descripcion: f.descripcion,
     fuente: f.fuente
   }));

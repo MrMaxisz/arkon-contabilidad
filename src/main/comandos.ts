@@ -86,6 +86,13 @@ function texto(p: Record<string, unknown>, campo: string, requerido = true): str
   return v;
 }
 
+function exigirBooleano(p: Record<string, unknown>, campo: string): boolean {
+  if (typeof p[campo] !== 'boolean') {
+    throw new ErrorValidacion(`Campo requerido (booleano): ${campo}`);
+  }
+  return p[campo] as boolean;
+}
+
 function entero(p: Record<string, unknown>, campo: string): number {
   const v = p[campo];
   if (!Number.isInteger(v) || (v as number) <= 0) {
@@ -789,7 +796,8 @@ export const comandos: Record<string, Manejador> = {
         clasificacion: texto(p, 'clasificacion'),
         sector: texto(p, 'sector'),
         tipoCostoGasto: texto(p, 'tipoCostoGasto'),
-        involucraNomina: p.involucraNomina === true
+        involucraNomina: exigirBooleano(p, 'involucraNomina'),
+        personaNatural: exigirBooleano(p, 'personaNatural')
       },
       texto(p, 'responsable'),
       texto(p, 'motivo')

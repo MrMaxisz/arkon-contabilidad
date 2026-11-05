@@ -157,3 +157,60 @@ describe('auditoría 41: formulario F-14 sin contaminación de identidad entre r
     expect(guardarAnexoF14Mock).toHaveBeenCalledWith('2026-11');
   });
 });
+
+describe('auditoría 42: obligación F-14 en el recorrido de vigencias', () => {
+  it('el formulario captura obligacionF14, lo envía y la tabla muestra su estado', async () => {
+    invocar.mockImplementation((comando: string, datos?: unknown) => {
+      switch (comando) {
+        case 'contraparte:listar':
+          return Promise.resolve([]);
+        case 'retencion:listar':
+          return Promise.resolve([]);
+        case 'vigencia:listar':
+          return Promise.resolve([
+            { id: 1, desde: '2026-01-01', hasta: null, inscritoIva: false, obligacionF14: true, descripcion: 'hipotética autorizada sin IVA', fuente: 'prueba sintética' }
+          ]);
+        case 'vigencia:crear':
+          return Promise.resolve({ id: 2 });
+        case 'fiscal:politicas':
+          return Promise.resolve({ anticipoHechoGenerador: 'pendiente', ivaComprasCreditoFiscal: false, perfilIvaInscritoConfig: false });
+        case 'fiscal:libroVentas':
+        case 'fiscal:libroCompras':
+          return Promise.resolve({ filas: [], baseMinor: '0.00', ivaMinor: '0.00', totalMinor: '0.00' });
+        case 'fiscal:conciliar':
+          return Promise.resolve({
+            mes: '2026-11', debitoLibroMinor: '0.00', debitoMayorMinor: '0.00', conciliaDebito: true,
+            ivaDocumentadoComprasMinor: '0.00', creditoAcreditableLibroMinor: '0.00', creditoMayorMinor: '0.00', conciliaCredito: true
+          });
+        case 'reporte:estadoResultados':
+          return Promise.resolve({ mes: '2026-11', filas: [], ingresosMinor: '0.00', costosGastosMinor: '0.00', resultadoMinor: '0.00' });
+        case 'documento:listarVinculos':
+          return Promise.resolve({ venta: [], compra: [], cotizacion: [], proyecto: [] });
+        default:
+          return Promise.resolve([]);
+      }
+    });
+
+    render(<Impuestos />);
+    await waitFor(() => screen.getByText(/Obligación F-14 desde esa fecha/));
+
+    // La vigencia hipotética autorizada sin IVA se muestra: No en IVA, Sí en Obligación F-14.
+    const filaVigencia = screen.getByText('2026-01-01').closest('tr')!;
+    expect(within(filaVigencia).getAllByText('No').length).toBeGreaterThan(0);
+    expect(filaVigencia.textContent).toContain('Sí');
+
+    // Crear una vigencia con obligación F-14 marcada: el payload la envía.
+    const checkboxF14 = screen.getByLabelText(/Obligación F-14 desde esa fecha/) as HTMLInputElement;
+    fireEvent.click(checkboxF14);
+    const desde = screen.getByLabelText(/Vigente desde\n?/) as HTMLInputElement;
+    fireEvent.change(desde, { target: { value: '2027-01-01' } });
+    const resp = screen.getAllByLabelText(/Responsable\n?/)[0] as HTMLInputElement;
+    fireEvent.change(resp, { target: { value: 'p' } });
+    fireEvent.click(screen.getByText(/Registrar vigencia|Guardar vigencia/));
+    await waitFor(() => {
+      const llamada = invocar.mock.calls.find(c => c[0] === 'vigencia:crear');
+      expect(llamada).toBeTruthy();
+      expect((llamada![1] as Record<string, unknown>).obligacionF14).toBe(true);
+    });
+  });
+});

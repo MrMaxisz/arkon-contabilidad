@@ -585,4 +585,11 @@ ALTER TABLE vigencia_fiscal ADD COLUMN obligacion_f14 INTEGER NOT NULL DEFAULT 0
 ALTER TABLE retencion ADD COLUMN involucra_nomina INTEGER;
 `
   },
+  {
+    version: 19,
+    nombre: 'persona_natural_retencion_f14',
+    sql: `
+ALTER TABLE retencion ADD COLUMN persona_natural INTEGER;
+`
+  },
 ];

@@ -616,3 +616,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 
 - Apéndice de códigos de ingreso del F-14 (página 17-18 del PDF de imágenes): se valida formato de 2 dígitos; la lista oficial de códigos queda como verificación pendiente antes de cualquier uso real.
 - Soporte interno anual F-11/paquete del contador, manual de usuario e instalación/actualización Windows.
+
+## Bloque auditoría 42 (booleano estricto, catálogo de ingresos, identidad por fecha y obligación F-14 en el recorrido)
+
+### Corregido (hallazgos de la auditoría 42)
+
+- **P1-1 Booleano estricto por comando**: `exigirBooleano` en comandos.ts valida `typeof === 'boolean'` ANTES de convertir; `involucraNomina`/`personaNatural` ausentes, null o cadena fallan con 'Campo requerido (booleano)' sin mutar la retención. Prueba por despachar real: las tres omisiones rechazan y la fila queda con `involucra_nomina`/`persona_natural` NULL (sin persistir un false deducido).
+- **P1-2 Catálogo de ingresos versionado** (apéndice p17-18 del F-14 v16): `CODIGOS_INGRESO_F14_V1` con los códigos verificados — 42 ordinario admitido; 01 (servicios permanentes con subordinación, nota p7) y 47 (nota especial art. 123 inciso tercero, p18) bloqueados explícitamente por alcance; cualquier otro (99) rechazado como 'no verificado en el apéndice oficial'. Reglas compartidas guardar/diagnosticar/exportar. Impedimento documentado en el código: el apéndice es tabla de imagen no extraíble como texto; el catálogo se amplía solo con verificación documentada. Pruebas: 99/01/47 rechazados, 42 admitido; mutación a 47 bloquea diagnóstico y exportación.
+- **P1-3 Identidad por fecha/domicilio/naturaleza** (páginas 3-4): nueva declaración explícita `personaNatural` (migración v19, vía auditada, nunca inferida del nombre). Reglas: DUI solo para persona natural DOMICILIADA desde 2022-01 (no domiciliado con DUI → rechazado, tu reproducción); antes de 2022-01 el NIT/NIF es obligatorio y el DUI va vacío (domiciliado con DUI en 2021 → rechazado); persona natural domiciliada: DUI o NIT exclusivos; jurídica domiciliada: NIT 14 dígitos; no domiciliado: NIF extranjero de MÁXIMO 14 caracteres (alfanumérico, sin guiones — no se imponen 14 dígitos nacionales). Pruebas de los tres casos rechazados y del NIF extranjero 'AB12345678' admitido.
+- **P2-4 Obligación F-14 en el recorrido real**: `vigencia:listar` devuelve `obligacionF14`; el formulario de vigencia de Impuestos captura el checkbox 'Obligación F-14 desde esa fecha' (sin preselección) y lo envía en `vigencia:crear`; la tabla muestra la columna con su estado. Prueba de componente: vigencia hipotética autorizada sin IVA visible (No/Sí) y creación con el flag en el payload. El caso administrativo sin autorización bloqueado ya está probado a nivel servicio (auditoría 41) y se mantiene.
+
+### Comprobación
+
+- `npm run typecheck` (main + preload + renderer) → sin errores.
+- `npx vitest run` → 221/221 (49 archivos).
+- `npm run build` → OK; `dist/preload/index.js` autocontenido.
+
+### Pendiente (siguiente bloque, no cerrado en esta entrega)
+
+- Soporte interno anual F-11 (conciliación anual trazable, datos faltantes explícitos, exportación local para el contador) — sin CSV oficial ni tasas inventadas.
+- Manual de usuario e instalación/actualización Windows; QA gráfico/NSIS/offline real.
+- Ampliación del catálogo de códigos de ingreso del F-14 con la verificación visual del apéndice que posee el auditor.
