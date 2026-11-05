@@ -390,3 +390,30 @@ Evidencia de la primera ronda: 27/27 pruebas en verde en su momento. Los recorri
 - Estado periódico: refresco tras guardado y fallo reciente visible; próxima ejecución.
 - Selector de documento existente en adjuntos (hoy folio libre).
 - Paquete fiscal (F-07/F-14/F-11) contra especificación oficial; instalador NSIS y recorridos reales en Windows offline.
+
+## Bloque auditoría 32 (exportación con corte, respuestas tardías, validación de calendario, apertura y cierre de ejercicio)
+
+### Corregido (P2 de la auditoría 32)
+
+- **Exportación transporta corte/selección**: contrato extendido `{tipo, alcance: 'resumen'|'detalle', contraparteId?, hastaFecha?}` en toda la cadena (`Reportes.tsx → api.ts → preload → arkon:guardarCsvAuxiliar → exportarCsvAuxiliarDetalle`). El detalle exportado deriva del MISMO modelo (`auxiliarContraparteDetalle`) con el mismo corte mostrado; los botones de resumen se identifican como "actual". Prueba: venta 100.00 noviembre + cobro 60.00 diciembre → corte noviembre exporta 100.00 sin 60.00; exportación actual incluye 60.00.
+- **Respuestas tardías**: `Reportes.tsx` usa token de consulta (`consultaDetalle`); las respuestas de una consulta anterior se ignoran; el detalle se invalida al cambiar tipo/contraparte/corte y ante error no queda saldo viejo. Prueba de componente con respuestas invertidas (cliente1 pendiente → llega después de seleccionar cliente2) y prueba de error con limpieza.
+- **Validación de calendario de `hastaFecha`**: `auxiliarContraparteDetalle` aplica `validarFechaCalendario` antes de leer (cubre `auxiliar:contraparteDetalle` por despachar) y la exportación de detalle valida lo mismo al guardar. Pruebas: 2026-11-31 y 2027-02-30 rechazados por despachar y por exportación.
+
+### Añadido (apertura y cierre de ejercicio)
+
+- **Apertura documentada** (`src/main/servicios/cierre.ts`, `apertura:registrar`): fecha, concepto, referencia de soporte obligatoria, responsable, líneas con cuentas activas de movimiento, cuadre e idempotencia por operación; delega en `contabilizarAsiento` (calendario, período abierto, ámbito activo). Selector de tipo Ajuste/Apertura en la vista Ajustes.
+- **Cierre de ejercicio** (`cierre:estado`, `cierre:ejercicio`, `cierre:reabrir`): prevalidación (sin resultados → rechazo; diciembre cerrado → rechazo; cierre duplicado → rechazo), asiento que lleva las cuentas de ingreso/costo/gasto con saldo a la cuenta 3201 Resultados acumulados (parametrizado), cierre del período de diciembre vía `cerrarPeriodo`, evento auditado en bitácora. Reapertura con motivo registrada. Continuidad: las cuentas de balance arrastran saldos por el mayor sin duplicación; el siguiente ejercicio parte de períodos nuevos.
+- **Vista Cierre** (`src/renderer/vistas/Cierre.tsx`, menú en `App.tsx`): estado del ejercicio (períodos, saldos de resultados, neto, cierre existente), formulario de cierre con responsable/motivo/referencia, reapertura, mensajes de error sin estado falso. Bug corregido durante la prueba: el refresco tras cerrar borraba el mensaje de éxito.
+- **Allowlist del preload** extraída a `src/preload/comandosPermitidos.ts` (exportada), probada directamente: `apertura:registrar`, `cierre:estado`, `cierre:ejercicio`, `cierre:reabrir` permitidos.
+
+### Comprobación
+
+- `npm run typecheck` (ambas capas) → sin errores.
+- `npx vitest run` → 167/167 (36 archivos).
+- `npm run build` → OK.
+
+### Pendiente tras este bloque (declarado honestamente)
+
+- Estado periódico: refresco tras guardado/ejecución, fallo reciente visible aunque exista éxito anterior, próxima ejecución.
+- Selector de documento existente en adjuntos (hoy folio libre) y consulta del archivo desde la app.
+- Paquete fiscal (F-07/F-14/F-11) contra especificación oficial; instalador NSIS y recorridos reales en Windows offline.

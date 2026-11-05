@@ -18,6 +18,7 @@ function nuevaClave(): string {
 
 export default function Ajustes() {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [tipoAsiento, setTipoAsiento] = useState<'ajuste' | 'apertura'>('ajuste');
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [concepto, setConcepto] = useState('');
   const [referencia, setReferencia] = useState('');
@@ -48,7 +49,8 @@ export default function Ajustes() {
     setOcupado(true);
     setMensaje(null);
     try {
-      const r = (await api().invocar('ajuste:registrar', {
+      const comando = tipoAsiento === 'apertura' ? 'apertura:registrar' : 'ajuste:registrar';
+      const r = (await api().invocar(comando, {
         fechaOperacion: fecha,
         concepto,
         referencia,
@@ -58,8 +60,8 @@ export default function Ajustes() {
       })) as { folio: string; duplicado: boolean };
       setMensaje({
         texto: r.duplicado
-          ? `Operación ya registrada (idempotencia): ajuste ${r.folio}`
-          : `Ajuste ${r.folio} contabilizado con soporte «${referencia}».`,
+          ? `Operación ya registrada (idempotencia): ${tipoAsiento} ${r.folio}`
+          : `${tipoAsiento === 'apertura' ? 'Apertura' : 'Ajuste'} ${r.folio} contabilizado con soporte «${referencia}».`,
         tipo: 'ok'
       });
       setConcepto('');
@@ -80,7 +82,15 @@ export default function Ajustes() {
       <h1>Ajustes y apertura</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={registrar}>
-        <h2>Nuevo ajuste</h2>
+        <h2>Nuevo ajuste o apertura</h2>
+        <div className="fila">
+          <label>Tipo de asiento
+            <select value={tipoAsiento} onChange={e => setTipoAsiento(e.target.value as 'ajuste' | 'apertura')}>
+              <option value="ajuste">Ajuste</option>
+              <option value="apertura">Apertura de ejercicio</option>
+            </select>
+          </label>
+        </div>
         <div className="fila">
           <label>Fecha<input type="date" value={fecha} onChange={e => setFecha(e.target.value)} required /></label>
           <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>

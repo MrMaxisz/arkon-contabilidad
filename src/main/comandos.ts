@@ -10,6 +10,7 @@ import type { ContextoApp } from './servicios/restauracion';
 
 export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
+import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import {
   crearItem,
   editarItem,
@@ -576,7 +577,53 @@ export const comandos: Record<string, Manejador> = {
     anticipoHechoGenerador: politicaAnticipoHechoGenerador(ctx.db),
     ivaComprasCreditoFiscal: ivaComprasCreditoFiscal(ctx.db),
     perfilIvaInscritoConfig: perfilIvaInscrito(ctx.db)
-  })
+  }),
+  'apertura:registrar': (ctx, payload) => {
+    const p = objeto(payload);
+    const lineas = p.lineas as Array<{ cuentaCodigo: string; debeMinor: string; haberMinor: string }>;
+    if (!Array.isArray(lineas) || lineas.length < 2) {
+      throw new ErrorValidacion('La apertura requiere al menos dos líneas');
+    }
+    for (const l of lineas) {
+      if (typeof l.cuentaCodigo !== 'string' || !l.cuentaCodigo) {
+        throw new ErrorValidacion('Cada línea requiere código de cuenta');
+      }
+    }
+    return registrarApertura(ctx.db, {
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      concepto: texto(p, 'concepto'),
+      lineas,
+      referencia: texto(p, 'referencia'),
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      responsable: texto(p, 'responsable')
+    });
+  },
+  'cierre:estado': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoEjercicio(ctx.db, entero(p, 'anio'));
+  },
+  'cierre:ejercicio': (ctx, payload) => {
+    const p = objeto(payload);
+    return cerrarEjercicio(ctx.db, {
+      anio: entero(p, 'anio'),
+      responsable: texto(p, 'responsable'),
+      motivo: texto(p, 'motivo'),
+      referencia: texto(p, 'referencia'),
+      claveIdempotencia: texto(p, 'claveIdempotencia'),
+      cuentaResultadoCodigo:
+        typeof p.cuentaResultadoCodigo === 'string' && p.cuentaResultadoCodigo
+          ? p.cuentaResultadoCodigo
+          : undefined
+    });
+  },
+  'cierre:reabrir': (ctx, payload) => {
+    const p = objeto(payload);
+    return reabrirEjercicio(ctx.db, {
+      anio: entero(p, 'anio'),
+      responsable: texto(p, 'responsable'),
+      motivo: texto(p, 'motivo')
+    });
+  }
 };
 
 

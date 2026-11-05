@@ -924,6 +924,9 @@ export function auxiliarContraparteDetalle(
   contraparteId: number,
   hastaFecha?: string
 ): AuxiliarContraparteDetalle {
+  if (hastaFecha !== undefined) {
+    validarFechaCalendario(hastaFecha);
+  }
   const esCliente = tipo === 'cliente';
   const tabla = esCliente ? 'venta' : 'compra';
   const docTipo = esCliente ? 'venta' : 'compra';
@@ -1001,6 +1004,29 @@ export function exportarCsvAuxiliar(
   return {
     csv: lineas.join('\n'),
     version: 'auxiliar-interno-v1'
+  };
+}
+
+export function exportarCsvAuxiliarDetalle(
+  db: Database.Database,
+  tipo: 'cliente' | 'proveedor',
+  contraparteId: number,
+  hastaFecha?: string
+): { csv: string; version: string } {
+  const detalle = auxiliarContraparteDetalle(db, tipo, contraparteId, hastaFecha);
+  const lineas: string[] = [];
+  lineas.push('folio,fecha,concepto,total,aplicado,saldo');
+  for (const d of detalle.documentos) {
+    lineas.push(
+      [d.folio, d.fecha, d.concepto, d.totalMinor, d.aplicadoMinor, d.saldoMinor]
+        .map(escaparCsv)
+        .join(',')
+    );
+  }
+  lineas.push(`TOTAL,,,,,${detalle.saldoMinor}`);
+  return {
+    csv: lineas.join('\n'),
+    version: `auxiliar-detalle-${hastaFecha ?? 'actual'}`
   };
 }
 

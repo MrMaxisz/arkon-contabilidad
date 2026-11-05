@@ -1,77 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-const COMANDOS_PERMITIDOS = new Set([
-  'asiento:contabilizar',
-  'asiento:anular',
-  'asiento:listar',
-  'cuenta:listar',
-  'cuenta:crear',
-  'mayor:consultar',
-  'periodo:cerrar',
-  'periodo:reabrir',
-  'balance:resumen',
-  'balance:saldos',
-  'respaldo:crear',
-  'respaldo:listar',
-  'respaldo:restaurar',
-  'bitacora:listar',
-  'contraparte:crear',
-  'contraparte:listar',
-  'contraparte:editar',
-  'contraparte:cambiarEstado',
-  'cuenta:desactivar',
-  'item:crear',
-  'item:editar',
-  'item:desactivar',
-  'item:activar',
-  'item:listar',
-  'cotizacion:html',
-  'config:respaldoPeriodicoLeer',
-  'config:respaldoPeriodicoGuardar',
-  'respaldo:ejecutarPeriodico',
-  'respaldo:estadoPeriodico',
-  'auxiliar:contrapartes',
-  'auxiliar:contraparteDetalle',
-  'auxiliar:exportarCsv',
-  'ajuste:registrar',
-  'auxiliar:efectivo',
-  'adjunto:listar',
-  'cotizacion:crear',
-  'cotizacion:guardar',
-  'cotizacion:revision',
-  'cotizacion:aprobar',
-  'cotizacion:anular',
-  'cotizacion:listar',
-  'cotizacion:lineas',
-  'proyecto:crear',
-  'proyecto:listar',
-  'compra:registrar',
-  'compra:listar',
-  'venta:registrar',
-  'venta:listar',
-  'documento:anular',
-  'documento:clasificar',
-  'cobro:registrar',
-  'pago:registrar',
-  'transferencia:registrar',
-  'tesoreria:listar',
-  'tesoreria:anular',
-  'vigencia:crear',
-  'vigencia:cerrar',
-  'vigencia:listar',
-  'fiscal:libroVentas',
-  'fiscal:libroCompras',
-  'fiscal:conciliar',
-  'retencion:registrar',
-  'retencion:listar',
-  'anticipo:saldo',
-  'anticipo:aplicar',
-  'anticipo:anular',
-  'fiscal:exportarCsv',
-  'fiscal:politicas',
-  'reporte:estadoResultados',
-  'reporte:rentabilidadProyectos'
-]);
+import { COMANDOS_PERMITIDOS } from './comandosPermitidos';
+
+
 
 contextBridge.exposeInMainWorld('arkon', {
   invocar(comando: string, datos?: unknown): Promise<unknown> {
@@ -98,10 +29,27 @@ contextBridge.exposeInMainWorld('arkon', {
     }
     return ipcRenderer.invoke('arkon:registrarAdjunto', { entidad, entidadId, responsable });
   },
-  guardarCsvAuxiliar(tipo: 'cliente' | 'proveedor' | 'efectivo'): Promise<unknown> {
+  guardarCsvAuxiliar(solicitud: {
+    tipo: 'cliente' | 'proveedor' | 'efectivo';
+    alcance?: 'resumen' | 'detalle';
+    contraparteId?: number;
+    hastaFecha?: string;
+  }): Promise<unknown> {
+    const s = typeof solicitud === 'object' && solicitud !== null ? solicitud : {} as Record<string, unknown>;
+    const tipo = String((s as Record<string, unknown>).tipo);
     if (!['cliente', 'proveedor', 'efectivo'].includes(tipo)) {
       return Promise.reject(new Error('Tipo de auxiliar inválido'));
     }
-    return ipcRenderer.invoke('arkon:guardarCsvAuxiliar', { tipo });
+    const alcance = (s as Record<string, unknown>).alcance;
+    if (alcance !== undefined && !['resumen', 'detalle'].includes(String(alcance))) {
+      return Promise.reject(new Error('Alcance inválido'));
+    }
+    if (alcance === 'detalle') {
+      const contraparteId = Number((s as Record<string, unknown>).contraparteId);
+      if (!Number.isInteger(contraparteId) || contraparteId <= 0) {
+        return Promise.reject(new Error('El detalle requiere contraparte válida'));
+      }
+    }
+    return ipcRenderer.invoke('arkon:guardarCsvAuxiliar', s);
   }
 });

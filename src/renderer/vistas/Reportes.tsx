@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 
 interface FilaAuxiliar {
@@ -55,20 +55,32 @@ export default function Reportes() {
   const [contraparteId, setContraparteId] = useState(0);
   const [corte, setCorte] = useState('');
   const [detalle, setDetalle] = useState<DetalleContraparte | null>(null);
+  const consultaDetalle = useRef(0);
 
   const cargarDetalle = useCallback(() => {
+    const numeroConsulta = ++consultaDetalle.current;
     if (!contraparteId) {
       setDetalle(null);
       return;
     }
+    setDetalle(null);
     void api()
       .invocar('auxiliar:contraparteDetalle', {
         tipo: tipoDetalle,
         contraparteId,
         hastaFecha: corte || undefined
       })
-      .then(r => setDetalle(r as DetalleContraparte))
-      .catch(err => setMensaje(`Error al consultar detalle: ${String(err instanceof Error ? err.message : err)}`));
+      .then(r => {
+        if (consultaDetalle.current === numeroConsulta) {
+          setDetalle(r as DetalleContraparte);
+        }
+      })
+      .catch(err => {
+        if (consultaDetalle.current === numeroConsulta) {
+          setDetalle(null);
+          setMensaje(`Error al consultar detalle: ${String(err instanceof Error ? err.message : err)}`);
+        }
+      });
   }, [tipoDetalle, contraparteId, corte]);
 
   useEffect(() => {
@@ -82,10 +94,25 @@ export default function Reportes() {
   async function guardarCsv(tipo: 'cliente' | 'proveedor' | 'efectivo') {
     setMensaje(null);
     try {
-      const r = (await api().guardarCsvAuxiliar(tipo)) as { guardado: boolean; ruta?: string };
+      const r = (await api().guardarCsvAuxiliar({ tipo, alcance: 'resumen' })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Auxiliar guardado en ${r.ruta}.` : 'Guardado cancelado.');
     } catch (err) {
       setMensaje(`Error al guardar: ${String(err instanceof Error ? err.message : err)}`);
+    }
+  }
+
+  async function guardarCsvDetalle() {
+    setMensaje(null);
+    try {
+      const r = (await api().guardarCsvAuxiliar({
+        tipo: tipoDetalle,
+        alcance: 'detalle',
+        contraparteId,
+        hastaFecha: corte || undefined
+      })) as { guardado: boolean; ruta?: string };
+      setMensaje(r.guardado && r.ruta ? `Detalle guardado en ${r.ruta}.` : 'Guardado cancelado.');
+    } catch (err) {
+      setMensaje(`Error al guardar detalle: ${String(err instanceof Error ? err.message : err)}`);
     }
   }
 
@@ -231,9 +258,12 @@ export default function Reportes() {
 
       <h2>Exportación</h2>
       <div className="fila">
-        <button onClick={() => void guardarCsv('cliente')}>Guardar auxiliar de clientes…</button>
-        <button onClick={() => void guardarCsv('proveedor')}>Guardar auxiliar de proveedores…</button>
-        <button onClick={() => void guardarCsv('efectivo')}>Guardar auxiliar de caja y bancos…</button>
+        <button onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</button>
+        <button onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</button>
+        <button onClick={() => void guardarCsv('efectivo')}>Guardar resumen de caja y bancos (actual)…</button>
+        <button disabled={!contraparteId} onClick={() => void guardarCsvDetalle()}>
+          Guardar detalle al corte seleccionado…
+        </button>
       </div>
       <p className="menor">
         Los auxiliares derivan de asientos y aplicaciones; no almacenan saldos independientes.
