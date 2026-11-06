@@ -8,6 +8,22 @@ import { SQL_FAMILIA_CIERRE_EXCLUIDA, SQL_FAMILIA_CIERRE_PRESENTA } from './fami
 
 export class ErrorPaquete extends Error {}
 
+export type ResultadoConciliacionAnual = 'ok' | 'descuadre' | 'no-aplica';
+
+// Función PURA (auditoría 62): la conciliación estado-resultados vs ejercicio-anual SOLO aplica
+// cuando el rango cubre el año completo del corte; compara contra el TOTAL real de
+// ejercicio-anual.csv (TOTAL_ORDINARIO_ANUAL). En rango parcial escribe no-aplica, nunca ok.
+export function conciliarEstadoResultadosVsAnual(entrada: {
+  rangoCubreAnio: boolean;
+  totalEstadoResultados: bigint;
+  totalOrdinarioAnual: bigint;
+}): ResultadoConciliacionAnual {
+  if (!entrada.rangoCubreAnio) {
+    return 'no-aplica';
+  }
+  return entrada.totalEstadoResultados === entrada.totalOrdinarioAnual ? 'ok' : 'descuadre';
+}
+
 export interface ArchivoPaquete {
   nombre: string;
   contenido: string;
@@ -24,6 +40,7 @@ export interface PaqueteContador {
     proveedoresMayor: boolean;
     efectivoMayor: boolean;
     balanceCuadra: boolean;
+    estadoResultadosVsAnual: ResultadoConciliacionAnual;
   };
   limitaciones: string[];
 }
@@ -245,54 +262,6 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
       cuentasConcilian = false;
     }
   }
-  const trasladoCierre = db
-    .prepare(
-      `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS monto
-       FROM asiento_linea l
-       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
-       JOIN cuenta c ON c.id = l.cuenta_id AND c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
-       WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-         AND ${SQL_FAMILIA_CIERRE_PRESENTA}`
-    )
-    .get(desde, hasta) as { monto: number };
-  const resultadoTrasladadoCierre = -BigInt(trasladoCierre.monto);
-  const anualCriterioRango = db
-    .prepare(
-      `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS total
-       FROM asiento_linea l
-       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
-       JOIN cuenta c ON c.id = l.cuenta_id AND c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
-       WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-         AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}`
-    )
-    .get(desde, hasta) as { total: number };
-  const conciliaciones = {
-    clientesMayor: totalClientesCorte === mayorClientes,
-    proveedoresMayor: totalProveedoresCorte === -mayorProveedores,
-    efectivoMayor: totalEfectivo === mayorEfectivo,
-    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n && cuentasConcilian,
-    estadoResultadosVsAnual: netoResultados === BigInt(anualCriterioRango.total)
-  };
-  const lineasConciliaciones = [
-    `conciliacion,resultado`,
-    `auxiliar-clientes-al-corte-vs-mayor-1201,${conciliaciones.clientesMayor ? 'ok' : 'descuadre'}`,
-    `auxiliar-proveedores-al-corte-vs-mayor-2101,${conciliaciones.proveedoresMayor ? 'ok' : 'descuadre'}`,
-    `auxiliar-efectivo-al-corte-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
-    `cuentas-exportadas-vs-mayor-al-corte,${cuentasConcilian ? 'ok' : 'descuadre'}`,
-    `balance-activo-pasivo-patrimonio-resultado,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
-    `resultado-trasladado-por-cierre,${minorATexto(resultadoTrasladadoCierre)}`,
-    `estado-resultados-vs-ejercicio-anual,${conciliaciones.estadoResultadosVsAnual ? 'ok' : 'descuadre'}`,
-    `total-activo,${minorATexto(activo)}`,
-    `total-pasivo,${minorATexto(pasivo)}`,
-    `total-patrimonio,${minorATexto(patrimonio)}`,
-    `resultado-acumulado-al-corte,${minorATexto(-resultado)}`,
-    `total-clientes-al-corte,${minorATexto(totalClientesCorte)}`,
-    `mayor-1201-al-corte,${minorATexto(mayorClientes)}`,
-    `total-proveedores-al-corte,${minorATexto(totalProveedoresCorte)}`,
-    `mayor-2101-al-corte,${minorATexto(mayorProveedores)}`
-  ];
-  archivos.push({ nombre: 'conciliaciones.csv', contenido: lineasConciliaciones.join('\n') });
-
   // Soporte anual diferenciado y reconciliado: el año del corte.
   const anioCorte = Number(hasta.slice(0, 4));
   const filasAnual = db
@@ -318,6 +287,46 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
   lineasAnual.push(`TOTAL_ORDINARIO_ANUAL,,,${minorATexto(anualNeto)}`);
   lineasAnual.push(`NOTA: resultado ordinario del año ${anioCorte} (familia de cierre y sus reversos excluidos); el archivo estado-resultados.csv cubre el RANGO desde-hasta solicitado; ambos alcances son distintos y reconciliados contra el mayor.`);
   archivos.push({ nombre: 'ejercicio-anual.csv', contenido: lineasAnual.join('\n') });
+
+  const trasladoCierre = db
+    .prepare(
+      `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS monto
+       FROM asiento_linea l
+       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       JOIN cuenta c ON c.id = l.cuenta_id AND c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+       WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+         AND ${SQL_FAMILIA_CIERRE_PRESENTA}`
+    )
+    .get(desde, hasta) as { monto: number };
+  const resultadoTrasladadoCierre = -BigInt(trasladoCierre.monto);
+  const rangoCubreAnio = desde === `${anioCorte}-01-01` && hasta === `${anioCorte}-12-31`;
+  const conciliaciones = {
+    clientesMayor: totalClientesCorte === mayorClientes,
+    proveedoresMayor: totalProveedoresCorte === -mayorProveedores,
+    efectivoMayor: totalEfectivo === mayorEfectivo,
+    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n && cuentasConcilian,
+    estadoResultadosVsAnual: conciliarEstadoResultadosVsAnual({ rangoCubreAnio, totalEstadoResultados: netoResultados, totalOrdinarioAnual: anualNeto })
+  };
+  const lineasConciliaciones = [
+    `conciliacion,resultado`,
+    `auxiliar-clientes-al-corte-vs-mayor-1201,${conciliaciones.clientesMayor ? 'ok' : 'descuadre'}`,
+    `auxiliar-proveedores-al-corte-vs-mayor-2101,${conciliaciones.proveedoresMayor ? 'ok' : 'descuadre'}`,
+    `auxiliar-efectivo-al-corte-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
+    `cuentas-exportadas-vs-mayor-al-corte,${cuentasConcilian ? 'ok' : 'descuadre'}`,
+    `balance-activo-pasivo-patrimonio-resultado,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
+    `resultado-trasladado-por-cierre,${minorATexto(resultadoTrasladadoCierre)}`,
+    `estado-resultados-vs-ejercicio-anual,${conciliaciones.estadoResultadosVsAnual}`,
+    `total-activo,${minorATexto(activo)}`,
+    `total-pasivo,${minorATexto(pasivo)}`,
+    `total-patrimonio,${minorATexto(patrimonio)}`,
+    `resultado-acumulado-al-corte,${minorATexto(-resultado)}`,
+    `total-clientes-al-corte,${minorATexto(totalClientesCorte)}`,
+    `mayor-1201-al-corte,${minorATexto(mayorClientes)}`,
+    `total-proveedores-al-corte,${minorATexto(totalProveedoresCorte)}`,
+    `mayor-2101-al-corte,${minorATexto(mayorProveedores)}`
+  ];
+  archivos.push({ nombre: 'conciliaciones.csv', contenido: lineasConciliaciones.join('\n') });
+
 
   const leeme = [
     'PAQUETE INTERNO PARA EL CONTADOR — ARKON CONTABILIDAD',

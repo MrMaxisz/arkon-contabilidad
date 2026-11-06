@@ -1014,3 +1014,17 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 311/311, 0 Errors (58 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 62 (conciliación anual real, protections de empaquetado)
+
+### Corregido (hallazgos P2-1 y P2-2)
+
+- **P2-1**: `conciliarEstadoResultadosVsAnual` función PURA en paqueteContador.ts: compara el TOTAL de estado-resultados contra el TOTAL real de ejercicio-anual.csv (TOTAL_ORDINARIO_ANUAL) SOLO cuando el rango cubre el año completo del corte; en rango parcial escribe `no-aplica`, nunca ok. El bloque anual se calcula antes de las conciliaciones. Tres casos probados (ok/descuadre/no-aplica) + integración: rango parcial produce `estado-resultados-vs-ejercicio-anual,no-aplica` en conciliaciones.csv.
+- **P2-2**: `.gitignore` incluye `paquete-qa/` (prueba de guarda). `empaquetar-qa.mjs`: prueba en proceso hijo con `ARKON_VERSION_QA` inválida → exit 2 con FALLA en stderr, sin invocar electron-builder.
+- Mutaciones confirmadas localmente (restauradas): fijar `estadoResultadosVsAnual` en 'ok' → 1 fallo (no-aplica del rango parcial); quitar la validación de ARKON_VERSION_QA → 1 fallo (el proceso hijo ya no sale con 2).
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 314/314, 0 Errors (58 archivos).
+- `npm run build` → OK.

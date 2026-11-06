@@ -331,3 +331,23 @@ describe('auditoría 61: versión QA trazable en el empaquetado', () => {
     expect(produccion).not.toContain('arkonCanal');
   });
 });
+
+describe('auditoría 62: empaquetar-qa.mjs valida la versión antes de empaquetar', () => {
+  it('ARKON_VERSION_QA inválida: exit 2 en proceso hijo, sin llegar a electron-builder', () => {
+    const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+    const script = path.resolve(__dirname, '../scripts/empaquetar-qa.mjs');
+    const resultado = spawnSync(process.execPath, [script], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      env: { ...process.env, ARKON_VERSION_QA: '0.1.0' }
+    });
+    expect(resultado.status).toBe(2);
+    expect(String(resultado.stderr)).toContain('ARKON_VERSION_QA');
+    expect(String(resultado.stderr)).toContain('FALLA');
+  });
+
+  it('.gitignore excluye paquete-qa/ para no subir binarios del empaquetado QA', () => {
+    const gitignore = fs.readFileSync(path.resolve(__dirname, '../.gitignore'), 'utf8');
+    expect(gitignore).toMatch(/^paquete-qa\/$/m);
+  });
+});

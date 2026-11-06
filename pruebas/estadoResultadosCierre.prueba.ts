@@ -5,7 +5,7 @@ import path from 'path';
 import { abrirBase, prepararRutasDatos } from '../src/main/db/conexion';
 import { aplicarMigraciones } from '../src/main/db/aplicarMigraciones';
 import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
-import { generarPaqueteContador } from '../src/main/servicios/paqueteContador';
+import { generarPaqueteContador, conciliarEstadoResultadosVsAnual } from '../src/main/servicios/paqueteContador';
 import { estadoResultados } from '../src/main/servicios/fiscal';
 import { cerrarEjercicio, reabrirEjercicio } from '../src/main/servicios/cierre';
 import { anularAsiento } from '../src/main/servicios/motorAsientos';
@@ -154,6 +154,8 @@ describe('auditoría 61: estado de resultados sin la familia de cierre', () => {
     expect(csv).toMatch(/,4101,[^,]+,ingreso,100\.00/);
     expect(csv).toMatch(/,5101,[^,]+,costo,-40\.00/);
     expect(lineaTotal(csv)).toBe('2026-07-01,2026-12-31,TOTAL,,,60.00');
+    const concParcial = paquete.archivos.find(a => a.nombre === 'conciliaciones.csv')!.contenido;
+    expect(concParcial).toContain('estado-resultados-vs-ejercicio-anual,no-aplica');
   });
 
   it('balance y conciliaciones sin cambios; resultado-trasladado-por-cierre y estado vs anual presentes', () => {
@@ -165,12 +167,20 @@ describe('auditoría 61: estado de resultados sin la familia de cierre', () => {
     expect(paquete.conciliaciones.clientesMayor).toBe(true);
     expect(paquete.conciliaciones.proveedoresMayor).toBe(true);
     expect(paquete.conciliaciones.efectivoMayor).toBe(true);
-    expect(paquete.conciliaciones.estadoResultadosVsAnual).toBe(true);
+    expect(paquete.conciliaciones.estadoResultadosVsAnual).toBe('ok');
     const conc = paquete.archivos.find(a => a.nombre === 'conciliaciones.csv')!.contenido;
     expect(conc).toContain('resultado-trasladado-por-cierre,60.00');
     expect(conc).toContain('estado-resultados-vs-ejercicio-anual,ok');
     expect(conc).toContain('balance-activo-pasivo-patrimonio-resultado,cuadra');
     const leeme = paquete.archivos.find(a => a.nombre === 'LEEME.txt')!.contenido;
     expect(leeme).toContain('EXCLUYEN la familia de cierre');
+  });
+});
+
+describe('auditoría 62: conciliarEstadoResultadosVsAnual (función pura)', () => {
+  it('iguales ok; distintos descuadre; rango parcial no-aplica', () => {
+    expect(conciliarEstadoResultadosVsAnual({ rangoCubreAnio: true, totalEstadoResultados: 6000n, totalOrdinarioAnual: 6000n })).toBe('ok');
+    expect(conciliarEstadoResultadosVsAnual({ rangoCubreAnio: true, totalEstadoResultados: 6000n, totalOrdinarioAnual: 5000n })).toBe('descuadre');
+    expect(conciliarEstadoResultadosVsAnual({ rangoCubreAnio: false, totalEstadoResultados: 6000n, totalOrdinarioAnual: 6000n })).toBe('no-aplica');
   });
 });
