@@ -18,6 +18,7 @@ import Cierre from './vistas/Cierre';
 import LibroDiario from './vistas/LibroDiario';
 import EstadosFinancieros from './vistas/EstadosFinancieros';
 import ActivosFijos from './vistas/ActivosFijos';
+import Costos from './vistas/Costos';
 import { EstadoCarga, formatoDineroPantalla } from './componentes';
 import logoBlanco from './recursos/arkon-logo-blanco.svg';
 
@@ -43,6 +44,7 @@ type Seccion =
   | 'Activos fijos'
   | 'Libro diario'
   | 'Estados financieros'
+  | 'Costos'
   | 'Ajustes'
   | 'Cierre'
   | 'Reportes'
@@ -54,7 +56,7 @@ const NAVEGACION: Array<{ grupo: string; destinos: Seccion[] }> = [
   { grupo: 'Inicio', destinos: ['Inicio'] },
   { grupo: 'Comercial', destinos: ['Clientes y proveedores', 'Catálogo', 'Cotizaciones', 'Proyectos', 'Ventas'] },
   { grupo: 'Compras y tesorería', destinos: ['Compras y gastos', 'Cobros y pagos', 'Caja y bancos'] },
-  { grupo: 'Contabilidad', destinos: ['Contabilidad', 'Activos fijos', 'Libro diario', 'Estados financieros', 'Ajustes', 'Cierre', 'Reportes'] },
+  { grupo: 'Contabilidad', destinos: ['Contabilidad', 'Activos fijos', 'Libro diario', 'Estados financieros', 'Costos', 'Ajustes', 'Cierre', 'Reportes'] },
   { grupo: 'Fiscal', destinos: ['Impuestos'] },
   { grupo: 'Sistema', destinos: ['Respaldo', 'Bitácora'] }
 ];
@@ -157,6 +159,7 @@ export default function App() {
         {seccion === 'Activos fijos' && <ActivosFijos />}
         {seccion === 'Libro diario' && <LibroDiario />}
         {seccion === 'Estados financieros' && <EstadosFinancieros />}
+        {seccion === 'Costos' && <Costos />}
         {seccion === 'Ajustes' && <Ajustes />}
         {seccion === 'Cierre' && <Cierre />}
         {seccion === 'Reportes' && <Reportes />}
