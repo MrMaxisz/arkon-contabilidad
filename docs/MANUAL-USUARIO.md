@@ -102,7 +102,7 @@ por proceso activo. `scripts\qa-windows.ps1` añade marcador QA para reabrir el 
 | 1 | Apertura offline | Instalar, desconectar red, abrir | Ventana sin preload-error; datos del perfil |
 | 2 | Captura + doble envío | Registrar venta/compra; repetir envío con la misma operación | Sin duplicados (idempotencia visible) |
 | 3 | Anulación de documentos | Anular venta/compra con diálogo (folio/importe/efecto, motivo ≥10 caracteres y responsable, cancelar sin cambios) | Reverso contabilizado, error dentro del diálogo, aviso visible, bitácora con motivo capturado |
-| 3b | Anulación de movimientos | Anular cobro/pago/transferencia con diálogo (folio/tipo/monto/contrapente/efecto, motivo ≥10 caracteres y responsable, cancelar sin cambios) | Movimiento anulado, aplicaciones liberadas, saldo restaurado, error dentro del diálogo, aviso único visible, bitácora con motivo |
+| 3b | Anulación de movimientos | Anular cobro/pago/transferencia con diálogo (folio/tipo/monto/contraparte/efecto, motivo ≥10 caracteres y responsable, cancelar sin cambios) | Movimiento anulado, aplicaciones liberadas, saldo restaurado, error dentro del diálogo, aviso único visible, bitácora con motivo |
 | 4 | Adjuntos | Adjuntar con selector, Verificar hash, Abrir | Hash correcto; archivo alterado no abre |
 | 5 | CSV/PDF | Exportar libros, paquete del contador, ejercicio anual, cotización PDF | Archivos en disco con cifras de pantalla |
 | 6 | Reportes anuales | Ejercicio anual: consultar año, exportar soporte | Conciliación OK; familia de cierre marcada |

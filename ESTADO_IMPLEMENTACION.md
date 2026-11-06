@@ -913,3 +913,18 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites
 
 - jsdom no sustituye el recorrido GUI Windows. El auditor mantiene su inventario GUI (PDF, paquete, recierre, artefacto nuevo con diálogos).
+
+## Bloque auditoría 54 (cobertura de pruebas en Compras/CajaBancos y errata)
+
+### Corregido (hallazgos de la auditoría 54)
+
+- **P2-1 Cobertura extendida** (`anulacionIntegracion.prueba.tsx`, ahora 12 pruebas):
+  - **Compras**: scrollIntoView con espía tras anular; **rechazo del motor por pago aplicado** con error dentro del diálogo (`within(getByRole('dialog')).getByRole('alert')`) sin prefijo técnico.
+  - **CajaBancos**: **rechazo real con diálogo abierto** — anulación por detrás con despachar mientras el diálogo está abierto → confirmar → «ya está anulado» dentro del diálogo sin prefijo; scrollIntoView verificado tras anular cobro, pago y transferencia; **exactamente 1 aviso** tras anular transferencia y tras registrar transferencia por la vista (con selección real de cuentas por label).
+- **P2-2 Errata**: «contrapente» → «contraparte» en MANUAL-USUARIO.md fila 3b.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → **exit 0, 263/263, 0 Errors** (55 archivos).
+- `npm run build` → OK.
