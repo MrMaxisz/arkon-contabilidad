@@ -10,7 +10,7 @@ import { aplicarMigraciones } from '../src/main/db/aplicarMigraciones';
 import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
 import { despachar, type ContextoApp } from '../src/main/comandos';
 import { crearContraparte, registrarVenta, registrarCompra } from '../src/main/servicios/operacion';
-import { registrarCobro, registrarPago } from '../src/main/servicios/tesoreria';
+import { registrarCobro, registrarPago, registrarTransferencia } from '../src/main/servicios/tesoreria';
 import { saldoPendienteDocumento } from '../src/main/servicios/saldos';
 import type BetterSqlite3 from 'better-sqlite3';
 
@@ -25,6 +25,7 @@ let ctx: ContextoApp;
 const abiertas: Array<BetterSqlite3.Database> = [];
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arkon-a52-'));
   rutas = prepararRutasDatos(path.join(dir, 'datos'));
   rutaDb = path.join(rutas.datos, 'arkon.db');
@@ -90,6 +91,7 @@ describe('auditoría 52: anulación integrada componente→despachar→SQLite', 
     fireEvent.submit(form);
 
     await waitFor(() => screen.getByText(/V-000001 anulada con reverso contable/));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     const estado = db.prepare('SELECT estado FROM venta WHERE folio = ?').get('V-000001') as { estado: string };
     expect(estado.estado).toBe('anulada');
     const reverso = db.prepare("SELECT id FROM asiento WHERE reverso_de_id IS NOT NULL AND estado = 'contabilizado'").get();
@@ -98,21 +100,44 @@ describe('auditoría 52: anulación integrada componente→despachar→SQLite', 
     expect(evento.detalle).toContain('motivo sintético de anulación');
   });
 
-  it('Ventas: motivo corto rechazado por el motor real con error visible dentro del diálogo', async () => {
+  it('documento:anular con motivo corto se rechaza por comando directo sin cambiar el documento', async () => {
     const cliente = crearContraparte(db, { nombre: 'Cliente A52b', esCliente: true, esProveedor: false, responsable: 'p' });
     registrarVenta(db, {
       contraparteId: cliente, fechaOperacion: '2026-11-10', concepto: 'Venta a52b sintética',
       tipoIngreso: 'instalaciones', base: '100.00', tasa: '0', claveIdempotencia: 'v-a52b', responsable: 'p'
     });
+    const ventaId = (db.prepare("SELECT id FROM venta WHERE folio = 'V-000001'").get() as { id: number }).id;
+    expect(() =>
+      despachar(ctx, 'documento:anular', { tipo: 'venta', documentoId: ventaId, responsable: 'qa', motivo: 'corto' })
+    ).toThrow(/mínimo 10 caracteres/);
+    const estado = db.prepare('SELECT estado FROM venta WHERE folio = ?').get('V-000001') as { estado: string };
+    expect(estado.estado).toBe('registrada');
+  });
+
+  it('Ventas: rechazo del motor por cobro aplicado con error dentro del diálogo sin prefijo técnico', async () => {
+    const cliente = crearContraparte(db, { nombre: 'Cliente Rechazo A52', esCliente: true, esProveedor: false, responsable: 'p' });
+    const venta = registrarVenta(db, {
+      contraparteId: cliente, fechaOperacion: '2026-11-10', concepto: 'Venta rechazo a52',
+      tipoIngreso: 'instalaciones', base: '100.00', tasa: '0', claveIdempotencia: 'v-a52r', responsable: 'p'
+    });
+    registrarCobro(db, {
+      fechaOperacion: '2026-11-11', contraparteId: cliente, cuentaDestinoId: idCuenta('1101'),
+      monto: '50.00', concepto: 'Cobro rechazo a52', aplicaciones: [{ documentoTipo: 'venta', documentoId: venta.id, monto: '50.00' }],
+      claveIdempotencia: 'cob-a52r', responsable: 'p'
+    });
     render(<Ventas />);
     fireEvent.click(await screen.findByText('Anular'));
-    await waitFor(() => screen.getByText(/Anular venta V-000001/));
+    await waitFor(() => screen.getByRole('dialog'));
     const form = screen.getByText(/Sí, anular V-000001/).closest('form')!;
     const dentro = within(form);
-    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'corto' } });
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de rechazo' } });
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
     fireEvent.submit(form);
-    await waitFor(() => screen.getByText(/mínimo 10 caracteres/));
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    const alerta = within(dialogo).getByRole('alert');
+    expect(alerta.textContent).toContain('cobros');
+    expect(alerta.textContent).not.toContain('Error invoking');
     const estado = db.prepare('SELECT estado FROM venta WHERE folio = ?').get('V-000001') as { estado: string };
     expect(estado.estado).toBe('registrada');
   });
@@ -173,6 +198,24 @@ describe('auditoría 52: anulación integrada componente→despachar→SQLite', 
     expect(saldoDespues).toBe(11300n);
     const evento = db.prepare("SELECT detalle FROM bitacora_evento ORDER BY id DESC LIMIT 1").get() as { detalle: string };
     expect(evento.detalle).toContain('motivo sintético de cobro');
+    // Un solo aviso en el DOM (sin duplicado).
+    const avisos = screen.getAllByText(/COB-000001 anulado con reverso contable/);
+    expect(avisos.length).toBe(1);
+  });
+
+  it('tesoreria:anular con motivo corto se rechaza por comando directo', async () => {
+    const cliente = crearContraparte(db, { nombre: 'Cliente Cmd A52', esCliente: true, esProveedor: false, responsable: 'p' });
+    registrarCobro(db, {
+      fechaOperacion: '2026-11-11', contraparteId: cliente, cuentaDestinoId: idCuenta('1101'),
+      monto: '20.00', concepto: 'Cobro cmd a52', aplicaciones: [],
+      claveIdempotencia: 'cob-cmd52', responsable: 'p'
+    });
+    const movId = (db.prepare("SELECT id FROM tesoreria_movimiento WHERE folio = 'COB-000001'").get() as { id: number }).id;
+    expect(() =>
+      despachar(ctx, 'tesoreria:anular', { movimientoId: movId, responsable: 'qa', motivo: 'corto' })
+    ).toThrow(/mínimo 10 caracteres/);
+    const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'COB-000001'").get() as { estado: string };
+    expect(estado.estado).toBe('registrado');
   });
 
   it('CajaBancos: cancelar no invoca ni cambia el movimiento', async () => {
@@ -189,6 +232,28 @@ describe('auditoría 52: anulación integrada componente→despachar→SQLite', 
     await waitFor(() => expect(screen.queryByText(/Anular cobro/)).toBeNull());
     const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'COB-000001'").get() as { estado: string };
     expect(estado.estado).toBe('registrado');
+  });
+
+  it('CajaBancos: transferencia anulada por diálogo con despachar real', async () => {
+    registrarTransferencia(db, {
+      fechaOperacion: '2026-11-13', cuentaOrigenId: idCuenta('1101'), cuentaDestinoId: idCuenta('1102'),
+      monto: '15.00', concepto: 'Transferencia a52', claveIdempotencia: 'trf-a52', responsable: 'p'
+    });
+    render(<CajaBancos />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByText(/Anular transferencia TRF-000001/));
+    const form = screen.getByText(/Sí, anular TRF-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de transferencia' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getAllByText(/TRF-000001 anulado con reverso contable/).length).toBeGreaterThan(0));
+    const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'TRF-000001'").get() as { estado: string };
+    expect(estado.estado).toBe('anulado');
+    const reverso = db.prepare("SELECT id FROM asiento WHERE reverso_de_id IS NOT NULL AND estado = 'contabilizado'").get();
+    expect(reverso).toBeTruthy();
+    const evento = db.prepare("SELECT detalle FROM bitacora_evento ORDER BY id DESC LIMIT 1").get() as { detalle: string };
+    expect(evento.detalle).toContain('motivo sintético de transferencia');
   });
 
   it('CajaBancos: pago anulado por diálogo', async () => {

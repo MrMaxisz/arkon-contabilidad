@@ -21,10 +21,12 @@ que decida el contador responsable.
    servicios/materiales (sin precios inventados), cotizaciones versionadas con PDF, y proyectos.
 2. **Captura y corrección**: ventas, compras con líneas por tratamiento (gravado/exento/no sujeto),
    cobros y pagos con aplicaciones e anticipos, transferencias internas. La corrección de un documento
-   registrado se hace por **anulación con diálogo**: el botón Anular abre una confirmación que identifica
-   folio, importe, saldo y efecto (reverso contable), y exige motivo significativo y responsable antes
-   de invocar el comando; Cancelar no cambia datos ni bitácora. Tras confirmar se muestra el aviso de
-   anulación y el estado/saldos se actualizan; no se editan importes contabilizados.
+   o movimiento registrado se hace por **anulación con diálogo** (Ventas, Compras y Caja y bancos):
+   el botón Anular abre una confirmación que identifica folio, tipo, importe, contraparte y efecto
+   (reverso contable), exige **motivo significativo de mínimo 10 caracteres** y responsable antes de
+   invocar el comando; Cancelar o Escape no cambian datos ni bitácora. Los errores de validación y los
+   rechazos del motor aparecen **dentro del diálogo**; tras confirmar se muestra el aviso de anulación
+   en la vista y el estado/saldos se actualizan; no se editan importes contabilizados.
 3. **Ajustes y apertura** (vista Ajustes): asientos manuales y de apertura con referencia de soporte
    obligatoria, cuadre e idempotencia.
 4. **Cierre de ejercicio** (vista Cierre): estado del ejercicio, cierre con prevalidación y bloqueo
@@ -99,7 +101,8 @@ por proceso activo. `scripts\qa-windows.ps1` añade marcador QA para reabrir el 
 |---|---|---|---|
 | 1 | Apertura offline | Instalar, desconectar red, abrir | Ventana sin preload-error; datos del perfil |
 | 2 | Captura + doble envío | Registrar venta/compra; repetir envío con la misma operación | Sin duplicados (idempotencia visible) |
-| 3 | Anulación | Anular documento con diálogo (folio/importe/efecto, motivo y responsable obligatorios, cancelar sin cambios) | Reverso contabilizado, aviso de anulación visible, bitácora con motivo capturado |
+| 3 | Anulación de documentos | Anular venta/compra con diálogo (folio/importe/efecto, motivo ≥10 caracteres y responsable, cancelar sin cambios) | Reverso contabilizado, error dentro del diálogo, aviso visible, bitácora con motivo capturado |
+| 3b | Anulación de movimientos | Anular cobro/pago/transferencia con diálogo (folio/tipo/monto/contrapente/efecto, motivo ≥10 caracteres y responsable, cancelar sin cambios) | Movimiento anulado, aplicaciones liberadas, saldo restaurado, error dentro del diálogo, aviso único visible, bitácora con motivo |
 | 4 | Adjuntos | Adjuntar con selector, Verificar hash, Abrir | Hash correcto; archivo alterado no abre |
 | 5 | CSV/PDF | Exportar libros, paquete del contador, ejercicio anual, cotización PDF | Archivos en disco con cifras de pantalla |
 | 6 | Reportes anuales | Ejercicio anual: consultar año, exportar soporte | Conciliación OK; familia de cierre marcada |

@@ -894,3 +894,22 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites
 
 - Sandbox Linux: jsdom no sustituye el recorrido GUI Windows. El auditor mantiene su inventario GUI (PDF, paquete, adjuntos, respaldo periódico, cierre/reapertura) y el artefacto nuevo con diálogos está pendiente de su verificación.
+
+## Bloque auditoría 53 (exit 0 sin errores no capturados, aviso único, cobertura completa del diálogo de anulación)
+
+### Corregido (hallazgos de la auditoría 53)
+
+- **P1-1 Suite exit 0**: `scrollIntoView` ahora se guarda con `typeof === 'function'` antes de llamarlo (jsdom no lo implementa) — los 5 errores no capturados (`TypeError: scrollIntoView is not a function`) eliminados. `npx vitest run` termina con **exit 0, 260/260, 0 Errors**.
+- **P2-2 Aviso duplicado en CajaBancos**: el párrafo adicional al final fue eliminado; `avisoRef` se movió al párrafo original del mensaje — **un solo aviso en el DOM** para anulación y para cualquier mensaje de la vista. Prueba que cuenta exactamente 1 aviso tras anular COB-000001.
+- **P2-3 Cobertura completa**: `anulacionIntegracion.prueba.tsx` ahora con **9 pruebas**: venta anulada con scrollIntoView verificado con espía real (`Element.prototype.scrollIntoView = vi.fn()` + `toHaveBeenCalledWith({block:'center'})`); **rechazo del motor por cobro aplicado con error dentro del diálogo** (`within(screen.getByRole('dialog')).getByRole('alert')` con texto sin prefijo técnico); compra anulada; cobro aplicado a venta 113.00 → anulado → saldo 113.00 con **exactamente 1 aviso**; cancelar cobro sin efectos; **transferencia anulada** con despachar real (estado, reverso, bitácora con motivo); **motivo corto por comando directo** en `documento:anular` y `tesoreria:anular` (renombrado para decir lo que comprueba). `anulacionComponente.prueba.tsx` actualizada con espía scrollIntoView, errores con `within(dialog).getByRole('alert')`, y rechazo del motor dentro del diálogo sin prefijo.
+- **P2-4 Manual y matriz**: MANUAL-USUARIO.md describe la anulación con diálogo en Ventas/Compras/Caja y bancos, motivo mínimo 10 caracteres, errores dentro del diálogo; matriz con fila 3 (documentos) y fila 3b (movimientos: cobro/pago/transferencia).
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → **exit 0, 260/260, 0 Errors** (55 archivos).
+- `npm run build` → OK.
+
+### Límites
+
+- jsdom no sustituye el recorrido GUI Windows. El auditor mantiene su inventario GUI (PDF, paquete, recierre, artefacto nuevo con diálogos).

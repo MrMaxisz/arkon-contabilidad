@@ -20,6 +20,7 @@ const VENTA = {
 };
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   invocar.mockReset();
   invocar.mockImplementation((comando: string) => {
     switch (comando) {
@@ -68,13 +69,16 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
     const dentro = within(form);
     fireEvent.submit(form);
-    await waitFor(() => screen.getByText(/anulación exige un motivo significativo \(mínimo 10 caracteres\)/));
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent).toContain('mínimo 10 caracteres');
     expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
 
     fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de prueba' } });
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: '' } });
     fireEvent.submit(form);
-    await waitFor(() => screen.getByText(/anulación exige responsable/));
+    await waitFor(() => within(screen.getByRole('dialog')).getByRole('alert'));
+    expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toContain('exige responsable');
     expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
   });
 
@@ -101,6 +105,7 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     fireEvent.submit(form);
 
     await waitFor(() => screen.getByText(/V-000002 anulada con reverso contable/));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
     const llamadas = invocar.mock.calls.filter(c => c[0] === 'documento:anular');
     expect(llamadas.length).toBe(1);
     const payload = llamadas[0]![1] as Record<string, unknown>;
@@ -128,7 +133,10 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
     fireEvent.submit(form);
 
-    await waitFor(() => screen.getByText(/cobros aplicados/));
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent).toContain('cobros aplicados');
+    expect(within(dialogo).getByRole('alert').textContent).not.toContain('Error invoking');
     expect(screen.queryByText(/anulada con reverso/)).toBeNull();
   });
 });

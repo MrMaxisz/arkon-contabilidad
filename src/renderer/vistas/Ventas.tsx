@@ -93,7 +93,7 @@ export default function Ventas() {
       setBase('');
       clave.current = nuevaClave();
       cargarDocumentos();
-      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
+      setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -150,7 +150,7 @@ export default function Ventas() {
       setMotivoAnular('');
       setResponsableAnular('');
       cargarDocumentos();
-      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
+      setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
       setErrorAnular(limpiarMensajeError(err));
     } finally {

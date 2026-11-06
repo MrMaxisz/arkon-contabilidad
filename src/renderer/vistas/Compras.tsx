@@ -116,7 +116,7 @@ export default function Compras() {
       setLineas([{ descripcion: '', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '', tasa: '13', tratamiento: 'gravado', precioConIva: true }]);
       clave.current = nuevaClave();
       cargarDocumentos();
-      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
+      setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -173,7 +173,7 @@ export default function Compras() {
       setMotivoAnular('');
       setResponsableAnular('');
       cargarDocumentos();
-      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
+      setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
       setErrorAnular(limpiarMensajeError(err));
     } finally {

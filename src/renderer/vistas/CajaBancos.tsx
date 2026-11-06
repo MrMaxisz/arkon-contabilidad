@@ -110,7 +110,7 @@ export default function CajaBancos() {
       setMotivoAnular('');
       setResponsableAnular('');
       cargar();
-      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
+      setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
       setErrorAnular(limpiarMensajeError(err));
     } finally {
@@ -121,7 +121,7 @@ export default function CajaBancos() {
   return (
     <div>
       <h1>Caja y bancos</h1>
-      {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
+      {mensaje && <p ref={avisoRef} className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={transferir}>
         <h2>Transferencia entre cuentas propias</h2>
         <div className="fila">
@@ -195,9 +195,6 @@ export default function CajaBancos() {
           </form>
         </div>
       )}
-      <p ref={avisoRef}>
-        {mensaje && <span className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</span>}
-      </p>
     </div>
   );
 }
