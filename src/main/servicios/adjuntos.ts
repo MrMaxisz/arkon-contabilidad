@@ -234,6 +234,12 @@ export function retencionRespaldosAutomaticos(db: Database.Database, dirRespaldo
     fs.rmSync(path.join(dirRespaldos, base), { force: true });
     fs.rmSync(path.join(dirRespaldos, `${base}.manifest.json`), { force: true });
     fs.rmSync(path.join(dirRespaldos, `${base}-adjuntos`), { recursive: true, force: true });
+    // Rutas EXACTAS derivadas de este respaldo depurado (auditoría 65): posibles restos -wal/-shm
+    // del temporal de creación (.tmp-wal/.tmp-shm) o del propio respaldo (-wal/-shm) de versiones previas.
+    fs.rmSync(path.join(dirRespaldos, `${base}.tmp-wal`), { force: true });
+    fs.rmSync(path.join(dirRespaldos, `${base}.tmp-shm`), { force: true });
+    fs.rmSync(path.join(dirRespaldos, `${base}-wal`), { force: true });
+    fs.rmSync(path.join(dirRespaldos, `${base}-shm`), { force: true });
     depurados++;
   }
   return { conservados: aConservar.size, depurados };

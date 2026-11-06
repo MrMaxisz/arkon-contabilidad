@@ -16,8 +16,12 @@ function hashArchivo(ruta: string): string {
 
 export function verificarIntegridad(rutaDb: string): void {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-  const copia = new Database(rutaDb, { readonly: true });
+  // Apertura read-write con query_only: una conexión de solo lectura sobre una base en modo WAL
+  // deja -wal/-shm que no puede borrar al cerrar (defecto auditoría 65). Con query_only el
+  // contenido no se modifica y el cierre elimina los archivos transitorios exactos.
+  const copia = new Database(rutaDb);
   try {
+    copia.pragma('query_only = ON');
     const resultado = copia.pragma('integrity_check') as unknown;
     const texto = Array.isArray(resultado)
       ? resultado.map(r => String(Object.values(r)[0])).join(' ')
@@ -27,6 +31,14 @@ export function verificarIntegridad(rutaDb: string): void {
     }
   } finally {
     copia.close();
+  }
+}
+
+// Limpieza de rutas EXACTAS derivadas del temporal/destino de una operación de respaldo:
+// nunca borrados por patrón amplio. Incluye los restos -wal/-shm del temporal.
+export function limpiarRutasRespaldo(rutas: string[]): void {
+  for (const ruta of rutas) {
+    fs.rmSync(ruta, { force: true, recursive: true });
   }
 }
 
@@ -63,52 +75,66 @@ export async function crearRespaldo(
     const nombre = `respaldo-${marca}.db`;
     const destino = path.join(dirRespaldos, nombre);
     const temporal = `${destino}.tmp`;
-    await db.backup(temporal);
-    verificarIntegridad(temporal);
-    const hash = hashArchivo(temporal);
-    const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-    const dbTemporal = new Database(temporal, { readonly: true, fileMustExist: true });
-    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
-    let version: number;
     try {
-      version = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
-      adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(dbTemporal, dirAdjuntos, `${destino}-adjuntos`) : [];
-    } finally {
-      dbTemporal.close();
+      await db.backup(temporal);
+      verificarIntegridad(temporal);
+      const hash = hashArchivo(temporal);
+      const Database = require('better-sqlite3') as typeof import('better-sqlite3');
+      const dbTemporal = new Database(temporal);
+      let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
+      let version: number;
+      try {
+        dbTemporal.pragma('query_only = ON');
+        version = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
+        adjuntos = dirAdjuntos ? copiarAdjuntosRespaldo(dbTemporal, dirAdjuntos, `${destino}-adjuntos`) : [];
+      } finally {
+        dbTemporal.close();
+      }
+      fs.renameSync(temporal, destino);
+      fs.writeFileSync(
+        `${destino}.manifest.json`,
+        JSON.stringify(
+          {
+            nombre,
+            hashSha256: hash,
+            versionApp,
+            versionEsquema: version,
+            creadoEn: new Date().toISOString(),
+            adjuntos
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+      const info = db
+        .prepare(
+          'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(nombre, hash, versionApp, version, 'disponible');
+      const id = Number(info.lastInsertRowid);
+      registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(id), { nombre, hash });
+      return {
+        id,
+        creadoEn: new Date().toISOString(),
+        nombre,
+        hashSha256: hash,
+        versionApp,
+        versionEsquema: version,
+        estado: 'disponible'
+      };
+    } catch (err) {
+      // Fallo entre backup y rename: limpieza de rutas EXACTAS de esta operación (auditoría 65).
+      limpiarRutasRespaldo([
+        temporal,
+        `${temporal}-wal`,
+        `${temporal}-shm`,
+        `${destino}-adjuntos`,
+        destino,
+        `${destino}.manifest.json`
+      ]);
+      throw err;
     }
-    fs.renameSync(temporal, destino);
-    fs.writeFileSync(
-      `${destino}.manifest.json`,
-      JSON.stringify(
-        {
-          nombre,
-          hashSha256: hash,
-          versionApp,
-          versionEsquema: version,
-          creadoEn: new Date().toISOString(),
-          adjuntos
-        },
-        null,
-        2
-      ),
-      'utf8'
-    );
-    const info = db
-      .prepare(
-        'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
-      )
-      .run(nombre, hash, versionApp, version, 'disponible');
-    const id = Number(info.lastInsertRowid);
-    registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(id), { nombre, hash });
-    return {
-      id,
-      creadoEn: new Date().toISOString(),
-      nombre,
-      hashSha256: hash,
-      versionApp,
-      versionEsquema: version,
-      estado: 'disponible'
-    };
   } finally {
     liberarOperacionRespaldo();
   }
@@ -225,16 +251,23 @@ export function restaurarRespaldo(
     );
   }
   const areaTemporal = `${rutaBaseActiva}.restauracion-tmp`;
-  fs.copyFileSync(rutaRespaldo, areaTemporal);
-  verificarIntegridad(areaTemporal);
-  registroEvento(db, 'sistema', 'restauracion', 'respaldo', path.basename(rutaRespaldo), {
-    versionRespaldo,
-    estadoPrevioPreservado: true
-  });
-  db.close();
-  const previa = `${rutaBaseActiva}.antes-restauracion`;
-  fs.copyFileSync(rutaBaseActiva, previa);
-  fs.renameSync(areaTemporal, rutaBaseActiva);
+  let previa = '';
+  try {
+    fs.copyFileSync(rutaRespaldo, areaTemporal);
+    verificarIntegridad(areaTemporal);
+    registroEvento(db, 'sistema', 'restauracion', 'respaldo', path.basename(rutaRespaldo), {
+      versionRespaldo,
+      estadoPrevioPreservado: true
+    });
+    db.close();
+    previa = `${rutaBaseActiva}.antes-restauracion`;
+    fs.copyFileSync(rutaBaseActiva, previa);
+    fs.renameSync(areaTemporal, rutaBaseActiva);
+  } catch (err) {
+    // Limpieza de rutas EXACTAS del área temporal de esta restauración (auditoría 65).
+    limpiarRutasRespaldo([areaTemporal, `${areaTemporal}-wal`, `${areaTemporal}-shm`]);
+    throw err;
+  }
   return {
     ok: true,
     detalle: `Restaurado ${nombreRespaldo}; copia previa en ${path.basename(previa)}`,
@@ -245,8 +278,9 @@ export function restaurarRespaldo(
 
 function leerVersionEsquema(rutaDb: string): number {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-  const copia = new Database(rutaDb, { readonly: true });
+  const copia = new Database(rutaDb);
   try {
+    copia.pragma('query_only = ON');
     const fila = copia
       .prepare('SELECT MAX(version) AS v FROM _migracion')
       .get() as { v: number | null } | undefined;

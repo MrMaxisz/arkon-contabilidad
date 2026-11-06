@@ -191,30 +191,44 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
         const marca = new Date().toISOString().replace(/[:.]/g, '-');
         const destino = path.join(rutas.respaldos, `respaldo-previo-migracion-${marca}.db`);
         const temporal = `${destino}.tmp`;
-        await dbPrevia.backup(temporal);
-        const { verificarIntegridad } = await import('./respaldo');
-        verificarIntegridad(temporal);
-        const crypto = await import('crypto');
-        const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
-        const adjuntos = copiarAdjuntosRespaldo(dbPrevia, rutas.adjuntos, `${destino}-adjuntos`);
-        fs.renameSync(temporal, destino);
-        fs.writeFileSync(
-          `${destino}.manifest.json`,
-          JSON.stringify(
-            {
-              nombre: path.basename(destino),
-              hashSha256: hash,
-              versionEsquema: versionPrevio,
-              versionApp,
-              creadoEn: new Date().toISOString(),
-              adjuntos,
-              nota: 'Respaldo automático previo a migración'
-            },
-            null,
-            2
-          ),
-          'utf8'
-        );
+        try {
+          await dbPrevia.backup(temporal);
+          const { verificarIntegridad } = await import('./respaldo');
+          verificarIntegridad(temporal);
+          const crypto = await import('crypto');
+          const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
+          const adjuntos = copiarAdjuntosRespaldo(dbPrevia, rutas.adjuntos, `${destino}-adjuntos`);
+          fs.renameSync(temporal, destino);
+          fs.writeFileSync(
+            `${destino}.manifest.json`,
+            JSON.stringify(
+              {
+                nombre: path.basename(destino),
+                hashSha256: hash,
+                versionEsquema: versionPrevio,
+                versionApp,
+                creadoEn: new Date().toISOString(),
+                adjuntos,
+                nota: 'Respaldo automático previo a migración'
+              },
+              null,
+              2
+            ),
+            'utf8'
+          );
+        } catch (err) {
+          // Fallo entre backup y rename: limpieza de rutas EXACTAS de esta operación (auditoría 65).
+          const { limpiarRutasRespaldo } = await import('./respaldo');
+          limpiarRutasRespaldo([
+            temporal,
+            `${temporal}-wal`,
+            `${temporal}-shm`,
+            `${destino}-adjuntos`,
+            destino,
+            `${destino}.manifest.json`
+          ]);
+          throw err;
+        }
       } finally {
         dbPrevia.close();
       }
@@ -430,47 +444,62 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     const nombreArchivo = `respaldo-automatico-${marca}.db`;
     const destino = path.join(ctx.rutas.respaldos, nombreArchivo);
     const temporal = `${destino}.tmp`;
-    await ctx.db.backup(temporal);
-    const { verificarIntegridad } = await import('./respaldo');
-    verificarIntegridad(temporal);
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
-    const dbTemporal = new Database(temporal, { readonly: true, fileMustExist: true });
-    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }>;
-    let versionEsquemaCopia: number;
     try {
-      const { copiarAdjuntosRespaldo } = await import('./adjuntos');
-      adjuntos = copiarAdjuntosRespaldo(dbTemporal, ctx.rutas.adjuntos, `${destino}-adjuntos`);
-      versionEsquemaCopia = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
-    } finally {
-      dbTemporal.close();
+      await ctx.db.backup(temporal);
+      const { verificarIntegridad } = await import('./respaldo');
+      verificarIntegridad(temporal);
+      const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
+      const dbTemporal = new Database(temporal);
+      let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }>;
+      let versionEsquemaCopia: number;
+      try {
+        dbTemporal.pragma('query_only = ON');
+        const { copiarAdjuntosRespaldo } = await import('./adjuntos');
+        adjuntos = copiarAdjuntosRespaldo(dbTemporal, ctx.rutas.adjuntos, `${destino}-adjuntos`);
+        versionEsquemaCopia = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
+      } finally {
+        dbTemporal.close();
+      }
+      if (!fs.existsSync(temporal)) {
+        return { creado: false, omitidoPor: 'la copia temporal desapareció durante el respaldo' };
+      }
+      fs.renameSync(temporal, destino);
+      fs.writeFileSync(
+        `${destino}.manifest.json`,
+        JSON.stringify(
+          {
+            nombre: nombreArchivo,
+            hashSha256: hash,
+            versionApp: ctx.versionApp,
+            versionEsquema: versionEsquemaCopia,
+            creadoEn: new Date().toISOString(),
+            adjuntos,
+            nota: 'Respaldo automático periódico'
+          },
+          null,
+          2
+        ),
+        'utf8'
+      );
+      ctx.db
+        .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
+        .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
+      const { retencionRespaldosAutomaticos } = await import('./adjuntos');
+      retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
+      return { creado: true, nombre: nombreArchivo };
+    } catch (err) {
+      // Fallo entre backup y rename: limpieza de rutas EXACTAS de esta operación (auditoría 65).
+      const { limpiarRutasRespaldo } = await import('./respaldo');
+      limpiarRutasRespaldo([
+        temporal,
+        `${temporal}-wal`,
+        `${temporal}-shm`,
+        `${destino}-adjuntos`,
+        destino,
+        `${destino}.manifest.json`
+      ]);
+      throw err;
     }
-    if (!fs.existsSync(temporal)) {
-      return { creado: false, omitidoPor: 'la copia temporal desapareció durante el respaldo' };
-    }
-    fs.renameSync(temporal, destino);
-    fs.writeFileSync(
-      `${destino}.manifest.json`,
-      JSON.stringify(
-        {
-          nombre: nombreArchivo,
-          hashSha256: hash,
-          versionApp: ctx.versionApp,
-          versionEsquema: versionEsquemaCopia,
-          creadoEn: new Date().toISOString(),
-          adjuntos,
-          nota: 'Respaldo automático periódico'
-        },
-        null,
-        2
-      ),
-      'utf8'
-    );
-    ctx.db
-      .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
-      .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
-    const { retencionRespaldosAutomaticos } = await import('./adjuntos');
-    retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
-    return { creado: true, nombre: nombreArchivo };
   } finally {
     liberarOperacionRespaldo();
   }

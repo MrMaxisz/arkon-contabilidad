@@ -1028,3 +1028,20 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 314/314, 0 Errors (58 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 65 (respaldos sin restos -wal/-shm)
+
+### Corregido (hallazgo P2-65-1)
+
+- **Causa, no síntoma**: las verificaciones y lecturas de copias (`verificarIntegridad`, `leerVersionEsquema`, aperturas del temporal en `crearRespaldo` y en el respaldo periódico) ahora abren read-write con `PRAGMA query_only = ON`: una conexión de solo lectura sobre una base en modo WAL deja `-wal`/`-shm` que no puede borrar al cerrar; con query_only el contenido no se modifica (hash byte a byte verificado) y el cierre elimina los transitorios. Verificado empíricamente antes de implementar.
+- **Limpieza por fallo**: los tres sitios de creación (manual, periódico, previo a migración) limpian en `catch` las rutas EXACTAS derivadas de la operación (`temporal`, `temporal-wal/-shm`, `destino-adjuntos`, `destino`, `destino.manifest.json`) y el error llega al llamador. La restauración limpia su `areaTemporal` exacta en fallo.
+- **Retención** (`adjuntos.ts`): al depurar un respaldo también elimina sus restos derivados exactos (`.tmp-wal`, `.tmp-shm`, `-wal`, `-shm` de ese nombre), que las versiones previas dejaban huérfanos.
+- **Sin cambios**: hash e integridad de respaldos existentes, modo de diario de las copias (no se convirtió: hash estable entre versiones), balance, esquema, versión e instalador. Sin limpieza retroactiva de los restos ya existentes en la instalación real (decisión del propietario).
+- **Pruebas** (`pruebas/respaldoWal.prueba.ts`, 10, listando directorios COMPLETOS): manual, periódico y previo-a-migración (ejecutado de verdad desde esquema N-1) dejan solo `.db`/`.db.manifest.json`/`-adjuntos`; retención sin ningún archivo del depurado (incluidos huérfanos simulados de abc9b01); restauración sin ganar archivos en `respaldos` ni `*.restauracion-tmp*` en `datos`, hash intacto; respaldo ya existente en modo WAL con `-wal`/`-shm` al lado se restaura con hash del manifiesto intacto; fallo forzado durante la creación sin `.tmp`/`-wal`/`-shm`/manifiesto y error propagado; hash del manifiesto byte a byte + `integrity_check`; base restaurada abre en WAL con documentos; con la base activa abierta el respaldo no toca `arkon.db` ni sus `-wal`/`-shm`.
+- Mutaciones confirmadas localmente (restauradas): readonly en `verificarIntegridad` → 3 fallos; readonly en el temporal del manual → 3; del periódico → 1; retención sin restos derivados → 1; catch sin limpieza → 1.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 324/324, 0 Errors (59 archivos).
+- `npm run build` → OK.
