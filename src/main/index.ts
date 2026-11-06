@@ -9,6 +9,26 @@ import { decidirPerfil, leerCanalDesdePaquete } from './perfilQa';
 
 const RUTA_BASE_DATOS = 'arkon.db';
 
+// Icono de ventana (isotipo oficial). En desarrollo el ico va en build/ del repositorio;
+// empaquetado solo va dist/ dentro del asar, así que la ventana degrada al icono ya
+// incrustado en el exe por electron-builder (win.icon) cuando el archivo no está a mano.
+function rutaIconoVentana(): string | undefined {
+  const candidatos = [
+    path.join(__dirname, '../../build/icon.ico'),
+    path.join(app.getAppPath(), 'build/icon.ico')
+  ];
+  for (const ruta of candidatos) {
+    try {
+      if (fs.statSync(ruta).isFile()) {
+        return ruta;
+      }
+    } catch {
+      // Candidato no disponible: seguir con el siguiente; sin icono explícito no rompe nada.
+    }
+  }
+  return undefined;
+}
+
 function rutaOperativaCalculada(): string {
   const local = process.env.LOCALAPPDATA;
   if (local && process.platform === 'win32') {
@@ -125,6 +145,7 @@ if (decisionPerfil.canal === 'qa' && !decisionPerfil.valido) {
         width: 1280,
         height: 800,
         title: 'ARKON Contabilidad',
+        icon: rutaIconoVentana(),
         webPreferences: {
           preload: path.join(__dirname, '../preload/index.js'),
           contextIsolation: true,
