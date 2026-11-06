@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Cuenta { id: number; codigo: string; nombre: string }
 
@@ -197,12 +198,4 @@ export default function CajaBancos() {
       )}
     </div>
   );
-}
-
-function limpiarMensajeError(err: unknown): string {
-  const texto = String(err instanceof Error ? err.message : err);
-  return texto
-    .replace(/^Error invoking remote method 'arkon':\s*/i, '')
-    .replace(/^Error:\s*/i, '')
-    .trim();
 }

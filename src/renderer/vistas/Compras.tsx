@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { CuentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Contraparte { id: number; nombre: string; esProveedor: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
@@ -420,12 +421,4 @@ export default function Compras() {
       )}
     </div>
   );
-}
-
-function limpiarMensajeError(err: unknown): string {
-  const texto = String(err instanceof Error ? err.message : err);
-  return texto
-    .replace(/^Error invoking remote method 'arkon':\s*/i, '')
-    .replace(/^Error:\s*/i, '')
-    .trim();
 }

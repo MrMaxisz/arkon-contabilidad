@@ -26,6 +26,9 @@ const abiertas: Array<BetterSqlite3.Database> = [];
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
+  forzarError = null;
+  registrarInvocaciones = false;
+  invocados.length = 0;
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arkon-a52-'));
   rutas = prepararRutasDatos(path.join(dir, 'datos'));
   rutaDb = path.join(rutas.datos, 'arkon.db');
@@ -60,9 +63,22 @@ function idCuenta(codigo: string): number {
   return (db.prepare('SELECT id FROM cuenta WHERE codigo = ?').get(codigo) as { id: number }).id;
 }
 
+let forzarError: ((comando: string) => Error | null) | null = null;
+let registrarInvocaciones = false;
+const invocados: string[] = [];
+
 vi.mock('../src/renderer/api', () => ({
   api: () => ({
-    invocar: (comando: string, datos?: unknown) => Promise.resolve(despachar(ctx, comando, datos))
+    invocar: (comando: string, datos?: unknown) => {
+      if (registrarInvocaciones) {
+        invocados.push(comando);
+      }
+      const forzado = forzarError?.(comando);
+      if (forzado) {
+        return Promise.reject(forzado);
+      }
+      return Promise.resolve(despachar(ctx, comando, datos));
+    }
   })
 }));
 
@@ -353,5 +369,135 @@ describe('auditoría 52: anulación integrada componente→despachar→SQLite', 
     await waitFor(() => expect(screen.getAllByText(/PAG-000001 anulado con reverso contable/).length).toBeGreaterThan(0));
     const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'PAG-000001'").get() as { estado: string };
     expect(estado.estado).toBe('anulado');
+  });
+
+  it('Ventas: rechazo con formato real de IPC muestra el texto exacto limpio dentro del diálogo', async () => {
+    const cliente = crearContraparte(db, { nombre: 'Cliente IPC A55', esCliente: true, esProveedor: false, responsable: 'p' });
+    registrarVenta(db, {
+      contraparteId: cliente, fechaOperacion: '2026-11-10', concepto: 'Venta ipc a55',
+      tipoIngreso: 'instalaciones', base: '100.00', tasa: '0', claveIdempotencia: 'v-a55', responsable: 'p'
+    });
+    forzarError = (comando: string) =>
+      comando === 'documento:anular'
+        ? new Error("Error invoking remote method 'arkon': Error: El documento V-000001 tiene cobros o pagos aplicados; anúlelos primero")
+        : null;
+    render(<Ventas />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByRole('dialog'));
+    const form = screen.getByText(/Sí, anular V-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de rechazo ipc' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent)
+      .toBe('El documento V-000001 tiene cobros o pagos aplicados; anúlelos primero');
+    const estado = db.prepare('SELECT estado FROM venta WHERE folio = ?').get('V-000001') as { estado: string };
+    expect(estado.estado).toBe('registrada');
+  });
+
+  it('Compras: rechazo con formato real de IPC muestra el texto exacto limpio dentro del diálogo', async () => {
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor IPC A55', esCliente: false, esProveedor: true, responsable: 'p' });
+    registrarCompra(db, {
+      contraparteId: proveedor, fechaOperacion: '2026-11-10', concepto: 'Compra ipc a55',
+      condicion: 'credito',
+      lineas: [{ descripcion: 'Material', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '50.00', tasa: '0', tratamiento: 'exento' }],
+      claveIdempotencia: 'c-a55', responsable: 'p'
+    });
+    forzarError = (comando: string) =>
+      comando === 'documento:anular'
+        ? new Error("Error invoking remote method 'arkon': Error: El documento CMP-000001 tiene cobros o pagos aplicados; anúlelos primero")
+        : null;
+    render(<Compras />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByRole('dialog'));
+    const form = screen.getByText(/Sí, anular CMP-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de rechazo ipc' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent)
+      .toBe('El documento CMP-000001 tiene cobros o pagos aplicados; anúlelos primero');
+    const estado = db.prepare('SELECT estado FROM compra WHERE folio = ?').get('CMP-000001') as { estado: string };
+    expect(estado.estado).toBe('registrada');
+  });
+
+  it('CajaBancos: rechazo con formato real de IPC muestra el texto exacto limpio dentro del diálogo', async () => {
+    const cliente = crearContraparte(db, { nombre: 'Cliente IPC Caja A55', esCliente: true, esProveedor: false, responsable: 'p' });
+    registrarCobro(db, {
+      fechaOperacion: '2026-11-11', contraparteId: cliente, cuentaDestinoId: idCuenta('1101'),
+      monto: '30.00', concepto: 'Cobro ipc a55', aplicaciones: [],
+      claveIdempotencia: 'cob-a55', responsable: 'p'
+    });
+    forzarError = (comando: string) =>
+      comando === 'tesoreria:anular'
+        ? new Error("Error invoking remote method 'arkon': Error: El movimiento COB-000001 no puede anularse en este estado")
+        : null;
+    render(<CajaBancos />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByRole('dialog'));
+    const form = screen.getByText(/Sí, anular COB-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de rechazo ipc' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent)
+      .toBe('El movimiento COB-000001 no puede anularse en este estado');
+    const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'COB-000001'").get() as { estado: string };
+    expect(estado.estado).toBe('registrado');
+  });
+
+  it('Compras: motivo corto en la vista no invoca el comando y el error queda dentro del diálogo', async () => {
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor Corto A55', esCliente: false, esProveedor: true, responsable: 'p' });
+    registrarCompra(db, {
+      contraparteId: proveedor, fechaOperacion: '2026-11-10', concepto: 'Compra corto a55',
+      condicion: 'contado',
+      lineas: [{ descripcion: 'Material', cuentaCodigo: '5101', cantidad: '1', precioUnitario: '50.00', tasa: '0', tratamiento: 'exento' }],
+      claveIdempotencia: 'c-a55c', responsable: 'p'
+    });
+    registrarInvocaciones = true;
+    render(<Compras />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByText(/Anular compra CMP-000001/));
+    const form = screen.getByText(/Sí, anular CMP-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'corto' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent).toContain('mínimo 10 caracteres');
+    expect(invocados).not.toContain('documento:anular');
+    const estado = db.prepare('SELECT estado FROM compra WHERE folio = ?').get('CMP-000001') as { estado: string };
+    expect(estado.estado).toBe('registrada');
+  });
+
+  it('CajaBancos: motivo corto en la vista no invoca el comando y el error queda dentro del diálogo', async () => {
+    const cliente = crearContraparte(db, { nombre: 'Cliente Corto Caja A55', esCliente: true, esProveedor: false, responsable: 'p' });
+    registrarCobro(db, {
+      fechaOperacion: '2026-11-11', contraparteId: cliente, cuentaDestinoId: idCuenta('1101'),
+      monto: '30.00', concepto: 'Cobro corto a55', aplicaciones: [],
+      claveIdempotencia: 'cob-a55c', responsable: 'p'
+    });
+    registrarInvocaciones = true;
+    render(<CajaBancos />);
+    fireEvent.click(await screen.findByText('Anular'));
+    await waitFor(() => screen.getByText(/Anular cobro COB-000001/));
+    const form = screen.getByText(/Sí, anular COB-000001/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'corto' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent).toContain('mínimo 10 caracteres');
+    expect(invocados).not.toContain('tesoreria:anular');
+    const estado = db.prepare("SELECT estado FROM tesoreria_movimiento WHERE folio = 'COB-000001'").get() as { estado: string };
+    expect(estado.estado).toBe('registrado');
   });
 });

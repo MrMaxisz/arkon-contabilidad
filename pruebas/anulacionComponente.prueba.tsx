@@ -115,10 +115,10 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     expect(payload.responsable).toBe('qa');
   });
 
-  it('rechazo del motor visible; no aviso de anulación', async () => {
+  it('rechazo con formato real de IPC: el texto exacto queda dentro del diálogo sin prefijo técnico', async () => {
     invocar.mockImplementation((comando: string) => {
       if (comando === 'documento:anular') {
-        return Promise.reject(new Error('El documento tiene cobros aplicados; anúlelos primero'));
+        return Promise.reject(new Error("Error invoking remote method 'arkon': Error: El documento V-000002 tiene cobros o pagos aplicados; anúlelos primero"));
       }
       if (comando === 'venta:listar') {
         return Promise.resolve([VENTA]);
@@ -135,8 +135,8 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
 
     const dialogo = screen.getByRole('dialog');
     await waitFor(() => within(dialogo).getByRole('alert'));
-    expect(within(dialogo).getByRole('alert').textContent).toContain('cobros aplicados');
-    expect(within(dialogo).getByRole('alert').textContent).not.toContain('Error invoking');
+    expect(within(dialogo).getByRole('alert').textContent)
+      .toBe('El documento V-000002 tiene cobros o pagos aplicados; anúlelos primero');
     expect(screen.queryByText(/anulada con reverso/)).toBeNull();
   });
 });
