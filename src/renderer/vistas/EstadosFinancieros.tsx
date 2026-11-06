@@ -57,6 +57,16 @@ interface EstadoSituacionFinanciera {
 
 type Pestana = 'comprobacion' | 'resultados' | 'situacion';
 
+// Costos y gastos se presentan como deducción: siempre con signo menos, SIN duplicarlo
+// cuando el importe ya viene negativo (un costo de -5.00 se imprime '-5.00', no '--5.00').
+function importeDeduccion(importeMinor: string): string {
+  return importeMinor.startsWith('-') ? importeMinor : `-${importeMinor}`;
+}
+
+function filasSeccion(filas: Seccion[], deduccion: boolean): string[][] {
+  return filas.map(f => [f.codigo, f.nombre, deduccion ? importeDeduccion(f.importeMinor) : f.importeMinor]);
+}
+
 export default function EstadosFinancieros() {
   const [pestana, setPestana] = useState<Pestana>('comprobacion');
   const [desde, setDesde] = useState('2026-01-01');
@@ -150,22 +160,14 @@ export default function EstadosFinancieros() {
   async function imprimir(
     titulo: string,
     periodo: string,
-    tabla: { encabezados: string[]; filas: string[][]; total?: string[] }
+    tablas: { titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }[]
   ) {
     try {
-      const r = (await api().reportePdf({ titulo, periodo, tablas: [tabla] })) as { guardado: boolean; ruta?: string };
+      const r = (await api().reportePdf({ titulo, periodo, ambito: 'administrativo', tablas })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Reporte guardado en ${r.ruta}.` : 'Impresión cancelada.');
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }
-  }
-
-  function tablaSeccion(titulo: string, filas: Seccion[]): { titulo: string; encabezados: string[]; filas: string[][] } {
-    return {
-      titulo,
-      encabezados: ['Código', 'Nombre', 'Importe'],
-      filas: filas.map(f => [f.codigo, f.nombre, f.importeMinor])
-    };
   }
 
   return (
@@ -196,11 +198,11 @@ export default function EstadosFinancieros() {
               </select>
             </label>
             <BotonSecundario onClick={() => cargarComprobacion()}>Recalcular</BotonSecundario>
-            <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, {
+            <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, [{
               encabezados: ['Cuenta', 'Nombre', 'Saldo inicial', 'Cargos', 'Abonos', 'Saldo final'],
               filas: comprobacion.filas.map(f => [f.codigo, f.nombre, f.saldoInicialMinor, f.cargosMinor, f.abonosMinor, f.saldoFinalMinor]),
               total: ['Totales', '', '', comprobacion.totalCargosMinor, comprobacion.totalAbonosMinor, '']
-            })}>Imprimir…</BotonSecundario>
+            }])}>Imprimir…</BotonSecundario>
           </div>
           <table>
             <thead><tr><th>Cuenta</th><th>Nombre</th><th className="numero">Saldo inicial</th><th className="numero">Cargos</th><th className="numero">Abonos</th><th className="numero">Saldo final</th></tr></thead>
@@ -239,20 +241,34 @@ export default function EstadosFinancieros() {
             <label>Desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} /></label>
             <label>Hasta<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
             <BotonSecundario onClick={() => cargarResultados()}>Recalcular</BotonSecundario>
-            <BotonSecundario onClick={() => void imprimir('Estado de resultados', `${resultados.desde} a ${resultados.hasta}`, {
-              encabezados: ['Código', 'Nombre', 'Importe'],
-              filas: [
-                ...tablaSeccion('Ingresos', resultados.ingresos).filas,
-                ...resultados.costos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
-                ...resultados.otrosCostos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
-                ...resultados.gastosAdministracion.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
-                ...resultados.gastosComercializacion.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
-                ...resultados.otrosGastos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
-                ...resultados.otrosIngresos.map(f => [f.codigo, f.nombre, f.importeMinor]),
-                ...resultados.gastosFinancieros.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`])
-              ],
-              total: ['Resultado antes de impuestos', '', resultados.resultadoAntesImpuestosMinor]
-            })}>
+            <BotonSecundario onClick={() => void imprimir('Estado de resultados', `${resultados.desde} a ${resultados.hasta}`, [
+              {
+                titulo: 'Ingresos',
+                encabezados: ['Código', 'Nombre', 'Importe'],
+                filas: filasSeccion(resultados.ingresos, false)
+              },
+              {
+                titulo: 'Costos',
+                encabezados: ['Código', 'Nombre', 'Importe'],
+                filas: filasSeccion([...resultados.costos, ...resultados.otrosCostos], true),
+                total: ['Utilidad bruta', '', resultados.utilidadBrutaMinor]
+              },
+              {
+                titulo: 'Gastos de administración y comercialización',
+                encabezados: ['Código', 'Nombre', 'Importe'],
+                filas: filasSeccion([...resultados.gastosAdministracion, ...resultados.gastosComercializacion, ...resultados.otrosGastos], true),
+                total: ['Utilidad de operación', '', resultados.utilidadOperacionMinor]
+              },
+              {
+                titulo: 'Otros ingresos y gastos financieros',
+                encabezados: ['Código', 'Nombre', 'Importe'],
+                filas: [
+                  ...filasSeccion(resultados.otrosIngresos, false),
+                  ...filasSeccion(resultados.gastosFinancieros, true)
+                ],
+                total: ['Resultado antes de impuestos', '', resultados.resultadoAntesImpuestosMinor]
+              }
+            ])}>
               Imprimir…
             </BotonSecundario>
           </div>

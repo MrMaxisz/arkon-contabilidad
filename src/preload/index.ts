@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('arkon', {
     }
     return ipcRenderer.invoke('arkon:guardarCsv', { tipo, mes });
   },
-  reportePdf(solicitud: { titulo: string; periodo?: string; tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }> }): Promise<unknown> {
+  reportePdf(solicitud: { titulo: string; periodo?: string; ambito?: string; tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }> }): Promise<unknown> {
     if (!solicitud?.titulo || !Array.isArray(solicitud.tablas) || solicitud.tablas.length === 0) {
       return Promise.reject(new Error('El reporte requiere título y tablas'));
     }

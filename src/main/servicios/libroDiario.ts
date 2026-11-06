@@ -150,7 +150,7 @@ export function listarPartidas(
       )
       .safeIntegers(true)
       .all(...parametros, limite, desde) as Array<{
-      id: number;
+      id: bigint;
       folio: string;
       fecha: string;
       concepto: string;
@@ -163,7 +163,7 @@ export function listarPartidas(
 
   return {
     partidas: filas.map(f => ({
-      id: f.id,
+      id: Number(f.id),
       folio: f.folio,
       numero: numeroDeFolio(f.folio),
       fecha: f.fecha,
@@ -171,7 +171,7 @@ export function listarPartidas(
       estado: f.estado,
       origen: f.origen,
       responsable: f.responsable,
-      totalMinor: minorATexto(BigInt(f.total))
+      totalMinor: minorATexto(f.total)
     })),
     total
   };
@@ -224,7 +224,7 @@ export function verPartida(db: Database.Database, partidaId: number, ambitoId = 
   const totalHaber = lineas.reduce((s, l) => s + BigInt(l.haber), 0n);
 
   return {
-    id: asiento.id,
+    id: Number(asiento.id),
     folio: asiento.folio,
     numero: numeroDeFolio(asiento.folio),
     fecha: asiento.fecha,

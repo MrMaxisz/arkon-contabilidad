@@ -364,11 +364,12 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     const p = objetoSolicitud(solicitud);
     const titulo = String(p.titulo ?? 'Reporte');
     const periodo = typeof p.periodo === 'string' ? p.periodo : '';
+    const ambito = typeof p.ambito === 'string' && p.ambito ? p.ambito : undefined;
     const tablas = Array.isArray(p.tablas) ? (p.tablas as TablaReporte[]) : [];
     if (!titulo || tablas.length === 0) {
       throw new Error('El reporte requiere título y tablas');
     }
-    const datos: DatosReporte = { titulo, periodo, tablas };
+    const datos: DatosReporte = { titulo, periodo, ambito, tablas };
     const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/arkon-logo-azul.svg'), 'utf8');
     const fuente = (nombre: string, familia: string, peso: string): string => {
       const base64 = fs.readFileSync(path.join(__dirname, '../renderer/fuentes', nombre)).toString('base64');

@@ -95,7 +95,7 @@ export default function LibroDiario() {
   function verPartida(id: number) {
     setMensaje(null);
     void api()
-      .invocar('libro:partida', { partidaId: id })
+      .invocar('libro:partida', { partidaId: id, ambitoId: 'administrativo' })
       .then(r => setDetalle(r as PartidaDetalle))
       .catch(err => setMensaje(limpiarMensajeError(err)));
   }
@@ -108,6 +108,7 @@ export default function LibroDiario() {
       const r = (await api().reportePdf({
         titulo: `Partida ${detalle.folio}`,
         periodo: `${detalle.fecha} · ${detalle.concepto} · Responsable: ${detalle.responsable} · Estado: ${detalle.estado}${detalle.motivo ? ` · Motivo: ${detalle.motivo}` : ''}`,
+        ambito: 'administrativo',
         tablas: [
           {
             encabezados: ['Cuenta', 'Nombre', 'Debe', 'Haber'],
@@ -123,30 +124,32 @@ export default function LibroDiario() {
   }
 
   async function imprimirRango() {
-    // TODO el rango filtrado (auditoría 72): recorre todas las páginas, no solo la visible.
-    const todas: PartidaResumen[] = [];
-    let totalAcumulado = 0;
-    for (let paginaLibro = 0; ; paginaLibro += 1) {
-      const r = (await api().invocar('libro:partidas', {
-        busqueda: busqueda || undefined,
-        desdeFecha: desdeFecha || undefined,
-        hastaFecha: hastaFecha || undefined,
-        concepto: concepto || undefined,
-        cuentaId: cuentaId || undefined,
-        desde: paginaLibro * TAMANO_PAGINA,
-        limite: TAMANO_PAGINA
-      })) as { partidas: PartidaResumen[]; total: number };
-      todas.push(...r.partidas);
-      totalAcumulado = r.total;
-      if (todas.length >= r.total || r.partidas.length === 0) {
-        break;
-      }
-    }
-    const periodo = desdeFecha || hastaFecha ? `${desdeFecha || 'inicio'} a ${hastaFecha || 'hoy'}` : 'todos los períodos';
+    setMensaje(null);
     try {
+      // El rango filtrado COMPLETO: recorre todas las páginas, no solo la visible (auditoría 72).
+      const todas: PartidaResumen[] = [];
+      let totalAcumulado = 0;
+      for (let paginaLibro = 0; ; paginaLibro += 1) {
+        const r = (await api().invocar('libro:partidas', {
+          busqueda: busqueda || undefined,
+          desdeFecha: desdeFecha || undefined,
+          hastaFecha: hastaFecha || undefined,
+          concepto: concepto || undefined,
+          cuentaId: cuentaId || undefined,
+          desde: paginaLibro * TAMANO_PAGINA,
+          limite: TAMANO_PAGINA
+        })) as { partidas: PartidaResumen[]; total: number };
+        todas.push(...r.partidas);
+        totalAcumulado = r.total;
+        if (todas.length >= r.total || r.partidas.length === 0) {
+          break;
+        }
+      }
+      const periodo = desdeFecha || hastaFecha ? `${desdeFecha || 'inicio'} a ${hastaFecha || 'hoy'}` : 'todos los períodos';
       const r = (await api().reportePdf({
         titulo: 'Libro diario',
         periodo: `${periodo} · ${totalAcumulado} partida(s)`,
+        ambito: 'administrativo',
         tablas: [
           {
             encabezados: ['Folio', 'Fecha', 'Concepto', 'Estado', 'Total'],

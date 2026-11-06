@@ -10,11 +10,11 @@ export interface SaldoCuenta {
 }
 
 interface SaldoCrudo {
-  id: number;
+  id: bigint;
   codigo: string;
   nombre: string;
   tipo: string;
-  saldo: number | null;
+  saldo: bigint | null;
 }
 
 function saldosCrudos(db: Database.Database): SaldoCrudo[] {
@@ -30,16 +30,17 @@ function saldosCrudos(db: Database.Database): SaldoCrudo[] {
        GROUP BY c.id
        ORDER BY c.codigo`
     )
+    .safeIntegers(true)
     .all() as SaldoCrudo[];
 }
 
 export function saldosPorCuenta(db: Database.Database): SaldoCuenta[] {
   return saldosCrudos(db).map(f => ({
-    cuentaId: f.id,
+    cuentaId: Number(f.id),
     codigo: f.codigo,
     nombre: f.nombre,
     tipo: f.tipo,
-    saldoMinor: minorATexto(BigInt(f.saldo ?? 0))
+    saldoMinor: minorATexto(f.saldo ?? 0n)
   }));
 }
 
@@ -57,7 +58,7 @@ export function balanceResumen(db: Database.Database): BalanceResumen {
   let patrimonio = 0n;
   let resultado = 0n;
   for (const f of saldosCrudos(db)) {
-    const saldo = BigInt(f.saldo ?? 0);
+    const saldo = f.saldo ?? 0n;
     switch (f.tipo) {
       case 'activo':
         activo += saldo;
@@ -146,7 +147,7 @@ export function balanceComprobacion(
       )
       .safeIntegers(true)
       .all(entrada.desde, entrada.desde, entrada.hasta, entrada.desde, entrada.hasta, ambito) as Array<{
-      id: number;
+      id: bigint;
       codigo: string;
       nombre: string;
       tipo: string;
@@ -161,7 +162,8 @@ export function balanceComprobacion(
   for (const f of filasCrudas) {
     porId.set(Number(f.id), {
       fila: {
-        cuentaId: f.id,
+        // Identificador como number por IPC; solo los importes viajan como bigint (P1, cierre bloque 2).
+        cuentaId: Number(f.id),
         codigo: f.codigo,
         nombre: f.nombre,
         tipo: f.tipo,
@@ -444,7 +446,9 @@ const CLASIFICACION_CORRIENTE = new Map([
   ['26', 'noCorriente'], ['27', 'noCorriente'], ['28', 'noCorriente'], ['29', 'noCorriente']
 ]);
 
-// Cuentas reguladoras: su saldo contrario natural NO se reporta como contrario (auditoría 72).
+// Cuentas reguladoras: su signo natural está INVERTIDO respecto de su tipo (1502 depreciación
+// acumulada es abonador siendo activo). Su saldo contrario natural no se reporta como contrario;
+// el opuesto sí: 1502 con saldo deudor SÍ es saldo contrario (cierre bloque 2).
 const CUENTAS_REGULADORAS = new Set(['1502']);
 
 export function estadoSituacionFinanciera(
@@ -470,12 +474,12 @@ export function estadoSituacionFinanciera(
         )
         .safeIntegers(true)
         .all(corte, ambito) as Array<{
-        id: number;
+        id: bigint;
         codigo: string;
         nombre: string;
         tipo: string;
         esGrupo: number;
-        padreId: number | null;
+        padreId: bigint | null;
         saldo: bigint;
       }>
     );
@@ -512,7 +516,12 @@ export function estadoSituacionFinanciera(
       return clasificacionDe(info.padreId, visitados);
     };
     for (const f of filas) {
-      grupoRaiz.set(Number(f.id), clasificacionDe(Number(f.id), new Set<number>()) ?? '');
+      // El grupo de la cuenta sale de su padre_id, NO de su prefijo (cierre bloque 2):
+      // una cuenta 1199 colgada bajo el grupo 15 es NO corriente aunque su prefijo sea 11.
+      grupoRaiz.set(
+        Number(f.id),
+        f.padreId === null ? '' : clasificacionDe(Number(f.padreId), new Set([Number(f.id)])) ?? ''
+      );
     }
 
     const activoCorriente: FilaSituacion[] = [];
@@ -541,9 +550,14 @@ export function estadoSituacionFinanciera(
         sinClasificar: clasificacion === undefined,
         saldoMinor: minorATexto(natural)
       };
+      // Saldo contrario: signo anormal para la cuenta. En reguladoras el signo natural está
+      // invertido, así que el contrario también lo está: 1502 deudor SÍ es contrario.
+      const esReguladora = CUENTAS_REGULADORAS.has(f.codigo);
+      const abonadorNatural = f.tipo === 'pasivo' || f.tipo === 'patrimonio';
+      const deudorNatural = esReguladora ? abonadorNatural : !abonadorNatural;
       const contrario =
-        !CUENTAS_REGULADORAS.has(f.codigo) &&
-        ((f.tipo === 'activo' && saldo < 0n) || ((f.tipo === 'pasivo' || f.tipo === 'patrimonio') && saldo > 0n));
+        (f.tipo === 'activo' || f.tipo === 'pasivo' || f.tipo === 'patrimonio') &&
+        (deudorNatural ? saldo < 0n : saldo > 0n);
       if (contrario) {
         saldosContrarios.push({ codigo: f.codigo, nombre: f.nombre, saldoMinor: minorATexto(natural) });
       }

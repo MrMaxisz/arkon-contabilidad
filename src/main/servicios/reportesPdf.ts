@@ -13,6 +13,7 @@ export interface TablaReporte {
 export interface DatosReporte {
   titulo: string;
   periodo?: string;
+  ambito?: string;
   tablas: TablaReporte[];
 }
 
@@ -26,13 +27,18 @@ export function escaparHtml(texto: string): string {
 }
 
 export function construirHtmlReporte(datos: DatosReporte, logoSvg: string, fuentesCss: string): string {
+  const celdaNumero = (encabezados: string[], i: number): string =>
+    encabezados[i]?.match(/debe|haber|saldo|total|importe|cargo|abono/i) ? ' class="numero"' : '';
   const tablas = datos.tablas
     .map(tabla => {
       const encabezados = tabla.encabezados.map(e => `<th>${escaparHtml(e)}</th>`).join('');
       const filas = tabla.filas
-        .map(fila => `<tr>${fila.map((celda, i) => `<td${tabla.encabezados[i]?.includes && tabla.encabezados[i].match(/debe|haber|saldo|total|importe|cargo|abono/i) ? ' class="numero"' : ''}>${escaparHtml(celda)}</td>`).join('')}</tr>`)
+        .map(fila => `<tr>${fila.map((celda, i) => `<td${celdaNumero(tabla.encabezados, i)}>${escaparHtml(celda)}</td>`).join('')}</tr>`)
         .join('');
-      const total = tabla.total ? `<tr class="total">${tabla.total.map(celda => `<td>${escaparHtml(celda)}</td>`).join('')}</tr>` : '';
+      // Filas de total: las cifras alineadas a la derecha igual que las filas (cierre bloque 2).
+      const total = tabla.total
+        ? `<tr class="total">${tabla.total.map((celda, i) => `<td${celdaNumero(tabla.encabezados, i)}>${escaparHtml(celda)}</td>`).join('')}</tr>`
+        : '';
       return `${tabla.titulo ? `<h2>${escaparHtml(tabla.titulo)}</h2>` : ''}
 <table><thead><tr>${encabezados}</tr></thead><tbody>${filas}</tbody>${total ? `<tfoot>${total}</tfoot>` : ''}</table>`;
     })
@@ -58,7 +64,7 @@ ${fuentesCss}
 <div class="encabezado">
   <div class="logo">${logoSvg}</div>
   <h1>${escaparHtml(datos.titulo)}</h1>
-  <p class="meta">${datos.periodo ? `Período: ${escaparHtml(datos.periodo)}. ` : ''}Moneda: USD. Ámbito administrativo.</p>
+  <p class="meta">${datos.periodo ? `Período: ${escaparHtml(datos.periodo)}. ` : ''}Moneda: USD. Ámbito ${escaparHtml(datos.ambito ?? 'administrativo')}.</p>
   <p class="meta">Registro de control interno, no estado financiero legal. ARKON sin constituir ni inscrita en IVA.</p>
 </div>
 ${tablas}

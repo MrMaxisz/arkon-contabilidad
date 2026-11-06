@@ -172,7 +172,13 @@ export const comandos: Record<string, Manejador> = {
   },
   'libro:partida': (ctx, payload) => {
     const p = objeto(payload);
-    return verPartida(ctx.db, entero(p, 'partidaId'));
+    // El ámbito se reenvía (cierre bloque 2): el detalle respeta el ámbito del libro,
+    // igual que el listado; sin ámbito se conserva el administrativo por defecto.
+    return verPartida(
+      ctx.db,
+      entero(p, 'partidaId'),
+      typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    );
   },
   'balance:comprobacion': (ctx, payload) => {
     const p = objeto(payload);
