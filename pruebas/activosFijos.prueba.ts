@@ -227,3 +227,59 @@ describe('bloque 3A: alta de activos fijos', () => {
     expect(s.cuadra).toBe(true);
   });
 });
+
+describe('auditoría 75: correcciones a la 3A', () => {
+  it('P1-75-1: ninguna cuota negativa; 5 centavos a 10 meses y 10.00 a 285 meses', () => {
+    // A mano: 5/10 → 0 en 9 meses y 5 en el último.
+    const cinco = calcularCuotas(5n, 10);
+    expect(cinco.slice(0, 9).every(c => c === 0n)).toBe(true);
+    expect(cinco[9]).toBe(5n);
+    expect(cinco.every(c => c >= 0n)).toBe(true);
+    expect(cinco.reduce((s, c) => s + c, 0n)).toBe(5n);
+    // A mano: 10.00 = 1000 centavos a 285 meses → 3 en 284 meses y 148 en el último.
+    const largo = calcularCuotas(1000n, 285);
+    expect(largo.slice(0, 284).every(c => c === 3n)).toBe(true);
+    expect(largo[284]).toBe(148n);
+    expect(largo.every(c => c >= 0n)).toBe(true);
+    expect(largo.reduce((s, c) => s + c, 0n)).toBe(1000n);
+  });
+
+  it('P1-75-2: el alta es atómica; un fallo en el INSERT no deja asiento huérfano', () => {
+    const asientosAntes = (db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n;
+    db.exec(
+      `CREATE TRIGGER fallo_insert_activo BEFORE INSERT ON activo_fijo
+       BEGIN SELECT RAISE(ABORT, 'fallo forzado de la auditoría 75'); END`
+    );
+    expect(() => alta()).toThrow(/fallo forzado/);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n).toBe(asientosAntes);
+    db.exec('DROP TRIGGER fallo_insert_activo');
+    const r = alta();
+    expect(r.codigo).toBe('AF-000001');
+  });
+
+  it('P2-75-3: la cuenta de depreciación debe ser distinta del activo y reguladora', () => {
+    expect(() => alta({ cuentaDepreciacionId: idCuenta('1501') })).toThrow(/distinta/);
+    // 1103 (Bancos, tipo activo pero no reguladora) no sirve como acumulada.
+    expect(() => alta({ cuentaDepreciacionId: idCuenta('1103') })).toThrow(/reguladora/);
+  });
+
+  it('P2-75-4: la suma de costos de una compra no supera lo contabilizado en esa cuenta', () => {
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor 75', esCliente: false, esProveedor: true, responsable: 'qa' });
+    const compra = registrarCompra(db, {
+      contraparteId: proveedor,
+      fechaOperacion: '2026-01-10',
+      concepto: 'Compra de herramienta 75',
+      condicion: 'contado',
+      lineas: [{ descripcion: 'Herramienta', cuentaCodigo: '1501', cantidad: '1', precioUnitario: '500.00', tasa: '0', tratamiento: 'exento' }],
+      claveIdempotencia: 'c-75',
+      responsable: 'qa'
+    });
+    // Contabilizado: 500.00. Un activo de 400.00 entra; otro de 200.00 ya no cabe.
+    alta({ compraId: compra.id, cuentaContrapartidaId: undefined, costoMinor: '400.00', descripcion: 'Activo uno de la compra' });
+    expect(() =>
+      alta({ compraId: compra.id, cuentaContrapartidaId: undefined, costoMinor: '200.00', descripcion: 'Activo dos de la compra' })
+    ).toThrow(/supera lo disponible/);
+    // Con 100.00 restante sí cabe.
+    alta({ compraId: compra.id, cuentaContrapartidaId: undefined, costoMinor: '100.00', descripcion: 'Activo tres de la compra' });
+  });
+});

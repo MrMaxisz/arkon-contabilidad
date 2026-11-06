@@ -449,7 +449,7 @@ const CLASIFICACION_CORRIENTE = new Map([
 // Cuentas reguladoras: su signo natural está INVERTIDO respecto de su tipo (1502 depreciación
 // acumulada es abonador siendo activo). Su saldo contrario natural no se reporta como contrario;
 // el opuesto sí: 1502 con saldo deudor SÍ es saldo contrario (cierre bloque 2).
-const CUENTAS_REGULADORAS = new Set(['1502']);
+export const CUENTAS_REGULADORAS = new Set(['1502']);
 
 export function estadoSituacionFinanciera(
   db: Database.Database,

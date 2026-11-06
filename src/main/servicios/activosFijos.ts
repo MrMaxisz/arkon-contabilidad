@@ -1,8 +1,9 @@
 import type Database from 'better-sqlite3';
-import { redondearDivision, minorATexto, parseMontoMinor } from '../../shared/dinero';
+import { minorATexto, parseMontoMinor } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
+import { CUENTAS_REGULADORAS } from './estadosFinancieros';
 
 // Activos fijos (bloque 3, tarea 3A): migración aplicada en v20; alta y cálculo de cuotas.
 // Servicio puro: sin Electron, `db` por parámetro. Importes en menores enteros (bigint/safeIntegers).
@@ -47,16 +48,17 @@ export function calcularCuotas(depreciableMinor: bigint, vidaUtilMeses: number):
   if (depreciableMinor < 0n) {
     throw new ErrorActivoFijo('Lo depreciable no puede ser negativo');
   }
-  const cuotaBase = redondearDivision(depreciableMinor, BigInt(vidaUtilMeses));
+  // División entera HACIA ABAJO (auditoría 75): ninguna cuota negativa y el acumulado
+  // nunca supera lo depreciable; el último mes absorbe la diferencia exacta.
+  const cuotaBase = depreciableMinor / BigInt(vidaUtilMeses);
   const cuotas: bigint[] = [];
   let acumulado = 0n;
   for (let mes = 1; mes <= vidaUtilMeses; mes += 1) {
     if (mes === vidaUtilMeses) {
       cuotas.push(depreciableMinor - acumulado);
     } else {
-      const cuota = cuotaBase;
-      cuotas.push(cuota);
-      acumulado += cuota;
+      cuotas.push(cuotaBase);
+      acumulado += cuotaBase;
     }
   }
   return cuotas;
@@ -178,6 +180,15 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
   cuentaValida(db, entrada.cuentaActivoId, 'activo', 'activo fijo');
   cuentaValida(db, entrada.cuentaDepreciacionId, 'activo', 'depreciación acumulada');
   cuentaValida(db, entrada.cuentaGastoId, 'gasto', 'gasto de depreciación');
+  if (entrada.cuentaActivoId === entrada.cuentaDepreciacionId) {
+    throw new ErrorActivoFijo('La cuenta de depreciación acumulada debe ser distinta de la cuenta del activo');
+  }
+  const cuentaDepreciacion = db
+    .prepare('SELECT codigo FROM cuenta WHERE id = ?')
+    .get(entrada.cuentaDepreciacionId) as { codigo: string };
+  if (!CUENTAS_REGULADORAS.has(cuentaDepreciacion.codigo)) {
+    throw new ErrorActivoFijo(`La cuenta de depreciación acumulada debe ser reguladora (cuenta ${cuentaDepreciacion.codigo})`);
+  }
 
   let costoMinor: bigint;
   let residualMinor: bigint;
@@ -194,10 +205,12 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
     throw new ErrorActivoFijo('El valor residual no puede superar el costo');
   }
 
+  const ejecutar = db.transaction((): ActivoFijoAlta => {
   const codigo = siguienteCodigo(db);
 
   // Regla 4: si viene de una compra ya contabilizada en la cuenta del activo, NO genera
   // otro asiento; en caso contrario genera asiento con cuenta de contrapartida elegida.
+  // Asiento, activo y bitácora en UNA transacción (auditoría 75).
   let asientoAltaId: number | null = null;
   if (entrada.compraId) {
     const compra = db
@@ -221,6 +234,30 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
       .get(entrada.compraId, entrada.cuentaActivoId);
     if (!tocaCuentaActivo) {
       throw new ErrorActivoFijo('La compra de origen no está contabilizada en la cuenta del activo');
+    }
+    // La suma de costos de activos de una compra no puede superar lo contabilizado en esa cuenta.
+    const contabilizado = (
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS total
+           FROM asiento_linea l JOIN asiento a ON a.id = l.asiento_id
+           WHERE a.origen_tipo = 'compra'
+             AND a.origen_id = (SELECT folio FROM compra WHERE id = ?)
+             AND l.cuenta_id = ?`
+        )
+        .safeIntegers(true)
+        .get(entrada.compraId, entrada.cuentaActivoId) as { total: bigint }
+    ).total;
+    const yaAsignado = (
+      db
+        .prepare('SELECT COALESCE(SUM(costo_minor), 0) AS total FROM activo_fijo WHERE compra_id = ?')
+        .safeIntegers(true)
+        .get(entrada.compraId) as { total: bigint }
+    ).total;
+    if (yaAsignado + costoMinor > contabilizado) {
+      throw new ErrorActivoFijo(
+        `El costo supera lo disponible de la compra en esa cuenta (disponible: ${minorATexto(contabilizado - yaAsignado)})`
+      );
     }
   } else {
     if (!entrada.cuentaContrapartidaId) {
@@ -282,5 +319,7 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
     politicaInicio: POLITICA_INICIO_DEPRECIACION,
     asientoAltaId
   });
-  return { id, codigo, asientoAltaId };
+    return { id, codigo, asientoAltaId };
+  });
+  return ejecutar();
 }

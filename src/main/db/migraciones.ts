@@ -611,8 +611,8 @@ CREATE TABLE activo_fijo (
   cuenta_activo_id INTEGER NOT NULL REFERENCES cuenta(id),
   cuenta_depreciacion_id INTEGER NOT NULL REFERENCES cuenta(id),
   cuenta_gasto_id INTEGER NOT NULL REFERENCES cuenta(id),
-  compra_id INTEGER,
-  proyecto_id INTEGER,
+  compra_id INTEGER REFERENCES compra(id),
+  proyecto_id INTEGER REFERENCES proyecto(id),
   estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','dado_de_baja','vendido')),
   ambito_id TEXT NOT NULL DEFAULT 'administrativo' REFERENCES ambito(id),
   creado_en TEXT NOT NULL DEFAULT (datetime('now'))
