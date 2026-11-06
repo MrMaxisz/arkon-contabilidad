@@ -318,7 +318,11 @@ export default function Reportes() {
         </p>
       )}
       <h2>Detalle por documentos</h2>
-      <div className="fila">
+      <p className="filtros-impresion menor">
+        Filtros: {tipoDetalle === 'cliente' ? 'Cliente' : 'Proveedor'} ·{' '}
+        {contrapartes.find(c => c.id === contraparteId)?.nombre ?? 'todas'} · Corte: {corte || 'sin corte'}
+      </p>
+      <div className="fila no-imprimir">
         <label>Tipo
           <select value={tipoDetalle} onChange={e => { setTipoDetalle(e.target.value as 'cliente' | 'proveedor'); setContraparteId(0); }}>
             <option value="cliente">Cliente</option>
@@ -340,7 +344,6 @@ export default function Reportes() {
       </div>
       {detalle && (
         <>
-          <p className="menor">Saldo al corte: {formatoDineroPantalla(detalle.saldoMinor)}</p>
           {detalle.documentos.length === 0 ? (
             <EstadoVacio texto="Sin documentos al corte seleccionado." />
           ) : (
@@ -349,7 +352,7 @@ export default function Reportes() {
               <tbody>
                 {detalle.documentos.map(d => (
                   <tr key={d.folio}>
-                    <td>{d.folio}</td>
+                    <td className="folio">{d.folio}</td>
                     <td>{d.fecha}</td>
                     <td>{d.concepto}</td>
                     <td className="numero">{formatoDineroPantalla(d.totalMinor)}</td>
@@ -358,13 +361,23 @@ export default function Reportes() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="total">
+                  <td>Saldo al corte</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td className="numero">{formatoDineroPantalla(detalle.saldoMinor)}</td>
+                </tr>
+              </tfoot>
             </table>
           )}
         </>
       )}
 
       <h2>Exportación</h2>
-      <div className="fila">
+      <div className="fila no-imprimir">
         <label>Paquete para el contador desde
           <input type="date" value={paqueteDesde} onChange={e => setPaqueteDesde(e.target.value)} />
         </label>
@@ -425,7 +438,7 @@ export default function Reportes() {
                   <td>{a.concepto}</td>
                   <td>{a.estado}</td>
                   <td>{a.origen}</td>
-                  <td className="numero">${a.totalMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(a.totalMinor)}</td>
                   <td>{a.familiaCierre ? 'Sí (excluido del ordinario)' : 'No'}</td>
                 </tr>
               ))}

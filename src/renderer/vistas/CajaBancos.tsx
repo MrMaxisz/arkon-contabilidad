@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { formatoDineroPantalla } from '../componentes';
 
 interface Cuenta { id: number; codigo: string; nombre: string }
 
@@ -173,12 +174,12 @@ export default function CajaBancos() {
           <tbody>
             {movimientos.map(m => (
               <tr key={m.id}>
-                <td>{m.folio}</td>
+                <td className="folio">{m.folio}</td>
                 <td>{m.tipo}</td>
                 <td>{m.fecha}</td>
                 <td>{m.concepto}</td>
                 <td>{m.contraparteNombre ?? '—'}</td>
-                <td className="numero">${m.montoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(m.montoMinor)}</td>
                 <td>{m.estado}</td>
                 <td>{m.estado === 'registrado' && <button onClick={e => abrirAnulacion(m, e.currentTarget)}>Anular</button>}</td>
               </tr>

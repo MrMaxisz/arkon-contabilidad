@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { CuentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { formatoDineroPantalla } from '../componentes';
 
 interface Contraparte { id: number; nombre: string; esProveedor: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
@@ -386,12 +387,12 @@ export default function Compras() {
           <tbody>
             {compras.map(c => (
               <tr key={c.id}>
-                <td>{c.folio}</td>
+                <td className="folio">{c.folio}</td>
                 <td>{c.fecha}</td>
                 <td>{c.concepto}</td>
                 <td>{c.contraparteNombre}</td>
-                <td className="numero">${c.totalMinor}</td>
-                <td className="numero">${c.saldoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(c.totalMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(c.saldoMinor)}</td>
                 <td>{c.estado}</td>
                 <td>{c.clasificacionDocumento && c.tipoDocumento ? `${c.clasificacionDocumento} · ${c.tipoDocumento}` : 'Pendiente'}</td>
                 <td>

@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { VentaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { formatoDineroPantalla } from '../componentes';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
@@ -301,8 +302,8 @@ export default function Ventas() {
                 <td>{v.fecha}</td>
                 <td>{v.concepto}</td>
                 <td>{v.contraparteNombre}</td>
-                <td className="numero">${v.totalMinor}</td>
-                <td className="numero">${v.saldoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(v.totalMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(v.saldoMinor)}</td>
                 <td>{v.estado}</td>
                 <td>{v.clasificacionDocumento && v.tipoDocumento ? `${v.clasificacionDocumento} · ${v.tipoDocumento}` : 'Pendiente'}</td>
                 <td>

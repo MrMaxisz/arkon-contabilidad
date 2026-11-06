@@ -237,3 +237,6 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
   tr, td, th { page-break-inside: avoid; }
   @page { margin: 14mm; }
 }
+
+/* Filtros activos como texto en impresión (auditoría 71): visibles en papel, ocultos los controles. */
+.filtros-impresion { margin: 0 0 8px; }

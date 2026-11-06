@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
-import { BotonPrimario, BotonSecundario, EstadoVacio } from '../componentes';
+import { BotonPrimario, BotonSecundario, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface Cuenta {
   id: number;
@@ -66,6 +66,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
   const [anulando, setAnulando] = useState<AsientoResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
   const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
+  const [anulandoAsiento, setAnulandoAsiento] = useState(false);
   const claveOperacion = useRef<string>(nuevaClave());
 
   const cargar = useCallback(() => {
@@ -140,23 +141,24 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
       return;
     }
     const alPresionar = (evento: KeyboardEvent) => {
-      if (evento.key === 'Escape' && !ocupado) {
+      if (evento.key === 'Escape' && !anulandoAsiento) {
         setAnulando(null);
         origenAnulacionRef.current?.focus();
       }
     };
     document.addEventListener('keydown', alPresionar);
     return () => document.removeEventListener('keydown', alPresionar);
-  }, [anulando, ocupado]);
+  }, [anulando, anulandoAsiento]);
 
   async function confirmarAnulacion() {
-    if (!anulando) {
+    if (!anulando || anulandoAsiento) {
       return;
     }
     if (!motivoAnular.trim() || !responsable.trim()) {
       setMensaje({ texto: 'La anulación exige motivo y responsable registrados en el formulario.', tipo: 'error' });
       return;
     }
+    setAnulandoAsiento(true);
     try {
       await api().invocar('asiento:anular', {
         asientoId: anulando.id,
@@ -169,6 +171,8 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
       alCambiar();
     } catch (err) {
       setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
+    } finally {
+      setAnulandoAsiento(false);
     }
   }
 
@@ -243,7 +247,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             <label style={{ flex: 2 }}>Motivo (obligatorio)
               <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
             </label>
-            <button className="peligro" type="submit">Confirmar anulación</button>
+            <button className="peligro" type="submit" disabled={anulandoAsiento}>{anulandoAsiento ? 'Anulando…' : 'Confirmar anulación'}</button>
             <BotonSecundario onClick={() => setAnulando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
@@ -264,7 +268,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
                 <td>{a.fechaOperacion}</td>
                 <td>{a.concepto}</td>
                 <td>{a.estado}</td>
-                <td className="numero">${a.totalMinor}</td>
+                <td className="numero">{formatoDineroPantalla(a.totalMinor)}</td>
                 <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={e => pedirAnulacion(a, e.currentTarget)}>Anular</button>}</td>
               </tr>
             ))}
@@ -283,7 +287,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             ))}
           </select>
         </label>
-        {mayor.cuenta && <p className="menor" style={{ alignSelf: 'flex-end' }}>Saldo: ${mayor.saldoMinor}</p>}
+        
       </div>
       {mayor.cuenta && mayor.movimientos.length === 0 && <EstadoVacio texto="Sin movimientos en esta cuenta." />}
       {mayor.movimientos.length > 0 && (
@@ -295,14 +299,24 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             {mayor.movimientos.map((m, i) => (
               <tr key={i}>
                 <td>{m.fecha}</td>
-                <td>{m.folio}</td>
+                <td className="folio">{m.folio}</td>
                 <td>{m.concepto}</td>
-                <td className="numero">${m.debeMinor}</td>
-                <td className="numero">${m.haberMinor}</td>
-                <td className="numero">${m.saldoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(m.debeMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(m.haberMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(m.saldoMinor)}</td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="total">
+              <td>Saldo</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td className="numero">{formatoDineroPantalla(mayor.saldoMinor)}</td>
+            </tr>
+          </tfoot>
         </table>
       )}
     </div>
