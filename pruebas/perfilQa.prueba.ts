@@ -188,7 +188,7 @@ describe('auditoría 58: configuración de empaquetado', () => {
   it('dist:win:qa:aislada usa electron-builder.qa.yml y verifica canal qa; dist:win:qa verifica canal producción', () => {
     const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
     const aislada = pkg.scripts['dist:win:qa:aislada'];
-    expect(aislada).toContain('--config electron-builder.qa.yml');
+    expect(aislada).toContain('node scripts/empaquetar-qa.mjs');
     expect(aislada).toContain('verificar-canal-artefacto.mjs paquete-qa/win-unpacked qa');
     expect(pkg.scripts['dist:win:qa']).toContain('verificar-canal-artefacto.mjs paquete/win-unpacked produccion');
   });
@@ -305,5 +305,29 @@ describe('auditoría 59: verificador de canal ejecutable (P1-1)', () => {
       const contenido = fs.readFileSync(path.resolve(__dirname, '../scripts', f), 'utf8');
       expect(contenido, `${f} no debe comparar import.meta.url con replace('file://','')`).not.toContain("import.meta.url.replace('file://'");
     }
+  });
+});
+
+describe('auditoría 61: versión QA trazable en el empaquetado', () => {
+  it('empaquetar-qa.mjs valida el formato 0.1.0-qa[.N] y dist:win:qa:aislada lo usa', async () => {
+    const { validarVersionQa } = await import('../scripts/empaquetar-qa.mjs');
+    expect(validarVersionQa('0.1.0-qa')).toBe(true);
+    expect(validarVersionQa('0.1.0-qa.61')).toBe(true);
+    expect(validarVersionQa('0.1.0')).toBe(false);
+    expect(validarVersionQa('qa')).toBe(false);
+    expect(validarVersionQa('0.1.0-qa.foo')).toBe(false);
+    const empaquetar = fs.readFileSync(path.resolve(__dirname, '../scripts/empaquetar-qa.mjs'), 'utf8');
+    expect(empaquetar).toContain("'--config', 'electron-builder.qa.yml'");
+    expect(empaquetar).toContain('ARKON_VERSION_QA');
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
+    expect(pkg.scripts['dist:win:qa:aislada']).toContain('node scripts/empaquetar-qa.mjs');
+    expect(pkg.scripts['dist:win:qa:aislada']).not.toContain('electron-builder --win nsis');
+    expect(pkg.scripts['dist:win:qa']).not.toContain('empaquetar-qa');
+  });
+
+  it('la configuración QA no altera producción: electron-builder.yml sin extraMetadata', () => {
+    const produccion = fs.readFileSync(path.resolve(__dirname, '../electron-builder.yml'), 'utf8');
+    expect(produccion).not.toContain('extraMetadata');
+    expect(produccion).not.toContain('arkonCanal');
   });
 });

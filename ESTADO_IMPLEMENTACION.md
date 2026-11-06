@@ -995,5 +995,22 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Comprobación
 
 - `npm run typecheck` (4 proyectos) → sin errores.
-- `npx vitest run` → exit 0, 301/301, 0 Errors (58 archivos).
+- `npx vitest run` → exit 0, 301/301, 0 Errors (57 archivos).
+- `npm run build` → OK.
+
+## Bloque auditoría 61 (familia de cierre en estado de resultados, canales IPC, versión QA)
+
+### Corregido (hallazgos P1-1 y P2-2, notas)
+
+- **P1-1**: criterio ÚNICO compartido de familia de cierre en `src/main/servicios/familiaCierre.ts` (`SQL_FAMILIA_CIERRE_EXCLUIDA` / `SQL_FAMILIA_CIERRE_PRESENTA`), aplicado a `estadoResultados` (fiscal.ts), `estado-resultados.csv` (paqueteContador.ts) y reutilizado por ejercicioAnual.ts y ejercicio-anual.csv. El asiento de cierre, su reverso y cierres anulados dejan de falsear el estado de resultados; las anulaciones ordinarias siguen contando y netean cero. El balance NO cambia.
+- **Conciliaciones**: `conciliaciones.csv` añade `resultado-trasladado-por-cierre` (60.00 en el caso sintético) y `estado-resultados-vs-ejercicio-anual` (ok/descuadre, falla si difieren). LEEME.txt explica la exclusión.
+- **P2-2**: `limpiarMensajeError` acepta cualquier canal nativo (`[^']*`): arkon y arkon:guardarCsv, registrarAdjunto, guardarCsvAuxiliar, guardarAnexoF07, guardarAnexoF14, guardarEjercicioAnual, guardarPaqueteContador, abrirAdjunto, pdfCotizacion y uno inventado; texto exacto del adjunto probado.
+- **Notas**: ESTADO_IMPLEMENTACION.md corregido a 57 archivos reales. `scripts/empaquetar-qa.mjs` permite fijar versión trazable `0.1.0-qa[.N]` vía `ARKON_VERSION_QA` (validada, exit 2 si no cumple el formato) solo en `dist:win:qa:aislada`; producción sin cambios.
+- **Pruebas** (`pruebas/estadoResultadosCierre.prueba.ts`, 6): tras cierre→reabrir→anular cierre→recierre: 4101 100.00, 5101 -40.00, TOTAL 60.00 igual antes y después de cerrar e igual a TOTAL_ORDINARIO_ANUAL; pantalla 2026-12 sin operaciones 0.00/0.00/0.00 y noviembre 100/40/60; venta real de diciembre sola; venta anulada neta cero sin excluirse; rango parcial con 31 de diciembre con el mismo criterio; balance y conciliaciones intactas con las dos filas nuevas.
+- Mutaciones confirmadas localmente (restauradas): quitar la exclusión de paqueteContador → 3 fallos; de fiscal → 2 fallos; de ejercicioAnual → 2 fallos; revertir el canal a 'arkon' literal → 2 fallos.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 311/311, 0 Errors (58 archivos).
 - `npm run build` → OK.

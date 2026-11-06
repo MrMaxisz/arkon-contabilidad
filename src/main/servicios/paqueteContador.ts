@@ -4,6 +4,7 @@ import { validarFechaCalendario } from '../../shared/fechas';
 import { minorATexto } from '../../shared/dinero';
 import { auxiliarContraparteDetalle } from './fiscal';
 import { escaparCsv } from './fiscal';
+import { SQL_FAMILIA_CIERRE_EXCLUIDA, SQL_FAMILIA_CIERRE_PRESENTA } from './familiaCierre';
 
 export class ErrorPaquete extends Error {}
 
@@ -80,6 +81,7 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     'ARKON Ingeniería Eléctrica no está constituida como entidad jurídica ni inscrita como contribuyente de IVA; los datos son de control administrativo.',
     'Saldos de cuentas, balance y conciliaciones calculados ACUMULADOS al corte (hasta); movimientos, asientos y resultados calculados del rango exacto desde–hasta.',
     'ejercicio-anual.csv: soporte del AÑO del corte (resultado ordinario sin la familia de cierre), diferenciado del rango desde–hasta y reconciliado contra el mayor.',
+    'estado-resultados.csv y la vista de estado de resultados EXCLUYEN la familia de cierre (asiento de cierre, su reverso y cierres anulados): el traslado a 3201 no es ingreso ni gasto ordinario. Las anulaciones ordinarias Sí cuentan y netean cero.',
     'Las retenciones y el tratamiento fiscal de anticipos permanecen como control interno pendiente de la política del contador.',
     'Cifras en USD con dos decimales; los importes provienen del mayor contable y de las aplicaciones de documentos.'
   ];
@@ -155,6 +157,7 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
        JOIN cuenta c ON c.id = l.cuenta_id
        WHERE c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
          AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+         AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
        GROUP BY c.id, c.codigo, c.nombre, c.tipo
        ORDER BY c.codigo`
     )
@@ -242,11 +245,33 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
       cuentasConcilian = false;
     }
   }
+  const trasladoCierre = db
+    .prepare(
+      `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS monto
+       FROM asiento_linea l
+       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       JOIN cuenta c ON c.id = l.cuenta_id AND c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+       WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+         AND ${SQL_FAMILIA_CIERRE_PRESENTA}`
+    )
+    .get(desde, hasta) as { monto: number };
+  const resultadoTrasladadoCierre = -BigInt(trasladoCierre.monto);
+  const anualCriterioRango = db
+    .prepare(
+      `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS total
+       FROM asiento_linea l
+       JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
+       JOIN cuenta c ON c.id = l.cuenta_id AND c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
+       WHERE a.fecha_operacion >= ? AND a.fecha_operacion <= ?
+         AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}`
+    )
+    .get(desde, hasta) as { total: number };
   const conciliaciones = {
     clientesMayor: totalClientesCorte === mayorClientes,
     proveedoresMayor: totalProveedoresCorte === -mayorProveedores,
     efectivoMayor: totalEfectivo === mayorEfectivo,
-    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n && cuentasConcilian
+    balanceCuadra: activo + pasivo + patrimonio + resultado === 0n && cuentasConcilian,
+    estadoResultadosVsAnual: netoResultados === BigInt(anualCriterioRango.total)
   };
   const lineasConciliaciones = [
     `conciliacion,resultado`,
@@ -255,6 +280,8 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     `auxiliar-efectivo-al-corte-vs-mayor,${conciliaciones.efectivoMayor ? 'ok' : 'descuadre'}`,
     `cuentas-exportadas-vs-mayor-al-corte,${cuentasConcilian ? 'ok' : 'descuadre'}`,
     `balance-activo-pasivo-patrimonio-resultado,${conciliaciones.balanceCuadra ? 'cuadra' : 'no cuadra'}`,
+    `resultado-trasladado-por-cierre,${minorATexto(resultadoTrasladadoCierre)}`,
+    `estado-resultados-vs-ejercicio-anual,${conciliaciones.estadoResultadosVsAnual ? 'ok' : 'descuadre'}`,
     `total-activo,${minorATexto(activo)}`,
     `total-pasivo,${minorATexto(pasivo)}`,
     `total-patrimonio,${minorATexto(patrimonio)}`,
@@ -272,11 +299,7 @@ export function generarPaqueteContador(db: Database, desde: string, hasta: strin
     .prepare(
       `SELECT c.codigo, c.nombre, c.tipo,
               COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-                AND NOT EXISTS (
-                  SELECT 1 FROM asiento o
-                  WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
-                     OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
-                ) THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento
+                AND ${SQL_FAMILIA_CIERRE_EXCLUIDA} THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento
        FROM cuenta c
        LEFT JOIN asiento_linea l ON l.cuenta_id = c.id
        LEFT JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')

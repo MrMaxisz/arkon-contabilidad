@@ -36,3 +36,23 @@ describe('auditoría 59 (AMP-1): limpieza de nombres técnicos en mensajes de er
     }
   });
 });
+
+describe('auditoría 61 (P2-2): prefijo IPC con cualquier canal nativo', () => {
+  const canales = [
+    'arkon', 'arkon:guardarCsv', 'arkon:registrarAdjunto', 'arkon:guardarCsvAuxiliar',
+    'arkon:guardarAnexoF07', 'arkon:guardarAnexoF14', 'arkon:guardarEjercicioAnual',
+    'arkon:guardarPaqueteContador', 'arkon:abrirAdjunto', 'arkon:pdfCotizacion', 'arkon:canalInventado'
+  ];
+  const mensaje = 'El hash del adjunto adjunto-sintetico-qa60.txt no coincide; restaure desde un respaldo verificado';
+
+  it('tabla: quita el prefijo con el canal real y con uno inventado', () => {
+    for (const canal of canales) {
+      expect(limpiarMensajeError(`Error invoking remote method '${canal}': Error: ${mensaje}`)).toBe(mensaje);
+    }
+  });
+
+  it('el texto del adjunto queda exacto, con y sin prefijo Error adicional', () => {
+    expect(limpiarMensajeError(`Error invoking remote method 'arkon:abrirAdjunto': ${mensaje}`)).toBe(mensaje);
+    expect(limpiarMensajeError(new Error(mensaje))).toBe(mensaje);
+  });
+});

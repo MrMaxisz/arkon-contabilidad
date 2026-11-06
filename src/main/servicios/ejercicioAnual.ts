@@ -3,6 +3,7 @@ type Database = BetterSqlite3.Database;
 import { validarFechaCalendario } from '../../shared/fechas';
 import { minorATexto } from '../../shared/dinero';
 import { escaparCsv } from './fiscal';
+import { SQL_FAMILIA_CIERRE_EXCLUIDA } from './familiaCierre';
 
 export class ErrorEjercicio extends Error {}
 
@@ -42,11 +43,7 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
     .prepare(
       `SELECT c.codigo, c.nombre, c.tipo,
               COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-                AND NOT EXISTS (
-                  SELECT 1 FROM asiento o
-                  WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
-                     OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
-                ) THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento,
+                AND ${SQL_FAMILIA_CIERRE_EXCLUIDA} THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimiento,
               COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ? THEN l.haber_minor - l.debe_minor ELSE 0 END), 0) AS movimientoConCierre,
               COALESCE(SUM(CASE WHEN a.fecha_operacion <= ? THEN l.debe_minor - l.haber_minor ELSE 0 END), 0) AS saldoAcumulado
        FROM cuenta c
@@ -84,11 +81,7 @@ export function consultarEjercicio(db: Database, anio: number): InformeEjercicio
        FROM asiento_linea l
        JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
          AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
-         AND NOT EXISTS (
-           SELECT 1 FROM asiento o
-           WHERE (o.id = a.id AND o.origen_tipo = 'cierre')
-              OR (o.id = a.reverso_de_id AND o.origen_tipo = 'cierre')
-         )
+         AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
        JOIN cuenta c ON c.id = l.cuenta_id AND c.tipo IN ('ingreso','costo','gasto')`
     )
     .get(desde, hasta) as { resultado: number };

@@ -6,6 +6,7 @@ import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
 import { saldoPendienteDocumento } from './saldos';
+import { SQL_FAMILIA_CIERRE_EXCLUIDA } from './familiaCierre';
 
 export class ErrorFiscal extends Error {}
 
@@ -636,6 +637,7 @@ export function estadoResultados(db: Database.Database, mes: string): EstadoResu
        WHERE c.es_grupo = 0 AND c.tipo IN ('ingreso','costo','gasto')
          AND a.fecha_operacion BETWEEN ? AND ?
          AND a.estado IN ('contabilizado','anulado')
+         AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
        GROUP BY c.id
        ORDER BY c.codigo`
     )
