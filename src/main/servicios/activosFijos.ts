@@ -5,6 +5,7 @@ import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
 import { registroEvento } from './bitacora';
 import { CUENTAS_REGULADORAS } from './estadosFinancieros';
+import { escaparCsv } from './fiscal';
 
 // Activos fijos (bloque 3, tarea 3A): migración aplicada en v20; alta y cálculo de cuotas.
 // Servicio puro: sin Electron, `db` por parámetro. Importes en menores enteros (bigint/safeIntegers).
@@ -684,4 +685,305 @@ export function anularBajaActivoFijo(
     });
     return { reversoFolio: reverso.folio };
   })();
+}
+
+// ─── Bloque 3D: reportes de activos fijos (sin interfaz) ───
+// El cuadro y la conciliación son de SOLO LECTURA: la diferencia se informa y nunca se ajusta.
+
+export interface FilaCuadroActivosFijos {
+  activoId: number;
+  codigo: string;
+  descripcion: string;
+  categoria: string;
+  estado: string;
+  costoMinor: string;
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+  gastoPeriodoMinor: string;
+}
+
+export interface FilaCuadroCategoriaActivosFijos {
+  categoria: string;
+  costoMinor: string;
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+  gastoPeriodoMinor: string;
+}
+
+export interface TotalesCuadroActivosFijos {
+  costoMinor: string;
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+  gastoPeriodoMinor: string;
+}
+
+export interface CuadroGeneralActivosFijos {
+  corte: string;
+  periodoDesde: string;
+  periodoHasta: string;
+  filas: FilaCuadroActivosFijos[];
+  categorias: FilaCuadroCategoriaActivosFijos[];
+  totales: TotalesCuadroActivosFijos;
+}
+
+interface TotalesCrudos {
+  costo: bigint;
+  acumulada: bigint;
+  valorLibros: bigint;
+  gasto: bigint;
+}
+
+function totalesVacios(): TotalesCrudos {
+  return { costo: 0n, acumulada: 0n, valorLibros: 0n, gasto: 0n };
+}
+
+function totalesATexto(t: TotalesCrudos): TotalesCuadroActivosFijos {
+  return {
+    costoMinor: minorATexto(t.costo),
+    acumuladaMinor: minorATexto(t.acumulada),
+    valorLibrosMinor: minorATexto(t.valorLibros),
+    gastoPeriodoMinor: minorATexto(t.gasto)
+  };
+}
+
+// Cuadro general a una fecha de corte. El gasto del período es el del EJERCICIO del corte
+// (1 de enero a la fecha de corte), coherente con el aviso de Cierre. Solo activos del
+// ámbito administrativo vigentes al corte; los dados de baja antes del corte no se incluyen.
+export function cuadroGeneralActivosFijos(db: Database.Database, corte: string): CuadroGeneralActivosFijos {
+  validarFechaCalendario(corte);
+  const periodoDesde = `${corte.slice(0, 4)}-01-01`;
+  const activos = db
+    .prepare(
+      `SELECT f.id, f.codigo, f.descripcion, f.categoria, f.costo_minor AS costo,
+              f.cuenta_activo_id AS cuentaActivoId, f.cuenta_depreciacion_id AS cuentaDepreciacionId
+       FROM activo_fijo f
+       WHERE f.ambito_id = 'administrativo'
+         AND f.fecha_adquisicion <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM baja_activo_fijo b
+           WHERE b.activo_fijo_id = f.id AND b.estado = 'registrada' AND b.fecha_operacion <= ?
+         )
+       ORDER BY f.categoria, f.codigo`
+    )
+    .safeIntegers(true)
+    .all(corte, corte) as Array<{
+    id: bigint;
+    codigo: string;
+    descripcion: string;
+    categoria: string;
+    costo: bigint;
+    cuentaActivoId: bigint;
+    cuentaDepreciacionId: bigint;
+  }>;
+  // La acumulada y el gasto se toman por la FECHA DEL ASIENTO del lote, no solo por el mes:
+  // un corte anterior al cierre del mes no debe incluir una depreciación contabilizada después.
+  const acumuladas = db
+    .prepare(
+      `SELECT d.activo_fijo_id AS activoId,
+              COALESCE(SUM(CASE WHEN a.fecha_operacion <= ? THEN d.cuota_minor ELSE 0 END), 0) AS acumulada,
+              COALESCE(SUM(CASE WHEN a.fecha_operacion >= ? AND a.fecha_operacion <= ? THEN d.cuota_minor ELSE 0 END), 0) AS gasto
+       FROM depreciacion_detalle d
+       JOIN depreciacion_lote l ON l.id = d.lote_id
+       JOIN asiento a ON a.id = l.asiento_id
+       WHERE a.estado = 'contabilizado'
+       GROUP BY d.activo_fijo_id`
+    )
+    .safeIntegers(true)
+    .all(corte, periodoDesde, corte) as Array<{ activoId: bigint; acumulada: bigint; gasto: bigint }>;
+  const porActivo = new Map(acumuladas.map(a => [Number(a.activoId), a]));
+
+  const filas: FilaCuadroActivosFijos[] = [];
+  const categorias = new Map<string, TotalesCrudos>();
+  const totales = totalesVacios();
+  for (const activo of activos) {
+    const mov = porActivo.get(Number(activo.id)) ?? { acumulada: 0n, gasto: 0n };
+    const acumulada = mov.acumulada;
+    const valorLibros = activo.costo - acumulada;
+    filas.push({
+      activoId: Number(activo.id),
+      codigo: activo.codigo,
+      descripcion: activo.descripcion,
+      categoria: activo.categoria,
+      estado: 'activo',
+      costoMinor: minorATexto(activo.costo),
+      acumuladaMinor: minorATexto(acumulada),
+      valorLibrosMinor: minorATexto(valorLibros),
+      gastoPeriodoMinor: minorATexto(mov.gasto)
+    });
+    const acumuladoCategoria = categorias.get(activo.categoria) ?? totalesVacios();
+    acumuladoCategoria.costo += activo.costo;
+    acumuladoCategoria.acumulada += acumulada;
+    acumuladoCategoria.valorLibros += valorLibros;
+    acumuladoCategoria.gasto += mov.gasto;
+    categorias.set(activo.categoria, acumuladoCategoria);
+    totales.costo += activo.costo;
+    totales.acumulada += acumulada;
+    totales.valorLibros += valorLibros;
+    totales.gasto += mov.gasto;
+  }
+  return {
+    corte,
+    periodoDesde,
+    periodoHasta: corte,
+    filas,
+    categorias: [...categorias.entries()].map(([categoria, t]) => ({
+      categoria,
+      ...totalesATexto(t)
+    })),
+    totales: totalesATexto(totales)
+  };
+}
+
+export interface FilaConciliacionActivosFijos {
+  cuentaId: number;
+  codigo: string;
+  nombre: string;
+  tipo: 'activo' | 'acumulada';
+  saldoMayorMinor: string;
+  saldoReporteMinor: string;
+  diferenciaMinor: string;
+}
+
+export interface ConciliacionActivosFijos {
+  corte: string;
+  filas: FilaConciliacionActivosFijos[];
+  cuadra: boolean;
+  totalDiferenciaMinor: string;
+}
+
+// Conciliación contra el mayor. En la cuenta de activo se compara el saldo deudor; en la
+// acumulada, su saldo acreedor natural (positivo). La diferencia es reporte - mayor.
+// Si difiere, solo se informa: esta función no registra ningún asiento ni ajuste.
+export function conciliacionActivosFijos(db: Database.Database, corte: string): ConciliacionActivosFijos {
+  validarFechaCalendario(corte);
+  const cuentas = db
+    .prepare(
+      `SELECT DISTINCT f.cuenta_activo_id AS cuentaId, 'activo' AS tipo
+       FROM activo_fijo f WHERE f.ambito_id = 'administrativo'
+       UNION
+       SELECT DISTINCT f.cuenta_depreciacion_id AS cuentaId, 'acumulada' AS tipo
+       FROM activo_fijo f WHERE f.ambito_id = 'administrativo'`
+    )
+    .all() as Array<{ cuentaId: number; tipo: 'activo' | 'acumulada' }>;
+  if (cuentas.length === 0) {
+    return { corte, filas: [], cuadra: true, totalDiferenciaMinor: '0.00' };
+  }
+  const nombres = new Map(
+    (db.prepare('SELECT id, codigo, nombre FROM cuenta').all() as Array<{ id: number; codigo: string; nombre: string }>)
+      .map(c => [c.id, c])
+  );
+  const costoPorCuenta = new Map(
+    (db
+      .prepare(
+        `SELECT f.cuenta_activo_id AS cuentaId, COALESCE(SUM(f.costo_minor), 0) AS total
+         FROM activo_fijo f
+         WHERE f.ambito_id = 'administrativo'
+           AND f.fecha_adquisicion <= ?
+           AND NOT EXISTS (
+             SELECT 1 FROM baja_activo_fijo b
+             WHERE b.activo_fijo_id = f.id AND b.estado = 'registrada' AND b.fecha_operacion <= ?
+           )
+         GROUP BY f.cuenta_activo_id`
+      )
+      .safeIntegers(true)
+      .all(corte, corte) as Array<{ cuentaId: bigint; total: bigint }>)
+      .map(f => [Number(f.cuentaId), f.total])
+  );
+  const acumuladaPorCuenta = new Map(
+    (db
+      .prepare(
+        `SELECT f.cuenta_depreciacion_id AS cuentaId, COALESCE(SUM(d.cuota_minor), 0) AS total
+         FROM depreciacion_detalle d
+         JOIN depreciacion_lote l ON l.id = d.lote_id
+         JOIN asiento a ON a.id = l.asiento_id
+         JOIN activo_fijo f ON f.id = d.activo_fijo_id
+         WHERE f.ambito_id = 'administrativo'
+           AND a.estado = 'contabilizado'
+           AND a.fecha_operacion <= ?
+           AND f.fecha_adquisicion <= ?
+           AND NOT EXISTS (
+             SELECT 1 FROM baja_activo_fijo b
+             WHERE b.activo_fijo_id = f.id AND b.estado = 'registrada' AND b.fecha_operacion <= ?
+           )
+         GROUP BY f.cuenta_depreciacion_id`
+      )
+      .safeIntegers(true)
+      .all(corte, corte, corte) as Array<{ cuentaId: bigint; total: bigint }>)
+      .map(f => [Number(f.cuentaId), f.total])
+  );
+  const mayor = new Map(
+    (db
+      .prepare(
+        `SELECT l.cuenta_id AS cuentaId, COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS saldo
+         FROM asiento_linea l
+         JOIN asiento a ON a.id = l.asiento_id
+         WHERE a.ambito_id = 'administrativo'
+           AND a.estado IN ('contabilizado', 'anulado')
+           AND a.fecha_operacion <= ?
+         GROUP BY l.cuenta_id`
+      )
+      .safeIntegers(true)
+      .all(corte) as Array<{ cuentaId: bigint; saldo: bigint }>)
+      .map(f => [Number(f.cuentaId), f.saldo])
+  );
+
+  let totalDiferencia = 0n;
+  const filas: FilaConciliacionActivosFijos[] = cuentas.map(cuenta => {
+    const info = nombres.get(cuenta.cuentaId);
+    const reporte = cuenta.tipo === 'activo'
+      ? (costoPorCuenta.get(cuenta.cuentaId) ?? 0n)
+      : (acumuladaPorCuenta.get(cuenta.cuentaId) ?? 0n);
+    const saldoCrudo = mayor.get(cuenta.cuentaId) ?? 0n;
+    // La acumulada es reguladora: su saldo natural es acreedor, por eso se invierte el signo.
+    const saldoMayor = cuenta.tipo === 'activo' ? saldoCrudo : -saldoCrudo;
+    const diferencia = reporte - saldoMayor;
+    totalDiferencia += diferencia < 0n ? -diferencia : diferencia;
+    return {
+      cuentaId: cuenta.cuentaId,
+      codigo: info?.codigo ?? String(cuenta.cuentaId),
+      nombre: info?.nombre ?? '',
+      tipo: cuenta.tipo,
+      saldoMayorMinor: minorATexto(saldoMayor),
+      saldoReporteMinor: minorATexto(reporte),
+      diferenciaMinor: minorATexto(diferencia)
+    };
+  });
+  filas.sort((a, b) => a.codigo.localeCompare(b.codigo) || a.tipo.localeCompare(b.tipo));
+  return {
+    corte,
+    filas,
+    cuadra: totalDiferencia === 0n,
+    totalDiferenciaMinor: minorATexto(totalDiferencia)
+  };
+}
+
+// CSV del cuadro general con el mismo saneamiento del paquete del contador (`escaparCsv`).
+export function csvCuadroGeneralActivosFijos(
+  db: Database.Database,
+  corte: string
+): { csv: string; version: string; filas: number } {
+  const cuadro = cuadroGeneralActivosFijos(db, corte);
+  const lineas = ['categoria,codigo,descripcion,estado,costo,acumulada,valor_libros,gasto_periodo'];
+  for (const f of cuadro.filas) {
+    lineas.push(
+      [
+        escaparCsv(f.categoria),
+        escaparCsv(f.codigo),
+        escaparCsv(f.descripcion),
+        escaparCsv(f.estado),
+        f.costoMinor,
+        f.acumuladaMinor,
+        f.valorLibrosMinor,
+        f.gastoPeriodoMinor
+      ].join(',')
+    );
+  }
+  lineas.push(
+    `TOTAL,,,,${cuadro.totales.costoMinor},${cuadro.totales.acumuladaMinor},${cuadro.totales.valorLibrosMinor},${cuadro.totales.gastoPeriodoMinor}`
+  );
+  return {
+    csv: lineas.join('\n'),
+    version: 'cuadro-activos-fijos-v1',
+    filas: cuadro.filas.length
+  };
 }

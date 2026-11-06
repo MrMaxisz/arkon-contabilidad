@@ -1,7 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { validarFechaCalendario } from '../../shared/fechas';
-import { minorATexto } from '../../shared/dinero';
+import { minorATexto, parseMontoMinor } from '../../shared/dinero';
+import { cuotasDepreciacionActivo } from './activosFijos';
 import {
   contabilizarAsiento,
   periodoDeFecha,
@@ -87,6 +88,54 @@ function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: strin
     .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>;
 }
 
+export interface AvisoDepreciacionEjercicio {
+  anio: number;
+  hayPendientes: boolean;
+  activos: number;
+  meses: number;
+  importeMinor: string;
+}
+
+// Aviso de Cierre (bloque 3D): cuotas del ejercicio que siguen sin depreciarse en activos
+// vigentes. No bloquea ni ajusta nada; solo informa para que el contador decida.
+export function avisoDepreciacionEjercicio(db: BetterSqlite3.Database, anio: number): AvisoDepreciacionEjercicio {
+  if (!Number.isInteger(anio) || anio < 1900 || anio > 2999) {
+    throw new ErrorCierre(`Año fuera de rango: ${anio}`);
+  }
+  const activos = db
+    .prepare("SELECT id FROM activo_fijo WHERE estado = 'activo' AND ambito_id = 'administrativo' ORDER BY codigo")
+    .all() as Array<{ id: number }>;
+  const anioTexto = String(anio);
+  let meses = 0;
+  let activosConPendiente = 0;
+  let importe = 0n;
+  for (const activo of activos) {
+    const aplicadas = new Set(
+      (db.prepare('SELECT mes FROM depreciacion_detalle WHERE activo_fijo_id = ?').all(activo.id) as Array<{ mes: string }>)
+        .map(fila => fila.mes)
+    );
+    let pendientesDelActivo = 0;
+    for (const cuota of cuotasDepreciacionActivo(db, activo.id).cuotas) {
+      if (cuota.mes.slice(0, 4) !== anioTexto || aplicadas.has(cuota.mes)) {
+        continue;
+      }
+      pendientesDelActivo += 1;
+      meses += 1;
+      importe += parseMontoMinor(cuota.cuotaMinor);
+    }
+    if (pendientesDelActivo > 0) {
+      activosConPendiente += 1;
+    }
+  }
+  return {
+    anio,
+    hayPendientes: meses > 0,
+    activos: activosConPendiente,
+    meses,
+    importeMinor: minorATexto(importe)
+  };
+}
+
 export interface EstadoEjercicio {
   anio: number;
   periodos: Array<{ id: number; inicio: string; fin: string; estado: string }>;
@@ -95,6 +144,7 @@ export interface EstadoEjercicio {
   cierreExistente: { id: number; folio: string; fecha: string } | null;
   periodoDiciembreAbierto: boolean;
   ejercicioCerrado: boolean;
+  depreciacionPendiente: AvisoDepreciacionEjercicio;
 }
 
 export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): EstadoEjercicio {
@@ -130,7 +180,8 @@ export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): Estad
     resultadoNetoMinor: minorATexto(neto),
     cierreExistente: cierre ?? null,
     periodoDiciembreAbierto: diciembre?.estado === 'abierto',
-    ejercicioCerrado: bloqueo?.estado === 'cerrado'
+    ejercicioCerrado: bloqueo?.estado === 'cerrado',
+    depreciacionPendiente: avisoDepreciacionEjercicio(db, anio)
   };
 }
 

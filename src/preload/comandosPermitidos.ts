@@ -90,5 +90,8 @@ export const COMANDOS_PERMITIDOS = new Set([
   'fiscal:exportarCsv',
   'fiscal:politicas',
   'reporte:estadoResultados',
-  'reporte:rentabilidadProyectos'
+  'reporte:rentabilidadProyectos',
+  'reporte:activosFijosCuadro',
+  'reporte:activosFijosConciliacion',
+  'reporte:activosFijosCsv'
 ]);

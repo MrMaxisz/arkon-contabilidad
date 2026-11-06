@@ -12,6 +12,11 @@ import type { ContextoApp } from './servicios/restauracion';
 export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
+import {
+  cuadroGeneralActivosFijos,
+  conciliacionActivosFijos,
+  csvCuadroGeneralActivosFijos
+} from './servicios/activosFijos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
 import { consultarEjercicio } from './servicios/ejercicioAnual';
 import {
@@ -655,6 +660,18 @@ export const comandos: Record<string, Manejador> = {
     return estadoResultados(ctx.db, texto(p, 'mes'));
   },
   'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
+  'reporte:activosFijosCuadro': (ctx, payload) => {
+    const p = objeto(payload);
+    return cuadroGeneralActivosFijos(ctx.db, texto(p, 'corte'));
+  },
+  'reporte:activosFijosConciliacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return conciliacionActivosFijos(ctx.db, texto(p, 'corte'));
+  },
+  'reporte:activosFijosCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    return csvCuadroGeneralActivosFijos(ctx.db, texto(p, 'corte'));
+  },
   'auxiliar:contrapartes': ctx => auxiliarContrapartes(ctx.db),
   'auxiliar:efectivo': ctx => auxiliarEfectivo(ctx.db),
   'auxiliar:contraparteDetalle': (ctx, payload) => {
