@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { VentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { minorATexto } from '../../shared/dinero';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
 interface Cuenta { id: number; nombre: string; codigo: string }
@@ -42,7 +43,7 @@ export default function CobrosPagos() {
 
   const cargar = useCallback(() => {
     const conError = (err: unknown) =>
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[])).catch(conError);
     api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo)))).catch(conError);
     api().invocar('venta:listar').then(r => setVentas((r as VentaResumen[]).filter(v => v.estado === 'registrada'))).catch(conError);
@@ -179,7 +180,7 @@ export default function CobrosPagos() {
       clave.current = nuevaClave();
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }

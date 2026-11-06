@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ContraparteResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Vigencia {
   id: number;
@@ -206,7 +207,7 @@ export default function Impuestos() {
       })
       .catch(err => {
         if (consultaResultadosId.current === id && mesResultadosRef.current === mesSolicitado) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       });
   }, [mes]);
@@ -227,7 +228,7 @@ export default function Impuestos() {
       setMensaje({ texto: 'Vigencia registrada. No recalcula el historial ni atribuye operaciones anteriores.', tipo: 'ok' });
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -245,7 +246,7 @@ export default function Impuestos() {
       if (exportacionId.current !== id) {
         return;
       }
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -259,7 +260,7 @@ export default function Impuestos() {
         setMensaje({ texto: 'Guardado cancelado por el usuario.', tipo: 'ok' });
       }
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -285,7 +286,7 @@ export default function Impuestos() {
       claveRet.current = nuevaClave();
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -316,7 +317,7 @@ export default function Impuestos() {
             setCerrandoId(null);
             cargar();
           } catch (err) {
-            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+            setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
           }
         }}>
           <h2>Cerrar vigencia</h2>
@@ -565,7 +566,7 @@ export default function Impuestos() {
             }
           }
         } catch (err) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       }}>
         <div className="fila">
@@ -778,7 +779,7 @@ export default function Impuestos() {
           await seleccionarRetencion(f14Id);
           await diagnosticarF14();
         } catch (err) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       }}>
         <div className="fila">
@@ -864,7 +865,7 @@ export default function Impuestos() {
       };
       setAnexoDiagnostico({ ...r, anexo, tipoDocumento });
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -918,7 +919,7 @@ export default function Impuestos() {
     } catch (err) {
       if (consultaF14.current === numeroConsulta) {
         setF14Id(0);
-        setMensaje({ texto: `No se pudo cargar la retención ${retencionId}: ${String(err instanceof Error ? err.message : err)}`, tipo: 'error' });
+        setMensaje({ texto: `No se pudo cargar la retención ${retencionId}: ${limpiarMensajeError(err)}`, tipo: 'error' });
       }
     } finally {
       if (consultaF14.current === numeroConsulta) {
@@ -937,7 +938,7 @@ export default function Impuestos() {
       };
       setF14Diagnostico(r);
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -950,7 +951,7 @@ export default function Impuestos() {
         setMensaje({ texto: 'Guardado del anexo F-14 cancelado.', tipo: 'ok' });
       }
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -963,7 +964,7 @@ export default function Impuestos() {
         setMensaje({ texto: `Guardado del anexo ${anexo} cancelado.`, tipo: 'ok' });
       }
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -1044,7 +1045,7 @@ export default function Impuestos() {
     } catch (err) {
       if (consultaMeta.current === numeroConsulta) {
         setMetaDocumentoId(0);
-        setMensaje({ texto: `No se pudo cargar la venta ${documentoId}: ${String(err instanceof Error ? err.message : err)}`, tipo: 'error' });
+        setMensaje({ texto: `No se pudo cargar la venta ${documentoId}: ${limpiarMensajeError(err)}`, tipo: 'error' });
       }
     } finally {
       if (consultaMeta.current === numeroConsulta) {
@@ -1063,7 +1064,7 @@ export default function Impuestos() {
       };
       setAnexoDiagnostico({ ...r, anexo: 1, tipoDocumento: 'venta' });
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -1076,7 +1077,7 @@ export default function Impuestos() {
         setMensaje({ texto: 'Guardado del anexo cancelado.', tipo: 'ok' });
       }
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 }

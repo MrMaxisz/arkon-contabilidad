@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 export function verificarCanal(pkg, esperado) {
   const canal = typeof pkg?.arkonCanal === 'string' ? pkg.arkonCanal : undefined;
@@ -42,6 +43,7 @@ function main() {
   process.exit(2);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.url.replace('file://', ''))) {
+const rutaScript = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(rutaScript)) {
   main();
 }

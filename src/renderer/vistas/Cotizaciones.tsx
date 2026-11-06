@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import type { CotizacionResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
 
@@ -95,7 +96,7 @@ export default function Cotizaciones() {
       clave.current = nuevaClave();
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -130,7 +131,7 @@ export default function Cotizaciones() {
         }))
       );
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setCargando(false);
     }
@@ -145,7 +146,7 @@ export default function Cotizaciones() {
         tipo: 'ok'
       });
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -159,7 +160,7 @@ export default function Cotizaciones() {
       setMensaje({ texto: 'Operación realizada.', tipo: 'ok' });
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 

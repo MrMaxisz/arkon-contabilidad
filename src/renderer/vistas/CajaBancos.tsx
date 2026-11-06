@@ -57,7 +57,7 @@ export default function CajaBancos() {
       clave.current = nuevaClave();
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }

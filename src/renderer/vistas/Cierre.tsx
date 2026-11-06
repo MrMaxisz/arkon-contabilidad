@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Periodo {
   id: number;
@@ -37,7 +38,7 @@ export default function Cierre() {
       setEstado(r);
     } catch (err) {
       setEstado(null);
-      setMensaje(`Error al consultar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al consultar el ejercicio: ${limpiarMensajeError(err)}`);
     }
   }
 
@@ -71,7 +72,7 @@ export default function Cierre() {
       clave.current = `cierre-${Date.now()}`;
       await consultar(false);
     } catch (err) {
-      setMensaje(`Error al cerrar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al cerrar el ejercicio: ${limpiarMensajeError(err)}`);
     } finally {
       setOcupado(false);
     }
@@ -84,7 +85,7 @@ export default function Cierre() {
       setMensaje(`Ejercicio ${anio} reabierto; el asiento de cierre puede anularse con motivo auditado.`);
       await consultar(false);
     } catch (err) {
-      setMensaje(`Error al reabrir: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al reabrir: ${limpiarMensajeError(err)}`);
     }
   }
 

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Item {
   id: number;
@@ -76,7 +77,7 @@ export default function Catalogo() {
       setPrecioCosto('');
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -87,7 +88,7 @@ export default function Catalogo() {
       await api().invocar(activar ? 'item:activar' : 'item:desactivar', { itemId: item.id, responsable });
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 

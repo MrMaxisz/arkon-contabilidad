@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface FilaAuxiliar {
   contraparteId: number;
@@ -95,7 +96,7 @@ export default function Reportes() {
       .catch(err => {
         if (consultaDetalle.current === numeroConsulta) {
           setDetalle(null);
-          setMensaje(`Error al consultar detalle: ${String(err instanceof Error ? err.message : err)}`);
+          setMensaje(`Error al consultar detalle: ${limpiarMensajeError(err)}`);
         }
       });
   }, [tipoDetalle, contraparteId, corte]);
@@ -114,7 +115,7 @@ export default function Reportes() {
       const r = (await api().guardarCsvAuxiliar({ tipo, alcance: 'resumen' })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Auxiliar guardado en ${r.ruta}.` : 'Guardado cancelado.');
     } catch (err) {
-      setMensaje(`Error al guardar: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al guardar: ${limpiarMensajeError(err)}`);
     }
   }
 
@@ -146,7 +147,7 @@ export default function Reportes() {
       if (consultaEjercicio.current === numeroConsulta) {
         setEjercicio(null);
         setEjercicioAnioConfirmado('');
-        setMensaje(`Error al consultar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+        setMensaje(`Error al consultar el ejercicio: ${limpiarMensajeError(err)}`);
       }
     } finally {
       if (consultaEjercicio.current === numeroConsulta) {
@@ -169,7 +170,7 @@ export default function Reportes() {
           : 'Guardado del ejercicio cancelado.'
       );
     } catch (err) {
-      setMensaje(`Error al guardar el ejercicio: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al guardar el ejercicio: ${limpiarMensajeError(err)}`);
     }
   }
 
@@ -187,7 +188,7 @@ export default function Reportes() {
           : 'Guardado de paquete cancelado.'
       );
     } catch (err) {
-      setMensaje(`Error al guardar el paquete: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al guardar el paquete: ${limpiarMensajeError(err)}`);
     }
   }
 
@@ -202,7 +203,7 @@ export default function Reportes() {
       })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Detalle guardado en ${r.ruta}.` : 'Guardado cancelado.');
     } catch (err) {
-      setMensaje(`Error al guardar detalle: ${String(err instanceof Error ? err.message : err)}`);
+      setMensaje(`Error al guardar detalle: ${limpiarMensajeError(err)}`);
     }
   }
 
@@ -210,11 +211,11 @@ export default function Reportes() {
     void api()
       .invocar('auxiliar:contrapartes')
       .then(r => setAuxiliarContrapartes(r as AuxiliarContrapartes))
-      .catch(err => setMensaje(`Error al consultar auxiliar de contrapartes: ${String(err instanceof Error ? err.message : err)}`));
+      .catch(err => setMensaje(`Error al consultar auxiliar de contrapartes: ${limpiarMensajeError(err)}`));
     void api()
       .invocar('auxiliar:efectivo')
       .then(r => setAuxiliarEfectivo(r as AuxiliarEfectivo))
-      .catch(err => setMensaje(`Error al consultar auxiliar de efectivo: ${String(err instanceof Error ? err.message : err)}`));
+      .catch(err => setMensaje(`Error al consultar auxiliar de efectivo: ${limpiarMensajeError(err)}`));
   }, []);
 
   useEffect(() => {

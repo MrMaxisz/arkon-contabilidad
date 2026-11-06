@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { ProyectoResumen } from '../../shared/contratos';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Contraparte { id: number; nombre: string }
 interface Cotizacion { id: number; numero: string; estado: string }
@@ -69,7 +70,7 @@ export default function Proyectos() {
       setCotizacionId(0);
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 interface Cuenta { id: number; codigo: string; nombre: string; tipo: string; esGrupo: boolean; activa: boolean }
 
@@ -71,7 +72,7 @@ export default function Ajustes() {
       ]);
       clave.current = nuevaClave();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { ContraparteResumen } from '../../shared/contratos';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 export default function Contrapartes() {
   const [lista, setLista] = useState<ContraparteResumen[]>([]);
@@ -29,7 +30,7 @@ export default function Contrapartes() {
       await api().invocar('contraparte:cambiarEstado', { contraparteId: c.id, activa, responsable });
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -51,7 +52,7 @@ export default function Contrapartes() {
       setNombre('');
       cargar();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -76,7 +77,7 @@ export default function Contrapartes() {
             setEditando(null);
             cargar();
           } catch (err) {
-            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+            setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
           }
         }}>
           <h2>Editar {editando.nombre}</h2>

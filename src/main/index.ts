@@ -1,11 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { prepararRutasDatos } from './db/conexion';
 import { sembrarCatalogoBase } from './servicios/cuentas';
 import { registrarIpc } from './ipc';
 import { crearContextoBase, type ContextoApp, ErrorRecuperacionPendiente, respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
-import { decidirPerfil } from './perfilQa';
+import { decidirPerfil, leerCanalDesdePaquete } from './perfilQa';
 
 const RUTA_BASE_DATOS = 'arkon.db';
 
@@ -17,13 +17,21 @@ function rutaOperativaCalculada(): string {
   return path.join(app.getPath('home'), '.arkon-contabilidad');
 }
 
-function leerCanalEmpaquetado(): string | undefined {
+// El canal SOLO puede venir del package.json empaquetado; ninguna variable de entorno lo activa o cambia.
+// Empaquetado con lectura fallida o JSON inválido: roto => la barrera falla en cerrado (78).
+function leerCanalEmpaquetado(): { canal: string | undefined; roto: boolean } {
+  let contenido: string | null = null;
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as { arkonCanal?: unknown };
-    return typeof pkg.arkonCanal === 'string' ? pkg.arkonCanal : undefined;
+    contenido = fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8');
   } catch {
-    return undefined;
+    contenido = null;
   }
+  const lectura = leerCanalDesdePaquete(contenido);
+  if (!app.isPackaged) {
+    // Desarrollo: una lectura fallida NO bloquea (comportamiento histórico).
+    return { canal: lectura.canal, roto: false };
+  }
+  return lectura;
 }
 
 function accesoArchivosPerfil() {
@@ -47,8 +55,11 @@ function accesoArchivosPerfil() {
 
 // Barrera QA: se evalúa ANTES del bloqueo de instancia, de crear carpetas o de abrir SQLite.
 // Canal ausente (desarrollo/producción): comportamiento histórico sin cambios.
+const lecturaCanal = leerCanalEmpaquetado();
 const decisionPerfil = decidirPerfil({
-  canal: leerCanalEmpaquetado(),
+  canal: lecturaCanal.canal,
+  canalRoto: lecturaCanal.roto,
+  empaquetado: app.isPackaged,
   rutaEnv: process.env.ARKON_RUTA_DATOS,
   rutaOperativa: rutaOperativaCalculada(),
   archivos: accesoArchivosPerfil()
@@ -84,6 +95,11 @@ if (decisionPerfil.canal === 'qa' && !decisionPerfil.valido) {
       }
     });
 
+    // Empaquetado: sin menú de Electron por defecto (sin Reload/Toggle DevTools/Help externo).
+    if (app.isPackaged) {
+      Menu.setApplicationMenu(null);
+    }
+
     app.whenReady().then(async () => {
       try {
         ctx = await crearContexto();
@@ -113,8 +129,14 @@ if (decisionPerfil.canal === 'qa' && !decisionPerfil.valido) {
           preload: path.join(__dirname, '../preload/index.js'),
           contextIsolation: true,
           nodeIntegration: false,
-          sandbox: true
+          sandbox: true,
+          devTools: !app.isPackaged
         }
+      });
+      // Sin ventanas ni navegación externas: se conservan los diálogos nativos (PDF, adjuntos).
+      ventana.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      ventana.webContents.on('will-navigate', evento => {
+        evento.preventDefault();
       });
       registrarIpc(ctx, ventana.webContents.id);
       void ventana.loadFile(path.join(__dirname, '../renderer/index.html'));

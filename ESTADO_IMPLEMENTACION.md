@@ -976,3 +976,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 287/287, 0 Errors (56 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 59 (verificador de canal, fail-closed, chromium del marcador, AMP-1 y AMP-2)
+
+### Corregido (hallazgos P1-1, P2-2, P2-3, P2-4 y ampliación AMP-1/AMP-2)
+
+- **P1-1**: `verificar-canal-artefacto.mjs` compara con `fileURLToPath(import.meta.url)` (rutas normalizadas, funciona en Windows y con espacios). Prueba que ejecuta el script en proceso hijo desde una carpeta con espacios: sin argumentos exit 2, ruta inexistente exit 2. Revisados los demás `.mjs`: nadie más usa el patrón roto (prueba de guarda).
+- **P2-2**: `leerCanalDesdePaquete` pura en `perfilQa.ts`; con `app.isPackaged`, lectura fallida o JSON inválido => `roto` => la barrera trata el perfil como no válido y sale 78 sin tocar nada. Sin empaquetar se mantiene igual (prueba).
+- **P2-3**: el canal SOLO proviene del package.json empaquetado; ninguna variable de entorno puede activarlo o cambiarlo (prueba con `ARKON_CANAL` fijado y guarda de fuente en `src/main`). El mensaje del diálogo es exacto y está protegido por prueba.
+- **P2-4**: `rutaChromium` se deriva de la carpeta que contiene el marcador (propia ruta o padre directo), coincidiendo con el lanzador; pruebas para ambos casos.
+- **AMP-1**: `limpiarMensajeError` quita el prefijo IPC y un único prefijo técnico `^[A-Z]\w*Error|Error\w*:` (ErrorContable…ErrorRecuperacionPendiente, Error), conservando «Error al cerrar el ejercicio:». Aplicado a las 56 lecturas directas de err.message en las 14 vistas; guarda de suite que falla si alguna vista vuelve a leer `err.message` directamente. Caso exacto probado: «El ejercicio 2026 está cerrado; reábrelo con motivo auditado antes de anular».
+- **AMP-2**: empaquetado sin menú de Electron (`Menu.setApplicationMenu(null)` con `app.isPackaged`), `devTools: !app.isPackaged`, `setWindowOpenHandler` deny y `will-navigate` preventDefault; desarrollo sin empaquetar sin cambios. Prueba de configuración; verificación de Ctrl+Shift+I/Ctrl+R y PDF/adjuntos en Electron real queda para el auditor en Windows.
+
+### Mutaciones confirmadas localmente (restauradas)
+
+- Revertir `fileURLToPath` → fallo; quitar fail-closed empaquetado → 1 fallo; canal desde `process.env` → 2 fallos; mensaje vacío → 3 fallos; chromium de la ruta en vez de la carpeta del marcador → 1 fallo; quitar prefijo técnico → 2 fallos; quitar `setWindowOpenHandler` → 1 fallo.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 301/301, 0 Errors (58 archivos).
+- `npm run build` → OK.

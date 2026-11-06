@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { InfoRespaldo } from '../../shared/contratos';
+import { limpiarMensajeError } from '../limpiarMensajeError';
 
 
 export default function Respaldo() {
@@ -76,7 +77,7 @@ export default function Respaldo() {
       cargar();
       cargarEstadoPeriodico();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -96,7 +97,7 @@ export default function Respaldo() {
       cargar();
       cargarEstadoPeriodico();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
       cargarEstadoPeriodico();
     } finally {
       setOcupado(false);
@@ -113,7 +114,7 @@ export default function Respaldo() {
         tipo: r.existe && r.hashCoincide ? 'ok' : 'error'
       });
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -122,7 +123,7 @@ export default function Respaldo() {
       const r = (await api().abrirAdjunto(id)) as { abierto: boolean; nombreOriginal: string };
       setMensaje({ texto: `Adjunto ${r.nombreOriginal} abierto con la aplicación del sistema.`, tipo: 'ok' });
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     }
   }
 
@@ -136,7 +137,7 @@ export default function Respaldo() {
       cargar();
       cargarEstadoPeriodico();
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -199,7 +200,7 @@ export default function Respaldo() {
           }
           cargarAdjuntos();
         } catch (err) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       }}>
         <div className="fila">
@@ -266,7 +267,7 @@ export default function Respaldo() {
           setMensaje({ texto: 'Configuración de respaldo periódico guardada.', tipo: 'ok' });
           cargarEstadoPeriodico();
         } catch (err) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       }}>
         <div className="fila">

@@ -55,7 +55,7 @@ export default function Ventas() {
       })
       .catch(err => {
         if (cargaDocumentosId.current === id) {
-          setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
         }
       });
   }, [mesFiltro, pagina]);
@@ -96,7 +96,7 @@ export default function Ventas() {
       cargarDocumentos();
       setTimeout(() => { if (typeof avisoRef.current?.scrollIntoView === 'function') { avisoRef.current.scrollIntoView({ block: 'center' }); } }, 0);
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
     } finally {
       setOcupado(false);
     }
@@ -238,7 +238,7 @@ export default function Ventas() {
             setClasificando(null);
             cargarDocumentos();
           } catch (err) {
-            setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+            setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
           }
         }}>
           <h2>Clasificar {clasificando.folio}</h2>
