@@ -846,3 +846,32 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Límites exactos
 
 - Sandbox Linux: la prueba de mecanismo corre con Node (ABI 127 aquí); en Windows correrá con Node (ABI 137 de la suite) — en ambos casos con el runtime que coincide con el native reconstruido por `npm test`. La integración Electron130 es el producto probe (verificado por el auditor en 48/50). QA real de dos versiones del auditor en curso (instalación/actualización con datos sintéticos conservados: 93 filas/24 tablas/1 adjunto con hash, CLI verificar PASA); recorrido offline integral sigue pendiente.
+
+## Bloque auditoría 51 (diálogo de anulación en Ventas y Compras)
+
+### Corregido (P1 de la auditoría 51)
+
+- **Diálogo de anulación en Ventas** (`src/renderer/vistas/Ventas.tsx`): el botón Anular ya NO invoca el comando directamente — abre un diálogo que identifica folio, importe ($totalMinor), saldo y efecto (reverso contable con motivo/responsable en bitácora), con campos **Motivo de la anulación** (obligatorio, sin texto automático) y **Responsable** (pre-cargado del campo general, editable). Confirmar una sola vez con estado ocupado ('Anulando…' deshabilita el botón); **Cancelar cierra el diálogo sin invocar el comando ni cambiar datos, saldos o bitácora**. Tras éxito: aviso «Venta {folio} anulada con reverso contable; motivo registrado en bitácora», recarga de documentos (estado actualizado a 'anulada') y reemplazo del mensaje anterior «Venta reconocida». Rechazo del motor visible como error, sin aviso de anulación. Motor sin relajar: `documento:anular` conserva las validaciones de documentos/aplicaciones/pagos.
+- **Diálogo de anulación en Compras** (`src/renderer/vistas/Compras.tsx`): mismo recorrido completo con folio/importe/saldo/efecto, motivo y responsable obligatorios, cancelar sin efectos, ocupado, aviso de anulación y recarga.
+
+### Pruebas de componente/contrato (`pruebas/anulacionComponente.prueba.tsx`, 4 pruebas)
+
+1. **Abrir/cancelar sin invocación**: clic en Anular muestra el diálogo con folio/importe/efecto; `documento:anular` NO invocado; Cancelar cierra sin invocación.
+2. **Faltan motivo/responsable**: submit sin motivo → «La anulación exige un motivo significativo» sin invocar; con motivo y sin responsable → «La anulación exige responsable» sin invocar.
+3. **Confirmación y doble envío**: submit con motivo/responsable → UNA sola llamada a `documento:anular` con payload completo (tipo/documentoId/motivo/responsable capturados); doble submit → idempotencia por estado ocupado; aviso de anulación visible y estado actualizado.
+4. **Rechazo del motor**: error del motor visible («cobros aplicados»), sin aviso de anulación.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → 251/251 (54 archivos).
+- `npm run build` → OK; preload autocontenido.
+
+### Manual y matriz actualizados
+
+- MANUAL-USUARIO.md: la corrección se describe como anulación con diálogo (folio/importe/efecto, motivo y responsable obligatorios, cancelar sin cambios).
+- Matriz de aceptación fila 3: criterio actualizado con diálogo, aviso visible y motivo capturado.
+
+### Inventario GUI pendiente (concreto)
+
+- PDF de cotización, paquete del contador, adjuntos y negativo de hash, respaldo periódico/restauración/reapertura, cierre/reapertura — recorridos reales que el auditor ejecuta con datos sintéticos externos. Linux no sustituye la GUI Windows.

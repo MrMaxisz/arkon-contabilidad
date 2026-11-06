@@ -21,8 +21,10 @@ que decida el contador responsable.
    servicios/materiales (sin precios inventados), cotizaciones versionadas con PDF, y proyectos.
 2. **Captura y corrección**: ventas, compras con líneas por tratamiento (gravado/exento/no sujeto),
    cobros y pagos con aplicaciones e anticipos, transferencias internas. La corrección de un documento
-   registrado se hace por **anulación con motivo** (se genera reverso contable auditado); no se editan
-   importes contabilizados.
+   registrado se hace por **anulación con diálogo**: el botón Anular abre una confirmación que identifica
+   folio, importe, saldo y efecto (reverso contable), y exige motivo significativo y responsable antes
+   de invocar el comando; Cancelar no cambia datos ni bitácora. Tras confirmar se muestra el aviso de
+   anulación y el estado/saldos se actualizan; no se editan importes contabilizados.
 3. **Ajustes y apertura** (vista Ajustes): asientos manuales y de apertura con referencia de soporte
    obligatoria, cuadre e idempotencia.
 4. **Cierre de ejercicio** (vista Cierre): estado del ejercicio, cierre con prevalidación y bloqueo
@@ -97,7 +99,7 @@ por proceso activo. `scripts\qa-windows.ps1` añade marcador QA para reabrir el 
 |---|---|---|---|
 | 1 | Apertura offline | Instalar, desconectar red, abrir | Ventana sin preload-error; datos del perfil |
 | 2 | Captura + doble envío | Registrar venta/compra; repetir envío con la misma operación | Sin duplicados (idempotencia visible) |
-| 3 | Anulación | Anular documento con diálogo de confirmación | Reverso contabilizado y bitácora con motivo |
+| 3 | Anulación | Anular documento con diálogo (folio/importe/efecto, motivo y responsable obligatorios, cancelar sin cambios) | Reverso contabilizado, aviso de anulación visible, bitácora con motivo capturado |
 | 4 | Adjuntos | Adjuntar con selector, Verificar hash, Abrir | Hash correcto; archivo alterado no abre |
 | 5 | CSV/PDF | Exportar libros, paquete del contador, ejercicio anual, cotización PDF | Archivos en disco con cifras de pantalla |
 | 6 | Reportes anuales | Ejercicio anual: consultar año, exportar soporte | Conciliación OK; familia de cierre marcada |

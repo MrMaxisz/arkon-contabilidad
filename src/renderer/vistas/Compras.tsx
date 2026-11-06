@@ -123,16 +123,56 @@ export default function Compras() {
     }
   }
 
-  async function anular(c: CompraResumen) {
-    if (!responsable.trim()) {
-      setMensaje({ texto: 'Registre el responsable antes de anular.', tipo: 'error' });
+  const [anulando, setAnulando] = useState<CompraResumen | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const [responsableAnular, setResponsableAnular] = useState('');
+  const [ocupadoAnular, setOcupadoAnular] = useState(false);
+
+  function abrirAnulacion(c: CompraResumen) {
+    setAnulando(c);
+    setMotivoAnular('');
+    setResponsableAnular(responsable.trim());
+    setMensaje(null);
+  }
+
+  function cancelarAnulacion() {
+    setAnulando(null);
+    setMotivoAnular('');
+    setResponsableAnular('');
+    setOcupadoAnular(false);
+  }
+
+  async function confirmarAnulacion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!anulando || ocupadoAnular) {
       return;
     }
+    if (!motivoAnular.trim()) {
+      setMensaje({ texto: 'La anulación exige un motivo significativo.', tipo: 'error' });
+      return;
+    }
+    if (!responsableAnular.trim()) {
+      setMensaje({ texto: 'La anulación exige responsable.', tipo: 'error' });
+      return;
+    }
+    setOcupadoAnular(true);
+    setMensaje(null);
     try {
-      await api().invocar('documento:anular', { tipo: 'compra', documentoId: c.id, responsable: responsable.trim(), motivo: `Anulación de ${c.folio} desde la interfaz` });
+      await api().invocar('documento:anular', {
+        tipo: 'compra',
+        documentoId: anulando.id,
+        responsable: responsableAnular.trim(),
+        motivo: motivoAnular.trim()
+      });
+      setMensaje({ texto: `Compra ${anulando.folio} anulada con reverso contable; motivo registrado en bitácora.`, tipo: 'ok' });
+      setAnulando(null);
+      setMotivoAnular('');
+      setResponsableAnular('');
       cargarDocumentos();
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+    } finally {
+      setOcupadoAnular(false);
     }
   }
 
@@ -340,12 +380,37 @@ export default function Compras() {
                       setMotivoClas('');
                     }}>Clasificar</button>
                   )}
-                  {c.estado === 'registrada' && <button onClick={() => void anular(c)}>Anular</button>}
+                  {c.estado === 'registrada' && <button onClick={() => abrirAnulacion(c)}>Anular</button>}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {anulando && (
+        <div className="aviso">
+          <h3>Anular compra {anulando.folio}</h3>
+          <p className="menor">
+            Importe: ${anulando.totalMinor} · Saldo: ${anulando.saldoMinor} · Efecto: se genera un reverso
+            contable que cancela el asiento original; el motivo y el responsable quedan en bitácora.
+          </p>
+          <form onSubmit={confirmarAnulacion}>
+            <div className="fila">
+              <label style={{ flex: 2 }}>Motivo de la anulación
+                <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required autoFocus placeholder="Motivo significativo" />
+              </label>
+              <label>Responsable
+                <input value={responsableAnular} onChange={e => setResponsableAnular(e.target.value)} required />
+              </label>
+            </div>
+            <div className="fila">
+              <button className="primario" type="submit" disabled={ocupadoAnular}>
+                {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
+              </button>
+              <button type="button" onClick={cancelarAnulacion}>Cancelar</button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );
