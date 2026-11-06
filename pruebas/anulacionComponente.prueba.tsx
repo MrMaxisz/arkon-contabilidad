@@ -68,10 +68,10 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
     const dentro = within(form);
     fireEvent.submit(form);
-    await waitFor(() => screen.getByText(/anulación exige un motivo significativo/));
+    await waitFor(() => screen.getByText(/anulación exige un motivo significativo \(mínimo 10 caracteres\)/));
     expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
 
-    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético' } });
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de prueba' } });
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: '' } });
     fireEvent.submit(form);
     await waitFor(() => screen.getByText(/anulación exige responsable/));
@@ -95,7 +95,7 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
 
     const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
     const dentro = within(form);
-    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de anulación' } });
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de anulación completa' } });
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -106,7 +106,7 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     const payload = llamadas[0]![1] as Record<string, unknown>;
     expect(payload.tipo).toBe('venta');
     expect(payload.documentoId).toBe(5);
-    expect(payload.motivo).toBe('motivo sintético de anulación');
+    expect(payload.motivo).toBe('motivo sintético de anulación completa');
     expect(payload.responsable).toBe('qa');
   });
 
@@ -124,7 +124,7 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     await waitFor(() => screen.getByText(/Anular venta V-000002/));
     const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
     const dentro = within(form);
-    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo' } });
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de rechazo' } });
     fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
     fireEvent.submit(form);
 

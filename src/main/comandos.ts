@@ -443,8 +443,12 @@ export const comandos: Record<string, Manejador> = {
   },
   'documento:anular': (ctx, payload) => {
     const p = objeto(payload);
+    const motivo = texto(p, 'motivo');
+    if (motivo.trim().length < 10) {
+      throw new ErrorValidacion('La anulación exige un motivo significativo (mínimo 10 caracteres).');
+    }
     const tipo = texto(p, 'tipo') === 'venta' ? 'venta' : 'compra';
-    anularDocumento(ctx.db, tipo, entero(p, 'documentoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    anularDocumento(ctx.db, tipo, entero(p, 'documentoId'), texto(p, 'responsable'), motivo);
     return { ok: true };
   },
   'documento:clasificar': (ctx, payload) => {
@@ -510,7 +514,11 @@ export const comandos: Record<string, Manejador> = {
   'tesoreria:listar': ctx => listarMovimientos(ctx.db),
   'tesoreria:anular': (ctx, payload) => {
     const p = objeto(payload);
-    anularMovimiento(ctx.db, entero(p, 'movimientoId'), texto(p, 'responsable'), texto(p, 'motivo'));
+    const motivo = texto(p, 'motivo');
+    if (motivo.trim().length < 10) {
+      throw new ErrorValidacion('La anulación exige un motivo significativo (mínimo 10 caracteres).');
+    }
+    anularMovimiento(ctx.db, entero(p, 'movimientoId'), texto(p, 'responsable'), motivo);
     return { ok: true };
   },
   'vigencia:crear': (ctx, payload) => {

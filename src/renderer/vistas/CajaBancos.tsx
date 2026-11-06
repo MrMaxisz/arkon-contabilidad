@@ -62,16 +62,59 @@ export default function CajaBancos() {
     }
   }
 
-  async function anular(m: MovimientoTesoreriaResumen) {
-    if (!responsable.trim()) {
-      setMensaje({ texto: 'Registre el responsable antes de anular.', tipo: 'error' });
+  const [anulando, setAnulando] = useState<MovimientoTesoreriaResumen | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState('');
+  const [responsableAnular, setResponsableAnular] = useState('');
+  const [ocupadoAnular, setOcupadoAnular] = useState(false);
+  const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  const avisoRef = useRef<HTMLParagraphElement | null>(null);
+
+  function abrirAnulacion(m: MovimientoTesoreriaResumen) {
+    setAnulando(m);
+    setMotivoAnular('');
+    setResponsableAnular(responsable.trim());
+    setErrorAnular(null);
+  }
+
+  function cancelarAnulacion() {
+    setAnulando(null);
+    setMotivoAnular('');
+    setResponsableAnular('');
+    setOcupadoAnular(false);
+    setErrorAnular(null);
+  }
+
+  async function confirmarAnulacion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!anulando || ocupadoAnular) {
       return;
     }
+    if (motivoAnular.trim().length < 10) {
+      setErrorAnular('La anulación exige un motivo significativo (mínimo 10 caracteres).');
+      return;
+    }
+    if (!responsableAnular.trim()) {
+      setErrorAnular('La anulación exige responsable.');
+      return;
+    }
+    setOcupadoAnular(true);
+    setErrorAnular(null);
     try {
-      await api().invocar('tesoreria:anular', { movimientoId: m.id, responsable: responsable.trim(), motivo: `Anulación de ${m.folio}` });
+      await api().invocar('tesoreria:anular', {
+        movimientoId: anulando.id,
+        responsable: responsableAnular.trim(),
+        motivo: motivoAnular.trim()
+      });
+      setMensaje({ texto: `${anulando.tipo === 'cobro' ? 'Cobro' : anulando.tipo === 'pago' ? 'Pago' : 'Transferencia'} ${anulando.folio} anulado con reverso contable; motivo registrado en bitácora.`, tipo: 'ok' });
+      setAnulando(null);
+      setMotivoAnular('');
+      setResponsableAnular('');
       cargar();
+      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setErrorAnular(limpiarMensajeError(err));
+    } finally {
+      setOcupadoAnular(false);
     }
   }
 
@@ -119,12 +162,50 @@ export default function CajaBancos() {
                 <td>{m.contraparteNombre ?? '—'}</td>
                 <td className="numero">${m.montoMinor}</td>
                 <td>{m.estado}</td>
-                <td>{m.estado === 'registrado' && <button onClick={() => void anular(m)}>Anular</button>}</td>
+                <td>{m.estado === 'registrado' && <button onClick={() => abrirAnulacion(m)}>Anular</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {anulando && (
+        <div className="aviso" role="dialog" aria-label={`Anular ${anulando.tipo} ${anulando.folio}`}>
+          <h3>Anular {anulando.tipo} {anulando.folio}</h3>
+          <p className="menor">
+            Monto: ${anulando.montoMinor} · Contraparte: {anulando.contraparteNombre ?? '—'} · Efecto: se genera
+            un reverso contable que cancela el movimiento y libera las aplicaciones; el motivo y el
+            responsable quedan en bitácora.
+          </p>
+          {errorAnular && <p role="alert" className="aviso error">{errorAnular}</p>}
+          <form onSubmit={confirmarAnulacion}>
+            <div className="fila">
+              <label style={{ flex: 2 }}>Motivo de la anulación
+                <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required autoFocus placeholder="Motivo significativo (mínimo 10 caracteres)" />
+              </label>
+              <label>Responsable
+                <input value={responsableAnular} onChange={e => setResponsableAnular(e.target.value)} required />
+              </label>
+            </div>
+            <div className="fila">
+              <button className="primario" type="submit" disabled={ocupadoAnular}>
+                {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
+              </button>
+              <button type="button" onClick={cancelarAnulacion}>Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
+      <p ref={avisoRef}>
+        {mensaje && <span className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</span>}
+      </p>
     </div>
   );
+}
+
+function limpiarMensajeError(err: unknown): string {
+  const texto = String(err instanceof Error ? err.message : err);
+  return texto
+    .replace(/^Error invoking remote method 'arkon':\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim();
 }

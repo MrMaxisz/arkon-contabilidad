@@ -93,6 +93,7 @@ export default function Ventas() {
       setBase('');
       clave.current = nuevaClave();
       cargarDocumentos();
+      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
     } catch (err) {
       setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
     } finally {
@@ -104,12 +105,14 @@ export default function Ventas() {
   const [motivoAnular, setMotivoAnular] = useState('');
   const [responsableAnular, setResponsableAnular] = useState('');
   const [ocupadoAnular, setOcupadoAnular] = useState(false);
+  const [errorAnular, setErrorAnular] = useState<string | null>(null);
+  const avisoRef = useRef<HTMLParagraphElement | null>(null);
 
   function abrirAnulacion(v: VentaResumen) {
     setAnulando(v);
     setMotivoAnular('');
     setResponsableAnular(responsable.trim());
-    setMensaje(null);
+    setErrorAnular(null);
   }
 
   function cancelarAnulacion() {
@@ -117,6 +120,7 @@ export default function Ventas() {
     setMotivoAnular('');
     setResponsableAnular('');
     setOcupadoAnular(false);
+    setErrorAnular(null);
   }
 
   async function confirmarAnulacion(e: React.FormEvent) {
@@ -124,12 +128,12 @@ export default function Ventas() {
     if (!anulando || ocupadoAnular) {
       return;
     }
-    if (!motivoAnular.trim()) {
-      setMensaje({ texto: 'La anulación exige un motivo significativo.', tipo: 'error' });
+    if (motivoAnular.trim().length < 10) {
+      setErrorAnular('La anulación exige un motivo significativo (mínimo 10 caracteres).');
       return;
     }
     if (!responsableAnular.trim()) {
-      setMensaje({ texto: 'La anulación exige responsable.', tipo: 'error' });
+      setErrorAnular('La anulación exige responsable.');
       return;
     }
     setOcupadoAnular(true);
@@ -146,8 +150,9 @@ export default function Ventas() {
       setMotivoAnular('');
       setResponsableAnular('');
       cargarDocumentos();
+      setTimeout(() => avisoRef.current?.scrollIntoView({ block: 'center' }), 0);
     } catch (err) {
-      setMensaje({ texto: String(err instanceof Error ? err.message : err), tipo: 'error' });
+      setErrorAnular(limpiarMensajeError(err));
     } finally {
       setOcupadoAnular(false);
     }
@@ -156,7 +161,7 @@ export default function Ventas() {
   return (
     <div>
       <h1>Ventas reconocidas</h1>
-      {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
+      <p ref={avisoRef}>{mensaje && <span className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</span>}</p>
       <form onSubmit={registrar}>
         <h2>Registrar venta reconocida</h2>
         <div className="fila">
@@ -299,12 +304,13 @@ export default function Ventas() {
         </table>
       )}
       {anulando && (
-        <div className="aviso">
+        <div className="aviso" role="dialog" aria-label={`Anular venta ${anulando.folio}`}>
           <h3>Anular venta {anulando.folio}</h3>
           <p className="menor">
             Importe: ${anulando.totalMinor} · Saldo: ${anulando.saldoMinor} · Efecto: se genera un reverso
             contable que cancela el asiento original; el motivo y el responsable quedan en bitácora.
           </p>
+          {errorAnular && <p role="alert" className="aviso error">{errorAnular}</p>}
           <form onSubmit={confirmarAnulacion}>
             <div className="fila">
               <label style={{ flex: 2 }}>Motivo de la anulación
@@ -325,4 +331,12 @@ export default function Ventas() {
       )}
     </div>
   );
+}
+
+function limpiarMensajeError(err: unknown): string {
+  const texto = String(err instanceof Error ? err.message : err);
+  return texto
+    .replace(/^Error invoking remote method 'arkon':\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim();
 }

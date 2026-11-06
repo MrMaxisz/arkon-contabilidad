@@ -17,7 +17,7 @@
 
 - Generar y probar el instalador NSIS en Windows (el sandbox de desarrollo es Linux): instalación, apertura, recorrido de flujos y desinstalación/actualización sin internet.
 - Recorrido de los flujos principales en el ejecutable empaquetado (aquí solo se verificó empaquetado `--dir` y pruebas del motor): captura con idempotencia, anulación con diálogo, respaldo y restauración desde la interfaz.
-- Pruebas automatizadas de los recorridos de interfaz (requieren entorno de UI; hoy la lógica está probada a nivel de servicios).
+
 - Confirmar la ruta efectiva de datos en Windows (`%LOCALAPPDATA%\ARKON Contabilidad`) fuera de OneDrive.
 - Nota de flujo: `npm run dist:win:qa` reconstruye better-sqlite3 PARA ELECTRON con probe y verificación de artefacto; `npm test` reconstruye para Node (rebuild:node incluido). Nunca mezclar: tras el QA de Electron, ejecutar `npm run rebuild:node` antes de la suite.
 

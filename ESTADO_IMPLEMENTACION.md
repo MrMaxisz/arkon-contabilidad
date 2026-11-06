@@ -875,3 +875,22 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 ### Inventario GUI pendiente (concreto)
 
 - PDF de cotización, paquete del contador, adjuntos y negativo de hash, respaldo periódico/restauración/reapertura, cierre/reapertura — recorridos reales que el auditor ejecuta con datos sintéticos externos. Linux no sustituye la GUI Windows.
+
+## Bloque auditoría 52 (diálogo en CajaBancos, mensajes visibles, motivo mínimo 10 caracteres, cobertura integrada)
+
+### Corregido (hallazgos de la auditoría 52)
+
+- **P1-1 CajaBancos**: el botón Anular ya NO invoca `tesoreria:anular` directamente — abre un **diálogo** con folio, tipo (cobro/pago/transferencia), monto ($montoMinor), contraparte y efecto (reverso contable que cancela el movimiento y libera las aplicaciones). Campos **Motivo de la anulación** (obligatorio, sin texto automático) y **Responsable** (pre-cargado, editable). Cancelar sin efectos; confirmación única con estado ocupado; rechazo del motor visible; aviso tras éxito con scrollIntoView.
+- **P2-2 Mensajes visibles**: en Ventas, Compras y CajaBancos, el error de validación y el rechazo del motor se muestran **dentro del diálogo** con `role="alert"`; tras éxito, el aviso se lleva a la vista con `scrollIntoView({block:'center'})` vía `avisoRef`. El prefijo técnico `Error invoking remote method 'arkon': Error:` se elimina con `limpiarMensajeError()` antes de mostrar.
+- **P2-3 Motivo mínimo 10 caracteres**: validado en la vista (`motivoAnular.trim().length < 10`) y en el motor (`documento:anular` y `tesoreria:anular` en comandos.ts) con mensaje «La anulación exige un motivo significativo (mínimo 10 caracteres).». No se tocan `asiento:anular` ni `cotizacion:anular`.
+- **P2-4 Cobertura y documentación**: `pruebas/anulacionIntegracion.prueba.tsx` (6 pruebas) con **despachar real sobre SQLite temporal** para Ventas, Compras y CajaBancos — el mock de `api().invocar` delega al `despachar` real, verificando estado, reverso y bitácora en cada caso: venta anulada con reverso y motivo capturado; motivo corto rechazado por el motor sin cambiar estado; compra anulada con reverso; cobro aplicado a venta 113.00 → anulado → saldo vuelve a 113.00 y bitácora con motivo; cancelar cobro sin efectos; pago anulado. docs/PENDIENTES: eliminada la línea desfasada sobre pruebas de interfaz. Manual y matriz actualizados con Caja y bancos.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → 257/257 (55 archivos).
+- `npm run build` → OK.
+
+### Límites
+
+- Sandbox Linux: jsdom no sustituye el recorrido GUI Windows. El auditor mantiene su inventario GUI (PDF, paquete, adjuntos, respaldo periódico, cierre/reapertura) y el artefacto nuevo con diálogos está pendiente de su verificación.
