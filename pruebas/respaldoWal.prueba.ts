@@ -8,7 +8,7 @@ import { abrirBase, prepararRutasDatos } from '../src/main/db/conexion';
 import { aplicarMigraciones } from '../src/main/db/aplicarMigraciones';
 import { migraciones } from '../src/main/db/migraciones';
 import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
-import { crearRespaldo, restaurarRespaldo, verificarIntegridad } from '../src/main/servicios/respaldo';
+import { crearRespaldo, restaurarRespaldo, verificarIntegridad, leerVersionEsquema } from '../src/main/servicios/respaldo';
 import { crearContextoBase, respaldoPeriodicoSiCorresponde, type ContextoApp } from '../src/main/servicios/restauracion';
 import { retencionRespaldosAutomaticos } from '../src/main/servicios/adjuntos';
 import { crearContraparte, registrarVenta } from '../src/main/servicios/operacion';
@@ -329,10 +329,14 @@ describe('auditoría 66: alcance de la limpieza y fallos reales', () => {
     exigirSoloRespaldoLimpio(rutas.respaldos);
   });
 
-  it('P2-66-3: una ruta inexistente falla la verificación SIN crear ningún archivo', () => {
-    const rutaInexistente = path.join(dir, 'no-existe', 'respaldo-inexistente.db');
+  it('P2-67-1: ruta inexistente en un directorio EXISTENTE: ambas funciones fallan SIN crear ningún archivo', () => {
+    // El directorio existe: sin fileMustExist, new Database(ruta) crearía una base vacía.
+    const listadoAntes = fs.readdirSync(dir).sort();
+    const rutaInexistente = path.join(dir, 'respaldo-inexistente.db');
+    expect(fs.existsSync(rutaInexistente)).toBe(false);
     expect(() => verificarIntegridad(rutaInexistente)).toThrow();
-    expect(fs.existsSync(path.dirname(rutaInexistente))).toBe(false);
-    expect(fs.readdirSync(dir).includes('no-existe')).toBe(false);
+    expect(() => leerVersionEsquema(rutaInexistente)).toThrow();
+    expect(fs.existsSync(rutaInexistente)).toBe(false);
+    expect(fs.readdirSync(dir).sort()).toEqual(listadoAntes);
   });
 });

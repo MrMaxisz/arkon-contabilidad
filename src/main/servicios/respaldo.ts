@@ -286,7 +286,7 @@ export function restaurarRespaldo(
   };
 }
 
-function leerVersionEsquema(rutaDb: string): number {
+export function leerVersionEsquema(rutaDb: string): number {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3');
   const copia = new Database(rutaDb, { fileMustExist: true });
   try {

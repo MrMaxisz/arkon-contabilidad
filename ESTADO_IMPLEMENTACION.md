@@ -1060,3 +1060,16 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 331/331, 0 Errors (59 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 67 (prueba real de fileMustExist)
+
+### Corregido (hallazgo P2-67-1)
+
+- La prueba de P2-66-3 usaba un directorio inexistente, donde SQLite falla con o sin `fileMustExist`. Ahora usa una ruta inexistente dentro de un directorio que SÍ existe y lista el directorio antes y después: `verificarIntegridad` y `leerVersionEsquema` (exportada, sin cambio de comportamiento) fallan sin crear ningún archivo.
+- Mutaciones confirmadas localmente (restauradas): quitar `fileMustExist` de `verificarIntegridad` → 1 fallo; quitarlo de `leerVersionEsquema` → 1 fallo.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 331/331, 0 Errors (59 archivos).
+- `npm run build` → OK.
