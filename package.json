@@ -19,8 +19,9 @@
     "build:qa": "tsc -p tsconfig.node.json --outDir dist && node dist/scripts/semilla-qa.js",
     "probe:electron": "node scripts/probe-electron-abi.mjs",
     "rebuild:electron": "node scripts/rebuild-electron.mjs",
-    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs",
-    "build:cli": "tsc -p tsconfig.scripts.json --outDir dist"
+    "dist:win:qa": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && electron-builder --win nsis --publish never && node scripts/verificar-abi-artefacto.mjs && node scripts/verificar-canal-artefacto.mjs paquete/win-unpacked produccion",
+    "build:cli": "tsc -p tsconfig.scripts.json --outDir dist",
+    "dist:win:qa:aislada": "node scripts/rebuild-electron.mjs && node scripts/probe-electron-abi.mjs && npm run build && electron-builder --win nsis --publish never --config electron-builder.qa.yml && node scripts/verificar-abi-artefacto.mjs paquete-qa/win-unpacked && node scripts/verificar-canal-artefacto.mjs paquete-qa/win-unpacked qa"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",

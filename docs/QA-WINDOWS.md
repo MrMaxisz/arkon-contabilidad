@@ -32,3 +32,26 @@ bajo `%LOCALAPPDATA%` (fuera de OneDrive) y `--user-data-dir` aislado para Chrom
 - El script bloquea la apertura si ya hay una instancia de este repositorio en ejecución y permite reabrir
   el mismo perfil con `-Perfil <ruta>`.
 - Los datos de prueba son siempre sintéticos; nunca usar la base operativa real para QA.
+
+## Aislamiento del paquete QA (auditoría 58)
+
+El paquete QA (`npm run dist:win:qa:aislada`, configuración `electron-builder.qa.yml`, appId
+`sv.arkon.contabilidad.qa.aceptacion`, canal `arkonCanal: "qa"`) lleva una **barrera en el proceso
+principal**: con canal `qa` la app SOLO abre si `ARKON_RUTA_DATOS` es absoluta, está fuera de OneDrive,
+no es la base operativa ni subruta suya (comparación case-insensitive + realpath contra junctions) y
+existe `QA-MARCADOR-ARKON.txt` con el texto «Perfil QA de ARKON Contabilidad» en la ruta o en su padre
+directo. Si no se cumple: mensaje «Esta versión de prueba solo abre con su lanzador y un perfil QA
+válido. No se abrió ningún dato.» y salida 78, sin crear ni tocar nada. `userData` de Chromium se
+redirige al subdirectorio `chromium` del perfil antes del bloqueo de instancia. El paquete de
+producción NO lleva `arkonCanal` y conserva el comportamiento histórico.
+
+Reglas obligatorias de instalación QA:
+
+- El instalador QA se genera con `runAfterFinish: false`: NUNCA ejecutar la app QA desde la página
+  final del NSIS ni abrir el .exe instalado sin el lanzador (`ARKON_RUTA_DATOS` + marcador).
+- NUNCA instalar en modo interactivo con una configuración distinta a `electron-builder.qa.yml`;
+  la app QA sin lanzador sale con 78 en lugar de abrir la base operativa.
+- NUNCA pasar `/D=` con rutas sin entrecomillar que contengan espacios; usar comillas dobles
+  alrededor de la ruta completa.
+- El verificador `scripts/verificar-canal-artefacto.mjs` comprueba el canal dentro del artefacto:
+  el paquete QA debe llevar `arkonCanal "qa"` y el de producción no debe llevarlo.

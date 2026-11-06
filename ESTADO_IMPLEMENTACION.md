@@ -955,3 +955,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 269/269, 0 Errors (55 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 58 (aislamiento del paquete QA)
+
+### Implementado (hallazgos de la auditoría 58)
+
+- **A. Empaquetado QA versionado**: `electron-builder.qa.yml` (appId `sv.arkon.contabilidad.qa.aceptacion`, productName «ARKON Contabilidad QA», `runAfterFinish: false`, sin accesos directos, salida `paquete-qa`, `extraMetadata` con `arkonCanal: "qa"`, `signAndEditExecutable: false` solo en QA). Script `dist:win:qa:aislada`; `dist:win:qa` (producción) ahora también verifica canal ausente. `electron-builder.yml` sin cambios.
+- **B. Fallo en cerrado**: `src/main/perfilQa.ts` con `decidirPerfil` PURA (acceso a archivos inyectado): canal leído del package.json empaquetado (`app.getAppPath()`), no de variables de entorno. Con canal `qa` exige `ARKON_RUTA_DATOS` absoluta, fuera de OneDrive, distinta y no subruta de la operativa (case-insensitive + realpath contra junctions) y `QA-MARCADOR-ARKON.txt` («Perfil QA de ARKON Contabilidad…») en la ruta o su padre directo. Si no se cumple: `dialog.showErrorBox` con el mensaje exacto y `app.exit(78)`, sin crear ni tocar nada. Con canal válido, `app.setPath('userData', <perfil>/chromium)` ANTES del bloqueo de instancia. Canal ausente: comportamiento histórico sin cambios.
+- **C. Verificación del artefacto**: `scripts/verificar-canal-artefacto.mjs` extrae el package.json del `app.asar` (vía `@electron/asar`) y exige canal `qa` en el paquete QA y su ausencia en producción.
+- **Pruebas** (`pruebas/perfilQa.prueba.ts`, 18): válidas con marcador en ruta y en padre (y con el sufijo de fecha que escriben los lanzadores); rechazos sin variable, relativa, operativa exacta con mayúsculas distintas, subruta, junction→operativa, OneDrive, sin marcador y marcador incorrecto; canal ausente con/sin `ARKON_RUTA_DATOS`; orden de arranque (validación → exit 78 → setPath → bloqueo → carpetas → SQLite); configuración QA y producción; verificador de canal. Todo con rutas temporales sintéticas.
+- Mutaciones confirmadas localmente (restauradas): quitar chequeo OneDrive → 1 fallo; quitar marcador → 2 fallos; bloqueo antes de la validación → 1 fallo.
+- `docs/QA-WINDOWS.md`: regla documentada (nunca ejecutar la app QA desde la página final del NSIS ni sin lanzador; nunca `/D` con espacios sin entrecomillar; nunca instalación interactiva sin `electron-builder.qa.yml`).
+
+### Límite exacto
+
+- La prueba de centinela con Electron real (sin lanzador → exit 78 y base intacta) NO se ejecutó en este Linux: `electron/dist/electron` falla con «error while loading shared libraries: libglib-2.0.so.0». El auditor la ejecutará en Windows con el artefacto `dist:win:qa:aislada`.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 287/287, 0 Errors (56 archivos).
+- `npm run build` → OK.
