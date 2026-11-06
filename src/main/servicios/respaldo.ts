@@ -19,7 +19,7 @@ export function verificarIntegridad(rutaDb: string): void {
   // Apertura read-write con query_only: una conexión de solo lectura sobre una base en modo WAL
   // deja -wal/-shm que no puede borrar al cerrar (defecto auditoría 65). Con query_only el
   // contenido no se modifica y el cierre elimina los archivos transitorios exactos.
-  const copia = new Database(rutaDb);
+  const copia = new Database(rutaDb, { fileMustExist: true });
   try {
     copia.pragma('query_only = ON');
     const resultado = copia.pragma('integrity_check') as unknown;
@@ -75,14 +75,15 @@ export async function crearRespaldo(
     const nombre = `respaldo-${marca}.db`;
     const destino = path.join(dirRespaldos, nombre);
     const temporal = `${destino}.tmp`;
+    let hash: string;
+    let version: number;
+    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
     try {
       await db.backup(temporal);
       verificarIntegridad(temporal);
-      const hash = hashArchivo(temporal);
+      hash = hashArchivo(temporal);
       const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-      const dbTemporal = new Database(temporal);
-      let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
-      let version: number;
+      const dbTemporal = new Database(temporal, { fileMustExist: true });
       try {
         dbTemporal.pragma('query_only = ON');
         version = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
@@ -107,13 +108,30 @@ export async function crearRespaldo(
         ),
         'utf8'
       );
-      const info = db
-        .prepare(
-          'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
-        )
-        .run(nombre, hash, versionApp, version, 'disponible');
-      const id = Number(info.lastInsertRowid);
-      registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(id), { nombre, hash });
+    } catch (err) {
+      // Fallo ANTES de que el respaldo exista en disco: limpieza de rutas EXACTAS (auditorías 65/66).
+      limpiarRutasRespaldo([
+        temporal,
+        `${temporal}-wal`,
+        `${temporal}-shm`,
+        `${destino}-adjuntos`,
+        destino,
+        `${destino}.manifest.json`
+      ]);
+      throw err;
+    }
+    // Registro posterior a la creación (auditoría 66): INSERT y bitácora en UNA transacción;
+    // si falla, la fila no queda huérfana y archivo+manifiesto se retiran para mantener coherencia.
+    try {
+      const id = db.transaction(() => {
+        const info = db
+          .prepare(
+            'INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)'
+          )
+          .run(nombre, hash, versionApp, version, 'disponible');
+        registroEvento(db, 'sistema', 'respaldo_creado', 'respaldo', String(info.lastInsertRowid), { nombre, hash });
+        return Number(info.lastInsertRowid);
+      })();
       return {
         id,
         creadoEn: new Date().toISOString(),
@@ -124,15 +142,7 @@ export async function crearRespaldo(
         estado: 'disponible'
       };
     } catch (err) {
-      // Fallo entre backup y rename: limpieza de rutas EXACTAS de esta operación (auditoría 65).
-      limpiarRutasRespaldo([
-        temporal,
-        `${temporal}-wal`,
-        `${temporal}-shm`,
-        `${destino}-adjuntos`,
-        destino,
-        `${destino}.manifest.json`
-      ]);
+      limpiarRutasRespaldo([destino, `${destino}.manifest.json`, `${destino}-adjuntos`]);
       throw err;
     }
   } finally {
@@ -278,7 +288,7 @@ export function restaurarRespaldo(
 
 function leerVersionEsquema(rutaDb: string): number {
   const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-  const copia = new Database(rutaDb);
+  const copia = new Database(rutaDb, { fileMustExist: true });
   try {
     copia.pragma('query_only = ON');
     const fila = copia

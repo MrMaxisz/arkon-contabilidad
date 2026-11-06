@@ -1045,3 +1045,18 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 324/324, 0 Errors (59 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 66 (alcance de la limpieza, fileMustExist, pruebas por sitio)
+
+### Corregido (hallazgos P1-66-1, P2-66-2, P2-66-3)
+
+- **P1-66-1**: el `catch` de `respaldoPeriodicoSiCorresponde` ya NO cubre el INSERT ni la retención: un fallo de retención (p. ej. EPERM de un antivirus sobre un respaldo viejo) se propaga sin borrar el respaldo nuevo; archivo, manifiesto y fila quedan coherentes. En `crearRespaldo`, INSERT y `registroEvento` van en UNA transacción posterior a la creación: si fallan, la fila no queda huérfana y archivo+manifiesto se retiran (los dos presentes o los dos ausentes). La limpieza solo actúa antes del registro (o tras su rollback).
+- **P2-66-2**: una prueba por sitio con listado completo del directorio: manual con fallo REAL de verificación (backup que no es SQLite), manual con fallo de renombrado, periódico con fallo de renombrado, previo-a-migración con fallo de renombrado, restauración con fallo REAL de verificación del área temporal (copia corrupta). Todas fallan al anular su limpieza.
+- **P2-66-3**: `fileMustExist: true` en todas las aperturas sustituidas (`verificarIntegridad`, `leerVersionEsquema`, temporales del manual y del periódico); una ruta inexistente falla la verificación SIN crear ningún archivo (prueba).
+- Mutaciones confirmadas localmente (restauradas): catch del periódico cubriendo de nuevo INSERT+retención → 1 fallo; catch del periódico anulado → 1; catch del previo-migración anulado → 1; catch de restauración anulado + fileMustExist quitado → 1.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 331/331, 0 Errors (59 archivos).
+- `npm run build` → OK.

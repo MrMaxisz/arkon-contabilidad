@@ -444,14 +444,15 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     const nombreArchivo = `respaldo-automatico-${marca}.db`;
     const destino = path.join(ctx.rutas.respaldos, nombreArchivo);
     const temporal = `${destino}.tmp`;
+    let hash: string;
+    let versionEsquemaCopia = 0;
+    let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
     try {
       await ctx.db.backup(temporal);
       const { verificarIntegridad } = await import('./respaldo');
       verificarIntegridad(temporal);
-      const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
-      const dbTemporal = new Database(temporal);
-      let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }>;
-      let versionEsquemaCopia: number;
+      hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
+      const dbTemporal = new Database(temporal, { fileMustExist: true });
       try {
         dbTemporal.pragma('query_only = ON');
         const { copiarAdjuntosRespaldo } = await import('./adjuntos');
@@ -481,14 +482,8 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
         ),
         'utf8'
       );
-      ctx.db
-        .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
-        .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
-      const { retencionRespaldosAutomaticos } = await import('./adjuntos');
-      retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
-      return { creado: true, nombre: nombreArchivo };
     } catch (err) {
-      // Fallo entre backup y rename: limpieza de rutas EXACTAS de esta operación (auditoría 65).
+      // Fallo ANTES de que el respaldo exista en disco: limpieza de rutas EXACTAS (auditorías 65/66).
       const { limpiarRutasRespaldo } = await import('./respaldo');
       limpiarRutasRespaldo([
         temporal,
@@ -500,6 +495,14 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
       ]);
       throw err;
     }
+    // Post-creación (auditoría 66): un fallo de registro o de RETENCIÓN no borra el respaldo nuevo;
+    // el error se propaga sin tocar archivo, manifiesto ni fila ya registrada.
+    ctx.db
+      .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
+      .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
+    const { retencionRespaldosAutomaticos } = await import('./adjuntos');
+    retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
+    return { creado: true, nombre: nombreArchivo };
   } finally {
     liberarOperacionRespaldo();
   }

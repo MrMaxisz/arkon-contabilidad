@@ -185,15 +185,37 @@ describe('auditoría 65: respaldos sin restos -wal/-shm', () => {
     expect(restaurada.prepare('SELECT COUNT(*) AS n FROM venta').get()).toMatchObject({ n: 1 });
   });
 
-  it('6. fallo forzado durante la creación: no queda .tmp, -wal, -shm ni manifiesto, y el error llega al llamador', async () => {
+  it('6a. fallo REAL de verificación durante la creación manual: sin .tmp, -wal, -shm ni manifiesto, error al llamador', async () => {
     sembrar(db);
     const listadoAntes = fs.readdirSync(rutas.respaldos);
-    const espia = vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
-      throw new Error('fallo sintético de verificación/renombrado');
+    // El backup produce un archivo que NO es SQLite: verificarIntegridad falla de verdad.
+    vi.spyOn(db, 'backup').mockImplementationOnce(async (rutaTemporal: string) => {
+      fs.writeFileSync(rutaTemporal, 'basura sintética que no es una base SQLite');
     });
-    await expect(crearRespaldo(db, rutas.respaldos, 'prueba-a65')).rejects.toThrow('fallo sintético');
+    await expect(crearRespaldo(db, rutas.respaldos, 'prueba-a65')).rejects.toThrow();
     expect(fs.readdirSync(rutas.respaldos)).toEqual(listadoAntes);
     exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+
+  it('6b. fallo de renombrado durante la creación manual: sin restos ni manifiesto, error al llamador', async () => {
+    sembrar(db);
+    const listadoAntes = fs.readdirSync(rutas.respaldos);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('fallo sintético de renombrado');
+    });
+    await expect(crearRespaldo(db, rutas.respaldos, 'prueba-a65')).rejects.toThrow('fallo sintético de renombrado');
+    expect(fs.readdirSync(rutas.respaldos)).toEqual(listadoAntes);
+    exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+
+  it('6c. fallo del registro tras la creación: archivo y fila ausentes los dos (coherentes)', async () => {
+    sembrar(db);
+    // La fila de bitácora no existe: INSERT en transacción y retiro de archivo+manifiesto.
+    db.exec('DROP TABLE bitacora_evento');
+    await expect(crearRespaldo(db, rutas.respaldos, 'prueba-a65')).rejects.toThrow();
+    expect(fs.readdirSync(rutas.respaldos)).toEqual([]);
+    const filas = db.prepare('SELECT COUNT(*) AS n FROM respaldo').get() as { n: number };
+    expect(filas.n).toBe(0);
   });
 
   it('7. el hash del manifiesto corresponde byte a byte al archivo final y este pasa integrity_check', async () => {
@@ -224,5 +246,93 @@ describe('auditoría 65: respaldos sin restos -wal/-shm', () => {
     expect(hashDe(rutaDb)).toBe(hashBaseAntes);
     expect(fs.readdirSync(rutas.datos).sort()).toEqual(listadoDatosAntes);
     exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+});
+
+describe('auditoría 66: alcance de la limpieza y fallos reales', () => {
+  it('P1: un fallo REAL de retención no borra el respaldo nuevo; archivo, manifiesto y fila coherentes', async () => {
+    sembrar(db);
+    db.prepare("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('respaldo_retencion_automatica', '1')").run();
+    db.prepare("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('respaldo_intervalo_minutos', '60')").run();
+    // Respaldo automático viejo cuyo manifiesto es un DIRECTORIO: rmSync de retención falla de verdad (EPERM/EISDIR).
+    const viejo = 'respaldo-automatico-2026-01-01T00-00-00-000Z.db';
+    fs.writeFileSync(path.join(rutas.respaldos, viejo), 'viejo');
+    fs.mkdirSync(path.join(rutas.respaldos, `${viejo}.manifest.json`));
+
+    await expect(respaldoPeriodicoSiCorresponde(contexto(db))).rejects.toThrow();
+
+    const archivos = fs.readdirSync(rutas.respaldos).filter(f => f.startsWith('respaldo-automatico-') && f.endsWith('.db'));
+    expect(archivos.length).toBe(1);
+    const nuevo = archivos[0];
+    expect(nuevo > viejo).toBe(true);
+    const rutaNuevo = path.join(rutas.respaldos, nuevo);
+    const manifiesto = JSON.parse(fs.readFileSync(`${rutaNuevo}.manifest.json`, 'utf8')) as { hashSha256: string };
+    expect(manifiesto.hashSha256).toBe(hashDe(rutaNuevo));
+    const fila = db.prepare('SELECT estado FROM respaldo WHERE nombre = ?').get(nuevo) as { estado: string };
+    expect(fila.estado).toBe('disponible');
+    exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+
+  it('P2: fallo de renombrado en el periódico: sin ningún resto (listado completo)', async () => {
+    sembrar(db);
+    db.prepare("INSERT OR REPLACE INTO configuracion (clave, valor) VALUES ('respaldo_intervalo_minutos', '60')").run();
+    const listadoAntes = fs.readdirSync(rutas.respaldos);
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('fallo sintético de renombrado periódico');
+    });
+    await expect(respaldoPeriodicoSiCorresponde(contexto(db))).rejects.toThrow('fallo sintético de renombrado periódico');
+    expect(fs.readdirSync(rutas.respaldos)).toEqual(listadoAntes);
+    exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+
+  it('P2: fallo de renombrado en el previo a migración: sin ningún resto (listado completo)', async () => {
+    db.close();
+    fs.rmSync(rutaDb, { force: true });
+    fs.rmSync(`${rutaDb}-wal`, { force: true });
+    fs.rmSync(`${rutaDb}-shm`, { force: true });
+    const previa = new Database(rutaDb);
+    previa.pragma('journal_mode = WAL');
+    previa.exec(`CREATE TABLE IF NOT EXISTS _migracion (
+      version INTEGER PRIMARY KEY,
+      nombre TEXT NOT NULL,
+      aplicada_en TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    for (const m of migraciones.slice(0, -1)) {
+      previa.exec(m.sql);
+      previa.prepare('INSERT INTO _migracion (version, nombre) VALUES (?, ?)').run(m.version, m.nombre);
+    }
+    previa.close();
+    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
+      throw new Error('fallo sintético de renombrado previo migración');
+    });
+    await expect(crearContextoBase(rutas, rutaDb, 'prueba-a65')).rejects.toThrow('fallo sintético de renombrado previo migración');
+    const previos = fs.readdirSync(rutas.respaldos).filter(f => f.startsWith('respaldo-previo-migracion-'));
+    expect(previos).toEqual([]);
+    exigirSoloRespaldoLimpio(rutas.respaldos);
+    const base = abrir(rutaDb);
+    aplicarMigraciones(base);
+  });
+
+  it('P2: fallo REAL de verificación del área temporal en restauración: sin restauracion-tmp y hash intacto', async () => {
+    sembrar(db);
+    const info = await crearRespaldo(db, rutas.respaldos, 'prueba-a65');
+    const rutaRespaldo = path.join(rutas.respaldos, info.nombre);
+    const hashAntes = hashDe(rutaRespaldo);
+    // La copia del área temporal sale corrupta: verificarIntegridad falla de verdad.
+    vi.spyOn(fs, 'copyFileSync').mockImplementationOnce((origen: string, destino: string) => {
+      fs.writeFileSync(destino, 'basura sintética que no es una base SQLite');
+    });
+    expect(() => restaurarRespaldo(db, rutaRespaldo, rutaDb)).toThrow();
+    const restos = fs.readdirSync(rutas.datos).filter(f => f.includes('restauracion-tmp'));
+    expect(restos).toEqual([]);
+    expect(hashDe(rutaRespaldo)).toBe(hashAntes);
+    exigirSoloRespaldoLimpio(rutas.respaldos);
+  });
+
+  it('P2-66-3: una ruta inexistente falla la verificación SIN crear ningún archivo', () => {
+    const rutaInexistente = path.join(dir, 'no-existe', 'respaldo-inexistente.db');
+    expect(() => verificarIntegridad(rutaInexistente)).toThrow();
+    expect(fs.existsSync(path.dirname(rutaInexistente))).toBe(false);
+    expect(fs.readdirSync(dir).includes('no-existe')).toBe(false);
   });
 });
