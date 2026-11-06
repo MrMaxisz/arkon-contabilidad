@@ -17,11 +17,11 @@ contextBridge.exposeInMainWorld('arkon', {
     }
     return ipcRenderer.invoke('arkon:guardarCsv', { tipo, mes });
   },
-  reportePdf(titulo: string, periodo: string, cuerpo: string): Promise<unknown> {
-    if (!titulo || !cuerpo) {
-      return Promise.reject(new Error('El reporte requiere título y contenido'));
+  reportePdf(solicitud: { titulo: string; periodo?: string; tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }> }): Promise<unknown> {
+    if (!solicitud?.titulo || !Array.isArray(solicitud.tablas) || solicitud.tablas.length === 0) {
+      return Promise.reject(new Error('El reporte requiere título y tablas'));
     }
-    return ipcRenderer.invoke('arkon:reportePdf', { titulo, periodo, cuerpo });
+    return ipcRenderer.invoke('arkon:reportePdf', solicitud);
   },
   pdfCotizacion(cotizacionId: number): Promise<unknown> {
     if (!Number.isInteger(cotizacionId) || cotizacionId <= 0) {

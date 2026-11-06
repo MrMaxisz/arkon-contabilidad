@@ -156,6 +156,7 @@ export const comandos: Record<string, Manejador> = {
   'libro:partidas': (ctx, payload) => {
     const p = objeto(payload);
     return listarPartidas(ctx.db, {
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined,
       busqueda: typeof p.busqueda === 'string' && p.busqueda.trim() ? p.busqueda.trim() : undefined,
       desdeNumero: typeof p.desdeNumero === 'number' ? p.desdeNumero : undefined,
       hastaNumero: typeof p.hastaNumero === 'number' ? p.hastaNumero : undefined,
@@ -178,7 +179,8 @@ export const comandos: Record<string, Manejador> = {
     return balanceComprobacion(ctx.db, {
       desde: texto(p, 'desde'),
       hasta: texto(p, 'hasta'),
-      ocultarSinMovimiento: p.ocultarSinMovimiento === true
+      ocultarSinMovimiento: p.ocultarSinMovimiento === true,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
     });
   },
   'resultados:estructurado': (ctx, payload) => {
@@ -186,14 +188,16 @@ export const comandos: Record<string, Manejador> = {
     return estadoResultadosEstructurado(ctx.db, {
       desde: texto(p, 'desde'),
       hasta: texto(p, 'hasta'),
-      comparativo: p.comparativo === true
+      comparativo: p.comparativo === true,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
     });
   },
   'situacion:consultar': (ctx, payload) => {
     const p = objeto(payload);
     return estadoSituacionFinanciera(ctx.db, {
       corte: texto(p, 'corte'),
-      corteComparativo: typeof p.corteComparativo === 'string' && p.corteComparativo ? p.corteComparativo : undefined
+      corteComparativo: typeof p.corteComparativo === 'string' && p.corteComparativo ? p.corteComparativo : undefined,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
     });
   },
   'balance:resumen': ctx => balanceResumen(ctx.db),

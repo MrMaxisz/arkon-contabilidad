@@ -6,6 +6,7 @@ import { validarFechaCalendario } from '../../shared/fechas';
 // Servicio puro con `db` por parámetro, sin Electron, para reutilizar en Android.
 
 export interface FiltroPartidas {
+  ambitoId?: string;
   busqueda?: string;
   desdeNumero?: number;
   hastaNumero?: number;
@@ -76,17 +77,20 @@ export function listarPartidas(
   db: Database.Database,
   filtro: FiltroPartidas
 ): { partidas: PartidaResumen[]; total: number } {
-  const condiciones: string[] = ["a.estado IN ('contabilizado','anulado')"];
-  const parametros: Array<string | number> = [];
+  const condiciones: string[] = ["a.estado IN ('contabilizado','anulado')", 'a.ambito_id = ?'];
+  const parametros: Array<string | number> = [filtro.ambitoId ?? 'administrativo'];
 
   if (filtro.busqueda) {
     const numero = normalizarNumeroPartida(filtro.busqueda);
-    if (numero !== null) {
-      condiciones.push("CAST(substr(a.folio, 3) AS INTEGER) = ?");
-      parametros.push(numero);
+    const esPatronNumerico = /^\s*(?:A-)?\d+\s*$/i.test(filtro.busqueda);
+    if (esPatronNumerico) {
+      // 'A-0' y cualquier forma numérica NO caen en búsqueda de texto (auditoría 72).
+      condiciones.push('CAST(substr(a.folio, 3) AS INTEGER) = ?');
+      parametros.push(numero ?? 0);
     } else {
-      condiciones.push('(a.concepto LIKE ? OR a.folio LIKE ?)');
-      parametros.push(`%${filtro.busqueda}%`, `%${filtro.busqueda}%`);
+      const escapado = filtro.busqueda.replace(/[%_\\]/g, ch => `\\${ch}`);
+      condiciones.push("(a.concepto LIKE ? ESCAPE '\\' OR a.folio LIKE ? ESCAPE '\\')");
+      parametros.push(`%${escapado}%`, `%${escapado}%`);
     }
   }
   if (filtro.desdeNumero !== undefined) {
@@ -108,8 +112,9 @@ export function listarPartidas(
     parametros.push(filtro.hastaFecha);
   }
   if (filtro.concepto) {
-    condiciones.push('a.concepto LIKE ?');
-    parametros.push(`%${filtro.concepto}%`);
+    const escapado = filtro.concepto.replace(/[%_\\]/g, ch => `\\${ch}`);
+    condiciones.push("a.concepto LIKE ? ESCAPE '\\'");
+    parametros.push(`%${escapado}%`);
   }
   if (filtro.cuentaId) {
     condiciones.push('EXISTS (SELECT 1 FROM asiento_linea l WHERE l.asiento_id = a.id AND l.cuenta_id = ?)');
@@ -132,26 +137,29 @@ export function listarPartidas(
     db.prepare(`SELECT COUNT(*) AS n FROM asiento a WHERE ${donde}`).get(...parametros) as { n: number }
   ).n;
 
-  const filas = db
-    .prepare(
-      `SELECT a.id, a.folio, a.fecha_operacion AS fecha, a.concepto, a.estado,
-              COALESCE(a.origen_tipo, '') AS origen, a.responsable,
-              COALESCE((SELECT SUM(l.debe_minor) FROM asiento_linea l WHERE l.asiento_id = a.id), 0) AS total
-       FROM asiento a
-       WHERE ${donde}
-       ORDER BY CAST(substr(a.folio, 3) AS INTEGER), a.id
-       LIMIT ? OFFSET ?`
-    )
-    .all(...parametros, limite, desde) as Array<{
-    id: number;
-    folio: string;
-    fecha: string;
-    concepto: string;
-    estado: string;
-    origen: string;
-    responsable: string;
-    total: number;
-  }>;
+  const filas = (
+    db
+      .prepare(
+        `SELECT a.id, a.folio, a.fecha_operacion AS fecha, a.concepto, a.estado,
+                COALESCE(a.origen_tipo, '') AS origen, a.responsable,
+                COALESCE((SELECT SUM(l.debe_minor) FROM asiento_linea l WHERE l.asiento_id = a.id), 0) AS total
+         FROM asiento a
+         WHERE ${donde}
+         ORDER BY CAST(substr(a.folio, 3) AS INTEGER), a.id
+         LIMIT ? OFFSET ?`
+      )
+      .safeIntegers(true)
+      .all(...parametros, limite, desde) as Array<{
+      id: number;
+      folio: string;
+      fecha: string;
+      concepto: string;
+      estado: string;
+      origen: string;
+      responsable: string;
+      total: bigint;
+    }>
+  );
 
   return {
     partidas: filas.map(f => ({
@@ -169,15 +177,15 @@ export function listarPartidas(
   };
 }
 
-export function verPartida(db: Database.Database, partidaId: number): PartidaDetalle {
+export function verPartida(db: Database.Database, partidaId: number, ambitoId = 'administrativo'): PartidaDetalle {
   const asiento = db
     .prepare(
       `SELECT a.id, a.folio, a.fecha_operacion AS fecha, a.concepto, a.estado,
               COALESCE(a.origen_tipo, '') AS origen, COALESCE(a.origen_id, '') AS origenId,
               a.responsable, COALESCE(a.motivo, '') AS motivo, a.reverso_de_id
-       FROM asiento a WHERE a.id = ?`
+       FROM asiento a WHERE a.id = ? AND a.ambito_id = ?`
     )
-    .get(partidaId) as
+    .get(partidaId, ambitoId) as
     | {
         id: number;
         folio: string;
@@ -200,7 +208,8 @@ export function verPartida(db: Database.Database, partidaId: number): PartidaDet
        FROM asiento_linea l JOIN cuenta c ON c.id = l.cuenta_id
        WHERE l.asiento_id = ? ORDER BY c.codigo, l.id`
     )
-    .all(partidaId) as Array<{ codigo: string; nombre: string; debe: number; haber: number }>;
+    .safeIntegers(true)
+    .all(partidaId) as Array<{ codigo: string; nombre: string; debe: bigint; haber: bigint }>;
 
   const reversoDe = asiento.reverso_de_id
     ? (db.prepare('SELECT id, folio FROM asiento WHERE id = ?').get(asiento.reverso_de_id) as { id: number; folio: string })

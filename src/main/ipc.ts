@@ -14,6 +14,7 @@ import {
   exportarAnexo3ComprasPresentacion
 } from './servicios/anexosFiscales';
 import { registroEvento } from './servicios/bitacora';
+import { construirHtmlReporte, type DatosReporte, type TablaReporte } from './servicios/reportesPdf';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
@@ -353,42 +354,33 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     }
   });
 
-  // PDF de reportes del bloque 2 (auditoría 71): encabezado con logo, título, período,
-  // moneda USD, ámbito administrativo, leyenda de control interno, firmas y numeración de página.
+  // PDF de reportes del bloque 2 (auditorías 71/72): datos ESTRUCTURADOS (nunca HTML del
+  // renderer), todo escapado, logo desde ruta estable recuros/ (publicDir de Vite, sin hash)
+  // y fuentes de la marca incrustadas como data URI. Numeración de página N de M.
   ipcMain.handle('arkon:reportePdf', async (evento, solicitud) => {
     if (evento.sender.id !== ventanaWebContentsId) {
       throw new Error('Remitente no autorizado');
     }
     const p = objetoSolicitud(solicitud);
     const titulo = String(p.titulo ?? 'Reporte');
-    const periodo = String(p.periodo ?? '');
-    const cuerpo = String(p.cuerpo ?? '');
-    const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/assets/arkon-logo-azul.svg'), 'utf8');
-    const html = `<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"><title>${titulo}</title>
-<style>
-  body { font-family: 'IBM Plex Sans', Arial, sans-serif; color: #0B1B33; margin: 16mm 14mm 20mm; font-size: 11px; }
-  h1 { font-size: 18px; text-transform: uppercase; margin: 0; }
-  .logo svg { width: 110px; height: auto; }
-  .encabezado { border-bottom: 2px solid #0A4DB3; padding-bottom: 8px; margin-bottom: 12px; }
-  .meta { font-size: 10px; color: #4A5B75; margin: 4px 0 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 10px; }
-  th, td { border-bottom: 1px solid #C9D8F2; padding: 4px 6px; text-align: left; }
-  th { background: #E4EDFB; color: #0B1B33; }
-  td.numero { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.total td { font-weight: bold; border-top: 2px solid #0B1B33; }
-  .firmas { margin-top: 28px; width: 100%; font-size: 10px; }
-  .firmas td { border: none; border-top: 1px solid #0B1B33; text-align: center; padding-top: 4px; width: 33%; }
-</style></head><body>
-<div class="encabezado">
-  <div class="logo">${logoSvg}</div>
-  <h1>${titulo}</h1>
-  <p class="meta">${periodo ? `Período: ${periodo}. ` : ''}Moneda: USD. Ámbito administrativo.</p>
-  <p class="meta">Registro de control interno, no estado financiero legal. ARKON sin constituir ni inscrita en IVA.</p>
-</div>
-${cuerpo}
-<table class="firmas"><tr><td>Elaboró</td><td>Revisó</td><td>Autorizó</td></tr></table>
-</body></html>`;
+    const periodo = typeof p.periodo === 'string' ? p.periodo : '';
+    const tablas = Array.isArray(p.tablas) ? (p.tablas as TablaReporte[]) : [];
+    if (!titulo || tablas.length === 0) {
+      throw new Error('El reporte requiere título y tablas');
+    }
+    const datos: DatosReporte = { titulo, periodo, tablas };
+    const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/arkon-logo-azul.svg'), 'utf8');
+    const fuente = (nombre: string, familia: string, peso: string): string => {
+      const base64 = fs.readFileSync(path.join(__dirname, '../renderer/fuentes', nombre)).toString('base64');
+      return `@font-face { font-family: '${familia}'; font-style: normal; font-weight: ${peso}; src: url(data:font/woff2;base64,${base64}) format('woff2'); }`;
+    };
+    const fuentesCss = [
+      fuente('barlow-condensed-latin-700-normal.woff2', 'Barlow Condensed', '700'),
+      fuente('ibm-plex-sans-latin-400-normal.woff2', 'IBM Plex Sans', '400'),
+      fuente('ibm-plex-sans-latin-600-normal.woff2', 'IBM Plex Sans', '600'),
+      fuente('ibm-plex-mono-latin-400-normal.woff2', 'IBM Plex Mono', '400')
+    ].join('\n');
+    const html = construirHtmlReporte(datos, logoSvg, fuentesCss);
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const ventanaPdf = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
     try {

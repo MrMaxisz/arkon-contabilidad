@@ -11,7 +11,8 @@ import { estadoResultados } from '../src/main/servicios/fiscal';
 import {
   balanceComprobacion,
   estadoResultadosEstructurado,
-  estadoSituacionFinanciera
+  estadoSituacionFinanciera,
+  rangoAnterior
 } from '../src/main/servicios/estadosFinancieros';
 import { listarPartidas, verPartida, normalizarNumeroPartida } from '../src/main/servicios/libroDiario';
 import type BetterSqlite3 from 'better-sqlite3';
@@ -297,5 +298,165 @@ describe('auditoría 71: estado de situación financiera', () => {
     expect(r.resultadoAntesImpuestosMinor).toBe('0.00');
     const detalle = verPartida(db, (db.prepare("SELECT id FROM asiento WHERE concepto = 'Aporte alto sintético'").get() as { id: number }).id);
     expect(detalle.totalDebeMinor).toBe(alto);
+  });
+});
+
+describe('auditoría 72: correcciones del bloque 2', () => {
+  it('P1-72-2: cuentas de usuario fuera de grupos conocidos van a líneas visibles y el acumulado iguala la situación financiera', () => {
+    // Cuenta de ingreso nueva (grupo 43) por 7.00 y gasto nuevo (6401) por 9.00.
+    db.prepare(
+      "INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id) VALUES ('43', 'Ingresos varios usuario', 'ingreso', 1, NULL), ('4301', 'Ingreso usuario', 'ingreso', 0, (SELECT id FROM cuenta WHERE codigo = '43')), ('6401', 'Gasto usuario', 'gasto', 0, NULL)"
+    ).run();
+    partida('2026-03-01', 'Ingreso usuario sintético', [{ codigo: '1101', debe: '7.00', haber: '' }, { codigo: '4301', debe: '', haber: '7.00' }], 'u1');
+    partida('2026-03-02', 'Gasto usuario sintético', [{ codigo: '6401', debe: '9.00', haber: '' }, { codigo: '1101', debe: '', haber: '9.00' }], 'u2');
+    const r = estadoResultadosEstructurado(db, { desde: '2026-03-01', hasta: '2026-03-31' });
+    // A mano: 7.00 - 9.00 = -2.00 (antes daba 7.00 por omitir 6401).
+    expect(r.resultadoAntesImpuestosMinor).toBe('-2.00');
+    expect(r.otrosIngresos.map(f => f.codigo)).toContain('4301');
+    expect(r.otrosGastos.map(f => f.codigo)).toContain('6401');
+    // Acumulado igual al resultado del ejercicio de la situación financiera.
+    const s = estadoSituacionFinanciera(db, { corte: '2026-03-31' });
+    const rAcumulado = estadoResultadosEstructurado(db, { desde: '2026-01-01', hasta: '2026-12-31' });
+    expect(rAcumulado.resultadoAntesImpuestosMinor).toBe('-2.00');
+    expect(s.patrimonio.resultadoEjercicioMinor).toBe('-2.00');
+  });
+
+  it('P1-72-3: mes completo → mes calendario anterior; año → año anterior; N meses; rango libre con igual número de días', () => {
+    expect(rangoAnterior('2026-03-01', '2026-03-31')).toEqual({ desde: '2026-02-01', hasta: '2026-02-28' });
+    expect(rangoAnterior('2026-01-01', '2026-01-31')).toEqual({ desde: '2025-12-01', hasta: '2025-12-31' });
+    expect(rangoAnterior('2026-01-01', '2026-12-31')).toEqual({ desde: '2025-01-01', hasta: '2025-12-31' });
+    expect(rangoAnterior('2026-01-01', '2026-02-28')).toEqual({ desde: '2025-11-01', hasta: '2025-12-31' });
+    expect(rangoAnterior('2026-02-10', '2026-02-25')).toEqual({ desde: '2026-01-25', hasta: '2026-02-09' });
+    // El comparativo del servicio usa el rango corregido.
+    partida('2026-02-05', 'Venta febrero sintética', [{ codigo: '1101', debe: '4.00', haber: '' }, { codigo: '4101', debe: '', haber: '4.00' }], 'cmp');
+    const r = estadoResultadosEstructurado(db, { desde: '2026-03-01', hasta: '2026-03-31', comparativo: true });
+    expect(r.periodoAnterior!.desde).toBe('2026-02-01');
+    expect(r.periodoAnterior!.hasta).toBe('2026-02-28');
+    expect(r.periodoAnterior!.resultadoAntesImpuestosMinor).toBe('4.00');
+  });
+
+  it('P1-72-4: ocultar sin movimiento conserva cuentas con saldo inicial', () => {
+    partida('2026-01-10', 'Gasto enero sintético', [{ codigo: '6101', debe: '35.00', haber: '' }, { codigo: '1101', debe: '', haber: '35.00' }], 'o1');
+    const febrero = balanceComprobacion(db, { desde: '2026-02-01', hasta: '2026-02-28', ocultarSinMovimiento: true });
+    // 6101 tiene saldo inicial 35.00 sin movimientos en febrero: NO se oculta (auditoría 72).
+    expect(febrero.filas.some(f => f.codigo === '6101')).toBe(true);
+    const fila6101 = febrero.filas.find(f => f.codigo === '6101')!;
+    expect(fila6101.saldoInicialMinor).toBe('35.00');
+    // Una cuenta realmente vacía sí se oculta.
+    expect(febrero.filas.some(f => f.codigo === '4201')).toBe(false);
+  });
+
+  it('P1-72-5: filas y totales de situación en la misma presentación por naturaleza', () => {
+    partida('2026-04-10', 'Compra a crédito sintética', [{ codigo: '1301', debe: '100.00', haber: '' }, { codigo: '2101', debe: '', haber: '100.00' }], 'n1');
+    const s = estadoSituacionFinanciera(db, { corte: '2026-04-30' });
+    const fila2101 = s.pasivo.corriente.find(f => f.codigo === '2101')!;
+    // A mano: proveedores por 100 se presentan +100.00 (antes salía -100.00).
+    expect(fila2101.saldoMinor).toBe('100.00');
+    expect(s.pasivo.totalMinor).toBe('100.00');
+    expect(s.activo.totalMinor).toBe('100.00');
+    expect(s.cuadra).toBe(true);
+    expect(s.saldosContrarios).toHaveLength(0);
+  });
+
+  it('P2-72-12: 1502 depreciación acumulada no se reporta como saldo contrario', () => {
+    partida('2026-05-10', 'Depreciación sintética', [{ codigo: '6101', debe: '20.00', haber: '' }, { codigo: '1502', debe: '', haber: '20.00' }], 'd1');
+    const s = estadoSituacionFinanciera(db, { corte: '2026-05-31' });
+    expect(s.saldosContrarios).toHaveLength(0);
+    const fila1502 = [...s.activo.noCorriente].find(f => f.codigo === '1502')!;
+    expect(fila1502.saldoMinor).toBe('-20.00');
+  });
+
+  it('P2-72-11: cuenta con grupo raíz desconocido queda marcada sin clasificar, no corriente', () => {
+    db.prepare(
+      "INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id) VALUES ('9', 'Grupo usuario', 'activo', 1, NULL), ('9101', 'Cuenta usuario', 'activo', 0, (SELECT id FROM cuenta WHERE codigo = '9'))"
+    ).run();
+    partida('2026-06-10', 'Cuenta usuario sintética', [{ codigo: '9101', debe: '50.00', haber: '' }, { codigo: '3101', debe: '', haber: '50.00' }], 'c9');
+    const s = estadoSituacionFinanciera(db, { corte: '2026-06-30' });
+    expect(s.activo.sinClasificar.map(f => f.codigo)).toContain('9101');
+    expect(s.activo.sinClasificar.every(f => f.sinClasificar)).toBe(true);
+    expect(s.cuadra).toBe(true);
+  });
+
+  it('P2-72-13: filtro de ámbito excluye asientos de otro ámbito', () => {
+    partida('2026-07-10', 'Partida administrativa', [{ codigo: '1101', debe: '10.00', haber: '' }, { codigo: '4101', debe: '', haber: '10.00' }], 'amb1');
+    db.prepare("INSERT INTO ambito (id, nombre, tipo) VALUES ('juridico', 'Otro ámbito', 'juridico')").run();
+    const periodo = periodoDeFecha(db, '2026-07-11');
+    const idOtro = Number(db.prepare(
+      `INSERT INTO asiento (folio, fecha_operacion, periodo_id, ambito_id, concepto, estado, responsable) VALUES ('A-000002', '2026-07-11', ?, 'juridico', 'Partida de otro ámbito', 'borrador', 'qa')`
+    ).run(periodo.id).lastInsertRowid);
+    db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(idOtro, idCuenta('1101'), 5, 0);
+    db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(idOtro, idCuenta('4101'), 0, 5);
+    db.prepare("UPDATE asiento SET estado = 'contabilizado' WHERE id = ?").run(idOtro);
+    const r = estadoResultadosEstructurado(db, { desde: '2026-07-01', hasta: '2026-07-31' });
+    // Solo el asiento administrativo de 10.00; el de ámbito jurídico queda fuera.
+    expect(r.resultadoAntesImpuestosMinor).toBe('10.00');
+    const listado = listarPartidas(db, { desde: 0, limite: 10 });
+    expect(listado.total).toBe(1);
+    const otro = estadoSituacionFinanciera(db, { corte: '2026-07-31' });
+    expect(otro.activo.totalMinor).toBe('10.00');
+  });
+
+  it('P2-72-14/15: LIKE escapado y A-0 sin resultados de texto', () => {
+    partida('2026-08-10', 'Partida con 100% descuento_sintético', [{ codigo: '1101', debe: '5.00', haber: '' }, { codigo: '4101', debe: '', haber: '5.00' }], 'l1');
+    expect(listarPartidas(db, { concepto: '100% descuento_sintético', desde: 0, limite: 10 }).total).toBe(1);
+    expect(listarPartidas(db, { busqueda: 'A-0', desde: 0, limite: 10 }).total).toBe(0);
+    expect(listarPartidas(db, { busqueda: 'A-000001', desde: 0, limite: 10 }).total).toBe(1);
+  });
+
+  it('P2-72-9: safeIntegers con 9007199254740993 centavos (por encima de Number)', () => {
+    // 90071992547409.93 USD = 9007199254740993 centavos > Number.MAX_SAFE_INTEGER.
+    const asiento = db.prepare(
+      `INSERT INTO asiento (folio, fecha_operacion, periodo_id, ambito_id, concepto, estado, responsable) VALUES ('A-000001', '2026-09-10', ?, 'administrativo', 'Aporte enorme sintético', 'borrador', 'qa')`
+    ).run(periodoDeFecha(db, '2026-09-10').id);
+    const idAsiento = Number(asiento.lastInsertRowid);
+    const monto = 9007199254740993n;
+    db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(idAsiento, idCuenta('1101'), monto, 0n);
+    db.prepare('INSERT INTO asiento_linea (asiento_id, cuenta_id, debe_minor, haber_minor) VALUES (?, ?, ?, ?)').run(idAsiento, idCuenta('3101'), 0n, monto);
+    db.prepare("UPDATE asiento SET estado = 'contabilizado' WHERE id = ?").run(idAsiento);
+    const s = estadoSituacionFinanciera(db, { corte: '2026-09-30' });
+    expect(s.activo.totalMinor).toBe('90071992547409.93');
+    expect(s.patrimonio.totalMinor).toBe('90071992547409.93');
+    expect(s.cuadra).toBe(true);
+    const listado = listarPartidas(db, { desde: 0, limite: 10 });
+    expect(listado.partidas[0]!.totalMinor).toBe('90071992547409.93');
+  });
+});
+
+describe('auditoría 72: PDF del bloque 2', () => {
+  it('P1-72-1: el logo y las fuentes del PDF se resuelven de rutas estables tras el build', () => {
+    const distRenderer = path.resolve(__dirname, '../dist/renderer');
+    if (!fs.existsSync(distRenderer)) {
+      return; // sin build en esta corrida: la verificación completa corre con build hecho
+    }
+    expect(fs.existsSync(path.join(distRenderer, 'arkon-logo-azul.svg'))).toBe(true);
+    expect(fs.existsSync(path.join(distRenderer, 'fuentes', 'barlow-condensed-latin-700-normal.woff2'))).toBe(true);
+    expect(fs.existsSync(path.join(distRenderer, 'fuentes', 'ibm-plex-sans-latin-400-normal.woff2'))).toBe(true);
+    const ipcFuente = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc.ts'), 'utf8');
+    expect(ipcFuente).toContain("path.join(__dirname, '../renderer/arkon-logo-azul.svg')");
+    expect(ipcFuente).toContain("path.join(__dirname, '../renderer/fuentes', nombre)");
+  });
+
+  it('P1-72-8: datos estructurados con todo escapado; una cuenta con <style> no inyecta HTML', async () => {
+    const { construirHtmlReporte, escaparHtml } = await import('../src/main/servicios/reportesPdf');
+    expect(escaparHtml('<style>td.numero{display:none}</style>')).toBe('&lt;style&gt;td.numero{display:none}&lt;/style&gt;');
+    const html = construirHtmlReporte(
+      {
+        titulo: 'Balance <script>x</script>',
+        periodo: '2026 <b>marzo</b>',
+        tablas: [
+          {
+            encabezados: ['Cuenta', 'Nombre', 'Saldo final'],
+            filas: [['1101', 'Caja<style>td.numero{display:none}</style>', '100.00']]
+          }
+        ]
+      },
+      '<svg></svg>',
+      ''
+    );
+    expect(html).not.toContain('<style>td.numero');
+    expect(html).toContain('&lt;style&gt;td.numero{display:none}&lt;/style&gt;');
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('Balance &lt;script&gt;x&lt;/script&gt;');
+    expect(html).toContain('2026 &lt;b&gt;marzo&lt;/b&gt;');
   });
 });

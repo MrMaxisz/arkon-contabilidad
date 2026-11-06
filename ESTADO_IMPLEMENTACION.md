@@ -1139,3 +1139,33 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npm run build` → OK.
 - `npx vitest run` → exit 0, 367/367, 0 Errors (62 archivos), DOS ejecuciones consecutivas con exit 0.
+
+## Bloque auditoría 72 (correcciones al bloque 2)
+
+### Corregido (P1-72-1 a P2-72-18)
+
+- **P1-72-1**: logo y fuentes del PDF desde rutas ESTABLES: `publicDir: 'recursos'` de Vite publica `arkon-logo-azul.svg` y `fuentes/*.woff2` sin hash en `dist/renderer/`; el IPC lee esas rutas. Prueba comprueba la existencia en `dist` tras el build y las rutas del IPC.
+- **P1-72-2**: el estado de resultados clasifica por TIPO; lo que no está en grupo conocido va a líneas visibles (`otrosCostos`, `otrosGastos`, `otrosIngresos`). Prueba: ingreso 7.00 de grupo 43 y gasto 6401 de 9.00 → -2.00, y el acumulado iguala el resultado de la situación financiera.
+- **P1-72-3**: `rangoAnterior` pura: mes completo → mes calendario anterior; año → año anterior; N meses completos → N anteriores; rango libre → igual número de días. Prueba con los cuatro casos (calculados a mano) más el comparativo del servicio.
+- **P1-72-4**: ocultar sin movimiento exige saldo inicial, cargos Y abonos en cero (aplica a grupos). Prueba con 6101 saldo inicial 35.00 sin movimientos: visible.
+- **P1-72-5**: filas y totales de situación en la misma presentación por naturaleza (proveedores +100.00); un contrario sale negativo y en la lista.
+- **P1-72-6**: imprimir libro recorre TODAS las páginas del rango filtrado, con total y conteo. Prueba con 21 partidas y página de 20: el PDF recibe 21.
+- **P1-72-7**: tokens de consulta en LibroDiario y EstadosFinancieros: toda respuesta que no sea la última se descarta. Pruebas con promesas resueltas en desorden.
+- **P1-72-8**: PDF con datos ESTRUCTURADOS (`reportesPdf.ts` puro): el renderer nunca envía HTML; todo escapado (título, período, celdas). Prueba con cuenta `Caja<style>td.numero{display:none}</style>`: sin inyección.
+- **P2-72-9**: `safeIntegers` en todas las consultas de sumas; prueba con 9007199254740993 centavos (> Number.MAX_SAFE_INTEGER) exacto.
+- **P2-72-10**: el PDF del estado de resultados incluye TODAS las secciones (ingresos, costos, otros costos, admin, comercialización, otros gastos, otros ingresos, financieros) con totales.
+- **P2-72-11**: clasificación corriente/no corriente subiendo por `padre_id` al primer ancestro en la tabla única; cuenta sin clasificar queda MARCADA `sinClasificar`, nunca dada por corriente; pasivo no corriente previsto (24-29).
+- **P2-72-12**: tabla de cuentas reguladoras: 1502 no se reporta como contrario.
+- **P2-72-13**: filtro de `ambito_id` en libro diario, comprobación, resultados y situación (dentro del CASE para que las líneas de otros ámbitos no cuenten).
+- **P2-72-14**: LIKE con `ESCAPE` para `%` y `_`.
+- **P2-72-15**: forma numérica inválida (`A-0`) NO cae en búsqueda de texto: cero resultados.
+- **P2-72-16**: fuentes de la marca incrustadas como data URI en el PDF (sin red).
+- **P2-72-17**: `.fila` compacta también fuera de formularios.
+- **P2-72-18**: `filtrosComponente.prueba.tsx` con `testTimeout: 20000`.
+- Mutaciones confirmadas localmente (restauradas): P1-72-2 (otros a prefijos fijos) → 1 fallo; P1-72-3 (mes a conteo de días) → 1; P1-72-4 (omitir saldo inicial) → 1; P1-72-5 (signo crudo) → 1; P1-72-6 (solo página visible) → 1.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK; `dist/renderer/arkon-logo-azul.svg` y `dist/renderer/fuentes/*.woff2` presentes.
+- `npx vitest run` → exit 0, 381/381, 0 Errors (63 archivos), DOS ejecuciones consecutivas con exit 0.

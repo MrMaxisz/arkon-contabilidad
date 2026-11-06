@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import { BotonSecundario, EstadoCarga, EstadoError, formatoDineroPantalla } from '../componentes';
@@ -31,9 +31,11 @@ interface EstadoResultadosEstructurado {
   hasta: string;
   ingresos: Seccion[];
   costos: Seccion[];
+  otrosCostos: Seccion[];
   utilidadBrutaMinor: string;
   gastosAdministracion: Seccion[];
   gastosComercializacion: Seccion[];
+  otrosGastos: Seccion[];
   utilidadOperacionMinor: string;
   otrosIngresos: Seccion[];
   gastosFinancieros: Seccion[];
@@ -41,12 +43,12 @@ interface EstadoResultadosEstructurado {
   periodoAnterior: EstadoResultadosEstructurado | null;
 }
 
-interface FilaSituacion { codigo: string; nombre: string; corriente: boolean; saldoMinor: string }
+interface FilaSituacion { codigo: string; nombre: string; corriente: boolean; sinClasificar: boolean; saldoMinor: string }
 
 interface EstadoSituacionFinanciera {
   corte: string;
-  activo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; totalMinor: string };
-  pasivo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; totalMinor: string };
+  activo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; sinClasificar: FilaSituacion[]; totalMinor: string };
+  pasivo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; sinClasificar: FilaSituacion[]; totalMinor: string };
   patrimonio: { filas: FilaSituacion[]; resultadoEjercicioMinor: string; totalMinor: string };
   cuadra: boolean;
   saldosContrarios: Array<{ codigo: string; nombre: string; saldoMinor: string }>;
@@ -67,32 +69,72 @@ export default function EstadosFinancieros() {
   const [situacion, setSituacion] = useState<EstadoSituacionFinanciera | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const consultaId = useRef(0);
 
   const cargarComprobacion = useCallback(() => {
+    const numeroConsulta = ++consultaId.current;
     setCargando(true);
     void api()
       .invocar('balance:comprobacion', { desde, hasta, ocultarSinMovimiento })
-      .then(r => setComprobacion(r as BalanceComprobacion))
-      .catch(err => setMensaje(limpiarMensajeError(err)))
-      .finally(() => setCargando(false));
+      .then(r => {
+        if (consultaId.current === numeroConsulta) {
+          setComprobacion(r as BalanceComprobacion);
+        }
+      })
+      .catch(err => {
+        if (consultaId.current === numeroConsulta) {
+          setMensaje(limpiarMensajeError(err));
+        }
+      })
+      .finally(() => {
+        if (consultaId.current === numeroConsulta) {
+          setCargando(false);
+        }
+      });
   }, [desde, hasta, ocultarSinMovimiento]);
 
   const cargarResultados = useCallback(() => {
+    const numeroConsulta = ++consultaId.current;
     setCargando(true);
     void api()
       .invocar('resultados:estructurado', { desde, hasta, comparativo: true })
-      .then(r => setResultados(r as EstadoResultadosEstructurado))
-      .catch(err => setMensaje(limpiarMensajeError(err)))
-      .finally(() => setCargando(false));
+      .then(r => {
+        if (consultaId.current === numeroConsulta) {
+          setResultados(r as EstadoResultadosEstructurado);
+        }
+      })
+      .catch(err => {
+        if (consultaId.current === numeroConsulta) {
+          setMensaje(limpiarMensajeError(err));
+        }
+      })
+      .finally(() => {
+        if (consultaId.current === numeroConsulta) {
+          setCargando(false);
+        }
+      });
   }, [desde, hasta]);
 
   const cargarSituacion = useCallback(() => {
+    const numeroConsulta = ++consultaId.current;
     setCargando(true);
     void api()
       .invocar('situacion:consultar', { corte, corteComparativo: corteComparativo || undefined })
-      .then(r => setSituacion(r as EstadoSituacionFinanciera))
-      .catch(err => setMensaje(limpiarMensajeError(err)))
-      .finally(() => setCargando(false));
+      .then(r => {
+        if (consultaId.current === numeroConsulta) {
+          setSituacion(r as EstadoSituacionFinanciera);
+        }
+      })
+      .catch(err => {
+        if (consultaId.current === numeroConsulta) {
+          setMensaje(limpiarMensajeError(err));
+        }
+      })
+      .finally(() => {
+        if (consultaId.current === numeroConsulta) {
+          setCargando(false);
+        }
+      });
   }, [corte, corteComparativo]);
 
   useEffect(() => {
@@ -105,17 +147,25 @@ export default function EstadosFinancieros() {
     }
   }, [pestana, cargarComprobacion, cargarResultados, cargarSituacion]);
 
-  async function imprimir(titulo: string, periodo: string, cuerpo: string) {
+  async function imprimir(
+    titulo: string,
+    periodo: string,
+    tabla: { encabezados: string[]; filas: string[][]; total?: string[] }
+  ) {
     try {
-      const r = (await api().reportePdf(titulo, periodo, cuerpo)) as { guardado: boolean; ruta?: string };
+      const r = (await api().reportePdf({ titulo, periodo, tablas: [tabla] })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Reporte guardado en ${r.ruta}.` : 'Impresión cancelada.');
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }
   }
 
-  function seccion(titulo: string, filas: Seccion[]): string {
-    return `<h3>${titulo}</h3><table><tbody>${filas.map(f => `<tr><td>${f.codigo}</td><td>${f.nombre}</td><td class="numero">${f.importeMinor}</td></tr>`).join('')}</tbody></table>`;
+  function tablaSeccion(titulo: string, filas: Seccion[]): { titulo: string; encabezados: string[]; filas: string[][] } {
+    return {
+      titulo,
+      encabezados: ['Código', 'Nombre', 'Importe'],
+      filas: filas.map(f => [f.codigo, f.nombre, f.importeMinor])
+    };
   }
 
   return (
@@ -146,7 +196,11 @@ export default function EstadosFinancieros() {
               </select>
             </label>
             <BotonSecundario onClick={() => cargarComprobacion()}>Recalcular</BotonSecundario>
-            <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, `<table><thead><tr><th>Cuenta</th><th>Nombre</th><th class="numero">Saldo inicial</th><th class="numero">Cargos</th><th class="numero">Abonos</th><th class="numero">Saldo final</th></tr></thead><tbody>${comprobacion.filas.map(f => `<tr${f.esGrupo ? ' class="total"' : ''}><td>${f.codigo}</td><td>${f.nombre}</td><td class="numero">${f.saldoInicialMinor}</td><td class="numero">${f.cargosMinor}</td><td class="numero">${f.abonosMinor}</td><td class="numero">${f.saldoFinalMinor}</td></tr>`).join('')}<tr class="total"><td>Totales</td><td></td><td></td><td class="numero">${comprobacion.totalCargosMinor}</td><td class="numero">${comprobacion.totalAbonosMinor}</td><td></td></tr></tbody></table>`)}>Imprimir…</BotonSecundario>
+            <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, {
+              encabezados: ['Cuenta', 'Nombre', 'Saldo inicial', 'Cargos', 'Abonos', 'Saldo final'],
+              filas: comprobacion.filas.map(f => [f.codigo, f.nombre, f.saldoInicialMinor, f.cargosMinor, f.abonosMinor, f.saldoFinalMinor]),
+              total: ['Totales', '', '', comprobacion.totalCargosMinor, comprobacion.totalAbonosMinor, '']
+            })}>Imprimir…</BotonSecundario>
           </div>
           <table>
             <thead><tr><th>Cuenta</th><th>Nombre</th><th className="numero">Saldo inicial</th><th className="numero">Cargos</th><th className="numero">Abonos</th><th className="numero">Saldo final</th></tr></thead>
@@ -185,17 +239,30 @@ export default function EstadosFinancieros() {
             <label>Desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} /></label>
             <label>Hasta<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
             <BotonSecundario onClick={() => cargarResultados()}>Recalcular</BotonSecundario>
-            <BotonSecundario onClick={() => void imprimir('Estado de resultados', `${resultados.desde} a ${resultados.hasta}`, `${seccion('Ingresos', resultados.ingresos)}<p>Utilidad bruta: ${resultados.utilidadBrutaMinor}</p>${seccion('Gastos de administración', resultados.gastosAdministracion)}${seccion('Gastos de comercialización', resultados.gastosComercializacion)}<p>Utilidad de operación: ${resultados.utilidadOperacionMinor}</p>${seccion('Otros ingresos', resultados.otrosIngresos)}${seccion('Gastos financieros', resultados.gastosFinancieros)}<p>Resultado antes de impuestos: ${resultados.resultadoAntesImpuestosMinor}</p>`)}>
+            <BotonSecundario onClick={() => void imprimir('Estado de resultados', `${resultados.desde} a ${resultados.hasta}`, {
+              encabezados: ['Código', 'Nombre', 'Importe'],
+              filas: [
+                ...tablaSeccion('Ingresos', resultados.ingresos).filas,
+                ...resultados.costos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
+                ...resultados.otrosCostos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
+                ...resultados.gastosAdministracion.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
+                ...resultados.gastosComercializacion.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
+                ...resultados.otrosGastos.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`]),
+                ...resultados.otrosIngresos.map(f => [f.codigo, f.nombre, f.importeMinor]),
+                ...resultados.gastosFinancieros.map(f => [f.codigo, f.nombre, `-${f.importeMinor}`])
+              ],
+              total: ['Resultado antes de impuestos', '', resultados.resultadoAntesImpuestosMinor]
+            })}>
               Imprimir…
             </BotonSecundario>
           </div>
           <h2>Ingresos</h2>
           <table><tbody>{resultados.ingresos.map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody></table>
           <h2>Costos</h2>
-          <table><tbody>{resultados.costos.map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
+          <table><tbody>{[...resultados.costos, ...resultados.otrosCostos].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
             <tfoot><tr className="total"><td>Utilidad bruta</td><td></td><td className="numero">{formatoDineroPantalla(resultados.utilidadBrutaMinor)}</td></tr></tfoot></table>
           <h2>Gastos de administración y comercialización</h2>
-          <table><tbody>{[...resultados.gastosAdministracion, ...resultados.gastosComercializacion].map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
+          <table><tbody>{[...resultados.gastosAdministracion, ...resultados.gastosComercializacion, ...resultados.otrosGastos].map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
             <tfoot><tr className="total"><td>Utilidad de operación</td><td></td><td className="numero">{formatoDineroPantalla(resultados.utilidadOperacionMinor)}</td></tr></tfoot></table>
           <h2>Otros ingresos y gastos financieros</h2>
           <table><tbody>{[...resultados.otrosIngresos, ...resultados.gastosFinancieros].map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
@@ -217,10 +284,10 @@ export default function EstadosFinancieros() {
             <BotonSecundario onClick={() => cargarSituacion()}>Recalcular</BotonSecundario>
           </div>
           <h2>Activo</h2>
-          <table><tbody>{[...situacion.activo.corriente, ...situacion.activo.noCorriente].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre} {f.corriente ? '' : '(no corriente)'}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
+          <table><tbody>{[...situacion.activo.corriente, ...situacion.activo.noCorriente, ...situacion.activo.sinClasificar].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre} {f.sinClasificar ? '(sin clasificar)' : f.corriente ? '' : '(no corriente)'}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
             <tfoot><tr className="total"><td>Total activo</td><td></td><td className="numero">{formatoDineroPantalla(situacion.activo.totalMinor)}</td></tr></tfoot></table>
           <h2>Pasivo</h2>
-          <table><tbody>{[...situacion.pasivo.corriente, ...situacion.pasivo.noCorriente].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
+          <table><tbody>{[...situacion.pasivo.corriente, ...situacion.pasivo.noCorriente, ...situacion.pasivo.sinClasificar].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre} {f.sinClasificar ? '(sin clasificar)' : f.corriente ? '' : '(no corriente)'}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
             <tfoot><tr className="total"><td>Total pasivo</td><td></td><td className="numero">{formatoDineroPantalla(situacion.pasivo.totalMinor)}</td></tr></tfoot></table>
           <h2>Patrimonio</h2>
           <table><tbody>{situacion.patrimonio.filas.map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>

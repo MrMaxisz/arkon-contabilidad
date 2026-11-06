@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import { BotonSecundario, BotonPrimario, EstadoCarga, EstadoVacio, EstadoError, formatoDineroPantalla } from '../componentes';
@@ -49,12 +49,14 @@ export default function LibroDiario() {
   const [detalle, setDetalle] = useState<PartidaDetalle | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const consultaId = useRef(0);
 
   useEffect(() => {
     void api().invocar('cuenta:listar').then(r => setCuentas((r as CuentaOpcion[]).filter((c: CuentaOpcion & { esGrupo?: boolean }) => !c.esGrupo)));
   }, []);
 
   const cargar = useCallback(() => {
+    const numeroConsulta = ++consultaId.current;
     setCargando(true);
     void api()
       .invocar('libro:partidas', {
@@ -67,12 +69,23 @@ export default function LibroDiario() {
         limite: TAMANO_PAGINA
       })
       .then(r => {
+        if (consultaId.current !== numeroConsulta) {
+          return; // respuesta tardía descartada (auditoría 72)
+        }
         const resultado = r as { partidas: PartidaResumen[]; total: number };
         setPartidas(resultado.partidas);
         setTotal(resultado.total);
       })
-      .catch(err => setMensaje(limpiarMensajeError(err)))
-      .finally(() => setCargando(false));
+      .catch(err => {
+        if (consultaId.current === numeroConsulta) {
+          setMensaje(limpiarMensajeError(err));
+        }
+      })
+      .finally(() => {
+        if (consultaId.current === numeroConsulta) {
+          setCargando(false);
+        }
+      });
   }, [busqueda, desdeFecha, hastaFecha, concepto, cuentaId, pagina]);
 
   useEffect(() => {
@@ -91,13 +104,18 @@ export default function LibroDiario() {
     if (!detalle) {
       return;
     }
-    const cuerpo = `<h2>Partida ${detalle.folio}</h2>
-<p>${detalle.fecha} · ${detalle.concepto} · Responsable: ${detalle.responsable} · Estado: ${detalle.estado}${detalle.motivo ? ` · Motivo: ${detalle.motivo}` : ''}</p>
-<table><thead><tr><th>Cuenta</th><th>Nombre</th><th class="numero">Debe</th><th class="numero">Haber</th></tr></thead>
-<tbody>${detalle.lineas.map(l => `<tr><td>${l.cuentaCodigo}</td><td>${l.cuentaNombre}</td><td class="numero">${l.debeMinor}</td><td class="numero">${l.haberMinor}</td></tr>`).join('')}
-<tr class="total"><td>Totales</td><td></td><td class="numero">${detalle.totalDebeMinor}</td><td class="numero">${detalle.totalHaberMinor}</td></tr></tbody></table>`;
     try {
-      const r = (await api().reportePdf(`Partida ${detalle.folio}`, detalle.fecha, cuerpo)) as { guardado: boolean; ruta?: string };
+      const r = (await api().reportePdf({
+        titulo: `Partida ${detalle.folio}`,
+        periodo: `${detalle.fecha} · ${detalle.concepto} · Responsable: ${detalle.responsable} · Estado: ${detalle.estado}${detalle.motivo ? ` · Motivo: ${detalle.motivo}` : ''}`,
+        tablas: [
+          {
+            encabezados: ['Cuenta', 'Nombre', 'Debe', 'Haber'],
+            filas: detalle.lineas.map(l => [l.cuentaCodigo, l.cuentaNombre, l.debeMinor, l.haberMinor]),
+            total: ['Totales', '', detalle.totalDebeMinor, detalle.totalHaberMinor]
+          }
+        ]
+      })) as { guardado: boolean; ruta?: string };
       setMensaje(r.guardado && r.ruta ? `Partida guardada en ${r.ruta}.` : 'Impresión cancelada.');
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
@@ -105,13 +123,38 @@ export default function LibroDiario() {
   }
 
   async function imprimirRango() {
-    const cuerpo = `<h2>Libro diario</h2>
-<table><thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Estado</th><th class="numero">Total</th></tr></thead>
-<tbody>${partidas.map(p => `<tr><td>${p.folio}</td><td>${p.fecha}</td><td>${p.concepto}</td><td>${p.estado}</td><td class="numero">${p.totalMinor}</td></tr>`).join('')}</tbody></table>`;
+    // TODO el rango filtrado (auditoría 72): recorre todas las páginas, no solo la visible.
+    const todas: PartidaResumen[] = [];
+    let totalAcumulado = 0;
+    for (let paginaLibro = 0; ; paginaLibro += 1) {
+      const r = (await api().invocar('libro:partidas', {
+        busqueda: busqueda || undefined,
+        desdeFecha: desdeFecha || undefined,
+        hastaFecha: hastaFecha || undefined,
+        concepto: concepto || undefined,
+        cuentaId: cuentaId || undefined,
+        desde: paginaLibro * TAMANO_PAGINA,
+        limite: TAMANO_PAGINA
+      })) as { partidas: PartidaResumen[]; total: number };
+      todas.push(...r.partidas);
+      totalAcumulado = r.total;
+      if (todas.length >= r.total || r.partidas.length === 0) {
+        break;
+      }
+    }
     const periodo = desdeFecha || hastaFecha ? `${desdeFecha || 'inicio'} a ${hastaFecha || 'hoy'}` : 'todos los períodos';
     try {
-      const r = (await api().reportePdf('Libro diario', periodo, cuerpo)) as { guardado: boolean; ruta?: string };
-      setMensaje(r.guardado && r.ruta ? `Libro guardado en ${r.ruta}.` : 'Impresión cancelada.');
+      const r = (await api().reportePdf({
+        titulo: 'Libro diario',
+        periodo: `${periodo} · ${totalAcumulado} partida(s)`,
+        tablas: [
+          {
+            encabezados: ['Folio', 'Fecha', 'Concepto', 'Estado', 'Total'],
+            filas: todas.map(p => [p.folio, p.fecha, p.concepto, p.estado, p.totalMinor])
+          }
+        ]
+      })) as { guardado: boolean; ruta?: string };
+      setMensaje(r.guardado && r.ruta ? `Libro guardado en ${r.ruta} (${totalAcumulado} partidas).` : 'Impresión cancelada.');
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }
