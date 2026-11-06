@@ -131,13 +131,29 @@ export default function Compras() {
   const [ocupadoAnular, setOcupadoAnular] = useState(false);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
   const avisoRef = useRef<HTMLParagraphElement | null>(null);
+  const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
 
-  function abrirAnulacion(c: CompraResumen) {
+  function abrirAnulacion(c: CompraResumen, origen: HTMLButtonElement) {
+    origenAnulacionRef.current = origen;
     setAnulando(c);
     setMotivoAnular('');
     setResponsableAnular(responsable.trim());
     setErrorAnular(null);
   }
+
+  useEffect(() => {
+    if (!anulando) {
+      return;
+    }
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') {
+        cancelarAnulacion();
+        origenAnulacionRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', alPresionar);
+    return () => document.removeEventListener('keydown', alPresionar);
+  }, [anulando]);
 
   function cancelarAnulacion() {
     setAnulando(null);
@@ -386,7 +402,7 @@ export default function Compras() {
                       setMotivoClas('');
                     }}>Clasificar</button>
                   )}
-                  {c.estado === 'registrada' && <button onClick={() => abrirAnulacion(c)}>Anular</button>}
+                  {c.estado === 'registrada' && <button onClick={e => abrirAnulacion(c, e.currentTarget)}>Anular</button>}
                 </td>
               </tr>
             ))}
@@ -411,7 +427,7 @@ export default function Compras() {
               </label>
             </div>
             <div className="fila">
-              <button className="primario" type="submit" disabled={ocupadoAnular}>
+              <button className="peligro" type="submit" disabled={ocupadoAnular}>
                 {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
               </button>
               <button type="button" onClick={cancelarAnulacion}>Cancelar</button>

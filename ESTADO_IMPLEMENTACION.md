@@ -1073,3 +1073,26 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 331/331, 0 Errors (59 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 69 (sistema visual ARKON y navegación, bloque 1 de la hoja de ruta)
+
+### Implementado (solo renderer; sin cambios de reglas contables, canales, esquema ni migraciones)
+
+- **Color**: tokens exactos en `estilos.css`: azul `#0A4DB3`, marino `#0B1B33`, blanco, azul suave `#E4EDFB`, chispa `#19A7E0` (solo detalles: foco y borde activo, nunca texto sobre blanco), seguridad `#B45309` solo avisos de riesgo; rojo/verde funcionales como tokens separados (`--funcional-error`/`--funcional-exito`). Los 12 colores antiguos desaparecieron (prueba).
+- **Tipografía**: Barlow Condensed 700 mayúsculas en títulos, Barlow SemiBold en subtítulos, IBM Plex Sans 400/600 en texto, IBM Plex Mono para folios/hashes/datos técnicos; escala 32/22/16/12 con 14 px documentado como excepción de tablas densas. Todo vía `@fontsource` empaquetado localmente (barlow e ibm-plex-mono añadidos), sin CDN y sin URLs externas (prueba).
+- **Logo**: SVG real (mejor copia del anexo, sin comparación de hash por corrección del auditor) en `src/renderer/recursos/arkon-logo-azul.svg`; blanca derivada con los cambios de color oficiales (`#0A4DB3`/`#0B1B33`→`#FFFFFF`, `#4A5B75`→`#C9D8F2`). Lateral marino con blanca a 148 px (mínimo 120) y «Potencia con precisión» una sola vez; azul en impresión vía `EncabezadoReporte`. Importadas como assets de Vite (presentes en `dist/renderer/assets`).
+- **Navegación agrupada** con `aria-current="page"`: Inicio; Comercial (Clientes y proveedores, Catálogo, Cotizaciones, Proyectos, Ventas); Compras y tesorería (Compras y gastos, Cobros y pagos, Caja y bancos); Contabilidad (Contabilidad, Ajustes, Cierre, Reportes); Fiscal (Impuestos); Sistema (Respaldo, Bitácora).
+- **Barra de contexto** con sección actual y ámbito administrativo, conservando el aviso de registros de control administrativo, no estados financieros legales.
+- **Componentes compartidos** (`componentes.tsx`): BotonPrimario/Secundario/Peligro, Campo, Tabla, EncabezadoReporte, EstadoCarga/Error/Vacio/SinResultados; aplicados al shell, Inicio, Reportes y Contabilidad. «Confirmar anulación» usa peligro en Contabilidad, Ventas, Compras y CajaBancos.
+- **Tablas**: filas densas, líneas finas, cabecera fija (sticky), cifras a la derecha con `tabular-nums`, estilo de totales bajo su columna.
+- **Inicio**: resumen sobrio sin tabla ni gráficos.
+- **Foco y teclado**: `:focus-visible` con chispa; Escape cancela la confirmación de anulación en Ventas/Compras/CajaBancos y el foco vuelve al botón Anular de origen (prueba).
+- **Impresión**: `@media print` sin lateral/formularios/botones, logo azul, filas sin cortar (`page-break-inside: avoid`). Límite documentado: Chromium no soporta numeración de página por CSS (`@page` margin boxes), queda pendiente de mecanismo alternativo si el auditor lo exige.
+- **Redacción**: «idempotencia», «motor contable central» y «sin valores inventados» eliminados de las vistas.
+- **Pruebas nuevas** (`pruebas/visualSistema.prueba.tsx`, 13 + 1 de Escape en `anulacionComponente.prueba.tsx`): tokens exactos, ausencia de colores antiguos, fuentes locales sin URLs externas, escala tipográfica, logos con colores oficiales y render, grupos/aria-current/barra de contexto, resumen de Inicio, impresión y foco, contraste AA (≥4.5) de 9 pares texto/fondo.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 345/345, 0 Errors (60 archivos).
+- `npm run build` → OK; ambos SVG presentes en `dist/renderer/assets`.

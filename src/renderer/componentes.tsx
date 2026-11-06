@@ -1,0 +1,90 @@
+import React from 'react';
+import logoAzul from './recursos/arkon-logo-azul.svg';
+
+// Componentes compartidos del sistema visual ARKON (auditoría 69, bloque 1).
+// Solo presentación: sin reglas contables ni acceso a datos.
+
+export function BotonPrimario(props: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+  const { className = '', ...rest } = props;
+  return <button type="button" className={`primario ${className}`.trim()} {...rest} />;
+}
+
+export function BotonSecundario(props: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+  const { className = '', ...rest } = props;
+  return <button type="button" className={`secundario ${className}`.trim()} {...rest} />;
+}
+
+export function BotonPeligro(props: React.ButtonHTMLAttributes<HTMLButtonElement>): React.JSX.Element {
+  const { className = '', ...rest } = props;
+  return <button type="button" className={`peligro ${className}`.trim()} {...rest} />;
+}
+
+export function Campo(props: React.InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; children?: React.ReactNode }): React.JSX.Element {
+  const { etiqueta, children, ...rest } = props;
+  return (
+    <label>
+      {etiqueta}
+      {children ?? <input {...rest} />}
+    </label>
+  );
+}
+
+export interface Columna<T> {
+  encabezado: string;
+  numero?: boolean;
+  celda: (fila: T) => React.ReactNode;
+}
+
+export function Tabla<T>(props: { columnas: Array<Columna<T>>; filas: T[]; clave: (fila: T) => React.Key }): React.JSX.Element {
+  return (
+    <table>
+      <thead>
+        <tr>
+          {props.columnas.map((c, i) => (
+            <th key={i} className={c.numero ? 'numero' : ''} scope="col">{c.encabezado}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {props.filas.map(fila => (
+          <tr key={props.clave(fila)}>
+            {props.columnas.map((c, i) => (
+              <td key={i} className={c.numero ? 'numero' : ''}>{c.celda(fila)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+export function EncabezadoReporte(props: { titulo: string; periodo?: string; moneda?: string }): React.JSX.Element {
+  return (
+    <header className="encabezado-reporte">
+      <img className="logo-impresion" src={logoAzul} alt="ARKON Ingeniería Eléctrica" />
+      <h2>{props.titulo}</h2>
+      {(props.periodo || props.moneda) && (
+        <p className="menor">
+          {props.periodo ? `Período: ${props.periodo}. ` : ''}
+          {props.moneda ? `Moneda: ${props.moneda}.` : ''}
+        </p>
+      )}
+    </header>
+  );
+}
+
+export function EstadoCarga(props: { texto: string }): React.JSX.Element {
+  return <p className="estado-carga">{props.texto}</p>;
+}
+
+export function EstadoError(props: { mensaje: string }): React.JSX.Element {
+  return <p className="estado-error" role="alert">{props.mensaje}</p>;
+}
+
+export function EstadoVacio(props: { texto: string }): React.JSX.Element {
+  return <p className="estado-vacio">{props.texto}</p>;
+}
+
+export function EstadoSinResultados(props: { texto: string }): React.JSX.Element {
+  return <p className="estado-sin-resultados">{props.texto}</p>;
+}

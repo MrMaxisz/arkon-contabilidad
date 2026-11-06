@@ -155,3 +155,17 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     expect(screen.queryByText(/anulada con reverso/)).toBeNull();
   });
 });
+
+describe('auditoría 69: Escape cancela la confirmación y devuelve el foco a su origen', () => {
+  it('Escape cierra el diálogo sin invocar el comando y el foco vuelve al botón Anular', async () => {
+    const btn = await abrirDialogo();
+    await waitFor(() => screen.getByText('V-000002'));
+    fireEvent.click(btn);
+    await waitFor(() => screen.getByRole('dialog'));
+    btn.focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
+    expect(document.activeElement).toBe(btn);
+  });
+});

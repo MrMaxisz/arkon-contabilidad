@@ -67,7 +67,7 @@ export default function Catalogo() {
           precioCosto,
           responsable
         });
-        setMensaje({ texto: `Ítem ${codigo} registrado. Precios y rendimientos opcionales: sin valores inventados.`, tipo: 'ok' });
+        setMensaje({ texto: `Ítem ${codigo} registrado. Precios y rendimientos opcionales: solo se guardan los datos capturados.`, tipo: 'ok' });
       }
       setCodigo('');
       setNombre('');

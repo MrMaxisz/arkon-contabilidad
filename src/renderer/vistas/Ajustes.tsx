@@ -61,7 +61,7 @@ export default function Ajustes() {
       })) as { folio: string; duplicado: boolean };
       setMensaje({
         texto: r.duplicado
-          ? `Operación ya registrada (idempotencia): ${tipoAsiento} ${r.folio}`
+          ? `Operación ya registrada: ${tipoAsiento} ${r.folio}`
           : `${tipoAsiento === 'apertura' ? 'Apertura' : 'Ajuste'} ${r.folio} contabilizado con soporte «${referencia}».`,
         tipo: 'ok'
       });
@@ -139,8 +139,8 @@ export default function Ajustes() {
         </div>
       </form>
       <p className="menor">
-        El ajuste usa el motor contable central: valida calendario, período abierto, ámbito, cuentas y cuadre.
-        La referencia de soporte es obligatoria. Un reintento con la misma operación devuelve el mismo asiento (idempotencia).
+        El ajuste valida calendario, período abierto, ámbito, cuentas y cuadre.
+        La referencia de soporte es obligatoria. Un reintento con la misma operación devuelve el mismo asiento.
         Los saldos de apertura se registran aquí con su soporte documentado; no se precargan cifras.
       </p>
     </div>

@@ -66,7 +66,7 @@ export default function Cierre() {
       })) as { folio: string; duplicado: boolean; netoMinor: string };
       setMensaje(
         r.duplicado
-          ? `Cierre ya registrado (idempotencia): asiento ${r.folio}`
+          ? `Cierre ya registrado: asiento ${r.folio}`
           : `Ejercicio ${anio} cerrado con asiento ${r.folio}; resultado neto ${r.netoMinor}.`
       );
       clave.current = `cierre-${Date.now()}`;

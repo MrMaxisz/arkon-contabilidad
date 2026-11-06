@@ -1,9 +1,19 @@
 :root {
-  --azul: #1a5fa8;
-  --marino: #0d2c54;
-  --fondo: #f4f7fb;
-  --borde: #d7e0ec;
-  --texto: #1c2733;
+  /* Tokens de color ARKON (auditoría 69). Ningún color fuera de tokens. */
+  --arkon-azul: #0A4DB3;
+  --arkon-marino: #0B1B33;
+  --arkon-blanco: #FFFFFF;
+  --arkon-azul-suave: #E4EDFB;
+  --arkon-chispa: #19A7E0;
+  --arkon-seguridad: #B45309;
+  --texto: #0B1B33;
+  --texto-suave: #4A5B75;
+  --borde: #C9D8F2;
+  --fondo: #E4EDFB;
+  --funcional-error: #B3261E;
+  --funcional-error-fondo: #FBEAE9;
+  --funcional-exito: #1E6B34;
+  --funcional-exito-fondo: #EAF5EE;
 }
 
 * { box-sizing: border-box; }
@@ -11,75 +21,202 @@
 body {
   margin: 0;
   font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 16px;
   color: var(--texto);
   background: var(--fondo);
 }
 
+/* Tipografía: títulos Barlow Condensed Bold en mayúsculas; subtítulos SemiBold; texto Plex Sans. */
 h1, h2, h3 {
   font-family: 'Barlow Condensed', sans-serif;
-  color: var(--marino);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--arkon-marino);
   margin: 0 0 12px;
+  letter-spacing: 0.5px;
 }
 
+h1 { font-size: 32px; }
+h2 { font-size: 22px; }
+h3 { font-size: 16px; }
+
+.subtitulo {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--arkon-marino);
+}
+
+/* Folios, hashes y datos técnicos en IBM Plex Mono. */
+.mono, .folio, td.folio { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+.menor { font-size: 12px; color: var(--texto-suave); }
+
+/* Foco visible claro para teclado. */
+:focus-visible {
+  outline: 3px solid var(--arkon-chispa);
+  outline-offset: 2px;
+}
+
+/* Shell: lateral marino + contenido. */
 .app { display: flex; min-height: 100vh; }
 
 .lateral {
-  width: 220px;
-  background: var(--marino);
-  color: #fff;
-  padding: 16px 0;
+  width: 232px;
+  background: var(--arkon-marino);
+  color: var(--arkon-blanco);
+  padding: 20px 0 16px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .lateral .marca {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 22px;
-  letter-spacing: 1px;
-  padding: 0 20px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.2);
+  padding: 0 20px 14px;
+  border-bottom: 1px solid rgba(201, 216, 242, 0.25);
 }
 
-.lateral nav { display: flex; flex-direction: column; margin-top: 12px; }
+.lateral .marca img { display: block; width: 148px; height: auto; }
+
+.lateral .marca .lema {
+  margin-top: 6px;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  color: #C9D8F2;
+}
+
+.lateral nav { display: flex; flex-direction: column; margin-top: 10px; flex: 1; overflow-y: auto; }
+
+.lateral nav .grupo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #C9D8F2;
+  padding: 12px 20px 4px;
+}
 
 .lateral button {
   background: none;
   border: none;
-  color: #cfe0f5;
+  border-left: 3px solid transparent;
+  color: #C9D8F2;
   text-align: left;
-  padding: 10px 20px;
-  font-size: 15px;
+  padding: 7px 20px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
   cursor: pointer;
-  font-family: inherit;
 }
 
-.lateral button:hover { background: rgba(255,255,255,0.08); color: #fff; }
-.lateral button.activo { background: var(--azul); color: #fff; }
+.lateral button:hover { background: rgba(201, 216, 242, 0.12); color: var(--arkon-blanco); }
+.lateral button[aria-current='page'] {
+  background: rgba(201, 216, 242, 0.16);
+  border-left-color: var(--arkon-chispa);
+  color: var(--arkon-blanco);
+}
 
-.contenido { flex: 1; padding: 24px 32px; max-width: 1100px; }
+.contenido { flex: 1; padding: 20px 32px 32px; max-width: 1100px; min-width: 0; }
 
-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
-th, td { padding: 8px 10px; border-bottom: 1px solid var(--borde); text-align: left; }
-th { background: #eaf1f9; color: var(--marino); font-weight: 600; }
+/* Barra de contexto. */
+.barra-contexto {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--texto-suave);
+}
+
+.barra-contexto .seccion-actual {
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--arkon-marino);
+}
+
+/* Tablas densas: líneas finas, cifras a la derecha con tabular-nums, cabecera fija. */
+table { width: 100%; border-collapse: collapse; background: var(--arkon-blanco); font-size: 14px; }
+thead th { position: sticky; top: 0; background: var(--arkon-azul-suave); }
+th, td { padding: 5px 10px; border-bottom: 1px solid var(--borde); text-align: left; }
+th { color: var(--arkon-marino); font-family: 'Barlow', sans-serif; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
 td.numero, th.numero { text-align: right; font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 600; border-top: 2px solid var(--arkon-marino); }
 
-form { background: #fff; border: 1px solid var(--borde); padding: 16px; margin-bottom: 20px; }
+form { background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 16px; margin-bottom: 20px; }
 form .fila { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; }
-input, select { padding: 6px 8px; border: 1px solid var(--borde); font-family: inherit; font-size: 14px; }
+label { display: flex; flex-direction: column; font-size: 12px; gap: 4px; color: var(--texto-suave); }
+input, select { padding: 6px 8px; border: 1px solid var(--borde); font-family: inherit; font-size: 14px; background: var(--arkon-blanco); color: var(--texto); border-radius: 2px; }
 
+/* Botones compartidos. */
+button { border-radius: 2px; }
 button.primario {
-  background: var(--azul);
-  color: #fff;
-  border: none;
+  background: var(--arkon-azul);
+  color: var(--arkon-blanco);
+  border: 1px solid var(--arkon-azul);
   padding: 8px 18px;
-  font-size: 15px;
+  font-size: 14px;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
   cursor: pointer;
-  font-family: inherit;
 }
-button.primario:disabled { background: #9db4cf; cursor: default; }
+button.primario:disabled { background: var(--borde); border-color: var(--borde); color: var(--texto-suave); cursor: default; }
+button.secundario {
+  background: var(--arkon-blanco);
+  color: var(--arkon-azul);
+  border: 1px solid var(--arkon-azul);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secundario:disabled { color: var(--texto-suave); border-color: var(--borde); cursor: default; }
+button.peligro {
+  background: var(--arkon-blanco);
+  color: var(--funcional-error);
+  border: 1px solid var(--funcional-error);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: 'Barlow', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde); cursor: default; }
 
-.aviso { background: #fff; border: 1px solid var(--borde); border-left: 4px solid var(--azul); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
-.error { border-left-color: #c0392b; color: #8c2d20; }
-.ok { border-left-color: #1e8449; }
-.vacio { padding: 24px; background: #fff; border: 1px dashed var(--borde); color: #5a6b7d; text-align: center; }
-.menor { font-size: 12px; color: #5a6b7d; }
+/* Estados de carga, error, vacío y sin resultados. */
+.estado-carga { padding: 24px; background: var(--arkon-blanco); border: 1px solid var(--borde); color: var(--texto-suave); text-align: center; font-size: 14px; }
+.estado-error { padding: 14px 16px; background: var(--funcional-error-fondo); border: 1px solid var(--funcional-error); border-left: 4px solid var(--funcional-error); color: var(--funcional-error); font-size: 14px; }
+.estado-vacio { padding: 24px; background: var(--arkon-blanco); border: 1px dashed var(--borde); color: var(--texto-suave); text-align: center; }
+.estado-sin-resultados { padding: 16px; background: var(--arkon-azul-suave); border: 1px solid var(--borde); color: var(--texto-suave); text-align: center; font-size: 14px; }
+
+/* Avisos: seguridad solo para avisos de riesgo. */
+.aviso { background: var(--arkon-blanco); border: 1px solid var(--borde); border-left: 4px solid var(--arkon-azul); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+.aviso.error { border-left-color: var(--funcional-error); color: var(--funcional-error); background: var(--funcional-error-fondo); }
+.aviso.ok { border-left-color: var(--funcional-exito); color: var(--funcional-exito); background: var(--funcional-exito-fondo); }
+.aviso.seguridad { border-left-color: var(--arkon-seguridad); color: var(--arkon-seguridad); }
+
+.vacio { padding: 24px; background: var(--arkon-blanco); border: 1px dashed var(--borde); color: var(--texto-suave); text-align: center; }
+
+/* Impresión: sin navegación ni controles, logo azul, título, período, moneda, numeración, filas enteras. */
+.logo-impresion { display: none; }
+
+@media print {
+  body { background: var(--arkon-blanco); font-size: 12px; }
+  .lateral, .barra-contexto form, form, button, .no-imprimir { display: none !important; }
+  .logo-impresion { display: block; width: 120px; height: auto; margin-bottom: 8px; }
+  .contenido { padding: 0; max-width: none; }
+  table { font-size: 12px; }
+  thead th { position: static; background: var(--arkon-blanco); border-bottom: 2px solid var(--arkon-marino); }
+  tr, td, th { page-break-inside: avoid; }
+  @page { margin: 14mm; }
+}
+
+/* Resumen sobrio de Inicio (sin gráficos). */
+.resumen-inicio { display: flex; gap: 32px; flex-wrap: wrap; background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 16px 20px; margin-bottom: 16px; }
+.resumen-inicio h3 { margin: 0; font-size: 12px; color: var(--texto-suave); }
+.resumen-cifra { font-family: 'IBM Plex Mono', monospace; font-size: 22px; margin: 4px 0 0; color: var(--arkon-marino); font-variant-numeric: tabular-nums; }

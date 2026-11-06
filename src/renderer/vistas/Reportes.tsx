@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonSecundario, EncabezadoReporte, EstadoCarga, EstadoVacio } from '../componentes';
 
 interface FilaAuxiliar {
   contraparteId: number;
@@ -224,7 +225,7 @@ export default function Reportes() {
 
   return (
     <div>
-      <h1>Reportes y auxiliares</h1>
+      <EncabezadoReporte titulo="Reportes y auxiliares" moneda="USD" />
       {mensaje && <p className="aviso">{mensaje}</p>}
 
       <h2>Auxiliar de clientes</h2>
@@ -244,7 +245,7 @@ export default function Reportes() {
           <p className="menor">Total clientes: ${auxiliarContrapartes.totalClientesMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin saldos pendientes de clientes.</p>
+        <EstadoVacio texto="Sin saldos pendientes de clientes." />
       )}
 
       <h2>Auxiliar de proveedores</h2>
@@ -264,7 +265,7 @@ export default function Reportes() {
           <p className="menor">Total proveedores: ${auxiliarContrapartes.totalProveedoresMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin saldos pendientes de proveedores.</p>
+        <EstadoVacio texto="Sin saldos pendientes de proveedores." />
       )}
 
       {auxiliarContrapartes && (
@@ -292,7 +293,7 @@ export default function Reportes() {
           <p className="menor">Total efectivo: ${auxiliarEfectivo.totalMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin movimientos de efectivo.</p>
+        <EstadoVacio texto="Sin movimientos de efectivo." />
       )}
       {auxiliarEfectivo && (
         <p className={`aviso ${auxiliarEfectivo.conciliaMayor ? 'ok' : 'error'}`}>
@@ -326,7 +327,7 @@ export default function Reportes() {
         <>
           <p className="menor">Saldo al corte: ${detalle.saldoMinor}</p>
           {detalle.documentos.length === 0 ? (
-            <p className="vacio">Sin documentos al corte seleccionado.</p>
+            <EstadoVacio texto="Sin documentos al corte seleccionado." />
           ) : (
             <table>
               <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th className="numero">Total</th><th className="numero">Aplicado</th><th className="numero">Saldo</th></tr></thead>
@@ -355,12 +356,12 @@ export default function Reportes() {
         <label>hasta
           <input type="date" value={paqueteHasta} onChange={e => setPaqueteHasta(e.target.value)} />
         </label>
-        <button
+        <BotonSecundario
           disabled={!paqueteDesde || !paqueteHasta}
           onClick={() => void guardarPaquete()}
         >
           Guardar paquete para el contador…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Ejercicio anual (soporte interno F-11)</h2>
       <p className="aviso error">
@@ -381,14 +382,14 @@ export default function Reportes() {
             placeholder="2026"
           />
         </label>
-        <button
+        <BotonSecundario
           disabled={!/^\d{4}$/.test(ejercicioAnio) || ejercicioCargando || ejercicioAnioConfirmado !== ejercicioAnio}
           onClick={() => void guardarEjercicio()}
         >
           Guardar soporte del ejercicio…
-        </button>
+        </BotonSecundario>
       </div>
-      {ejercicioCargando && <p className="menor">Consultando ejercicio {ejercicioAnio}…</p>}
+      {ejercicioCargando && <EstadoCarga texto={`Consultando ejercicio ${ejercicioAnio}…`} />}
       {ejercicio && (
         <div>
           <p className="menor">
@@ -422,12 +423,12 @@ export default function Reportes() {
         </div>
       )}
       <div className="fila">
-        <button onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</button>
-        <button onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</button>
-        <button onClick={() => void guardarCsv('efectivo')}>Guardar resumen de caja y bancos (actual)…</button>
-        <button disabled={!contraparteId} onClick={() => void guardarCsvDetalle()}>
+        <BotonSecundario onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarCsv('efectivo')}>Guardar resumen de caja y bancos (actual)…</BotonSecundario>
+        <BotonSecundario disabled={!contraparteId} onClick={() => void guardarCsvDetalle()}>
           Guardar detalle al corte seleccionado…
-        </button>
+        </BotonSecundario>
       </div>
       <p className="menor">
         Los auxiliares derivan de asientos y aplicaciones; no almacenan saldos independientes.

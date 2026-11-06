@@ -69,13 +69,29 @@ export default function CajaBancos() {
   const [ocupadoAnular, setOcupadoAnular] = useState(false);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
   const avisoRef = useRef<HTMLParagraphElement | null>(null);
+  const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
 
-  function abrirAnulacion(m: MovimientoTesoreriaResumen) {
+  function abrirAnulacion(m: MovimientoTesoreriaResumen, origen: HTMLButtonElement) {
+    origenAnulacionRef.current = origen;
     setAnulando(m);
     setMotivoAnular('');
     setResponsableAnular(responsable.trim());
     setErrorAnular(null);
   }
+
+  useEffect(() => {
+    if (!anulando) {
+      return;
+    }
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') {
+        cancelarAnulacion();
+        origenAnulacionRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', alPresionar);
+    return () => document.removeEventListener('keydown', alPresionar);
+  }, [anulando]);
 
   function cancelarAnulacion() {
     setAnulando(null);
@@ -163,7 +179,7 @@ export default function CajaBancos() {
                 <td>{m.contraparteNombre ?? '—'}</td>
                 <td className="numero">${m.montoMinor}</td>
                 <td>{m.estado}</td>
-                <td>{m.estado === 'registrado' && <button onClick={() => abrirAnulacion(m)}>Anular</button>}</td>
+                <td>{m.estado === 'registrado' && <button onClick={e => abrirAnulacion(m, e.currentTarget)}>Anular</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -188,7 +204,7 @@ export default function CajaBancos() {
               </label>
             </div>
             <div className="fila">
-              <button className="primario" type="submit" disabled={ocupadoAnular}>
+              <button className="peligro" type="submit" disabled={ocupadoAnular}>
                 {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
               </button>
               <button type="button" onClick={cancelarAnulacion}>Cancelar</button>

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonSecundario, EstadoVacio } from '../componentes';
 
 interface Cuenta {
   id: number;
@@ -108,7 +109,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
       })) as { folio: string; duplicado: boolean };
       setMensaje({
         texto: resultado.duplicado
-          ? `Operación ya registrada (idempotencia): asiento ${resultado.folio}`
+          ? `Operación ya registrada: asiento ${resultado.folio}`
           : `Asiento ${resultado.folio} contabilizado`,
         tipo: 'ok'
       });
@@ -196,14 +197,14 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
               setLineas(copia);
             }} placeholder="0.00" /></label>
             {lineas.length > 2 && (
-              <button type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button>
+              <BotonSecundario onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</BotonSecundario>
             )}
           </div>
         ))}
         <div className="fila">
-          <button type="button" onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
+          <BotonSecundario onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
             Agregar línea
-          </button>
+          </BotonSecundario>
           <button className="primario" type="submit" disabled={ocupado}>
             {ocupado ? 'Contabilizando…' : 'Contabilizar'}
           </button>
@@ -226,15 +227,15 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             <label style={{ flex: 2 }}>Motivo (obligatorio)
               <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
             </label>
-            <button className="primario" type="submit">Confirmar anulación</button>
-            <button type="button" onClick={() => setAnulando(null)}>Cancelar</button>
+            <button className="peligro" type="submit">Confirmar anulación</button>
+            <BotonSecundario onClick={() => setAnulando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
 
       <h2>Asientos recientes</h2>
       {asientos.length === 0 ? (
-        <p className="vacio">Sin asientos registrados.</p>
+        <EstadoVacio texto="Sin asientos registrados." />
       ) : (
         <table>
           <thead>
@@ -268,7 +269,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
         </label>
         {mayor.cuenta && <p className="menor" style={{ alignSelf: 'flex-end' }}>Saldo: ${mayor.saldoMinor}</p>}
       </div>
-      {mayor.cuenta && mayor.movimientos.length === 0 && <p className="vacio">Sin movimientos en esta cuenta.</p>}
+      {mayor.cuenta && mayor.movimientos.length === 0 && <EstadoVacio texto="Sin movimientos en esta cuenta." />}
       {mayor.movimientos.length > 0 && (
         <table>
           <thead>
