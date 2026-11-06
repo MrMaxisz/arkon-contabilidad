@@ -240,3 +240,6 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
 
 /* Filtros activos como texto en impresión (auditoría 71): visibles en papel, ocultos los controles. */
 .filtros-impresion { margin: 0 0 8px; }
+
+/* Pestañas de estados financieros (bloque 2). */
+.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco); border-color: var(--arkon-azul); }

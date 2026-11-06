@@ -1118,3 +1118,24 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npm run build` → OK.
 - `npx vitest run` → exit 0, 350/350, 0 Errors (60 archivos), DOS ejecuciones consecutivas con exit 0.
+
+## Bloque auditoría 71 parte B (bloque 2: partidas y estados financieros)
+
+### Implementado
+
+- **Servicios puros** (`db` por parámetro, sin Electron, reutilizables en Android): `src/main/servicios/libroDiario.ts` (partidas por número, folio A-000001 correlativo sin reutilizar, `normalizarNumeroPartida` para '150'/'A-150'/'A-000150', filtros por rango de números/fechas/concepto/cuenta/origen/estado, paginación con total, `verPartida` con líneas, totales, documento de origen y enlaces a reverso; anuladas visibles y marcadas) y extensión de `estadosFinancieros.ts` (balance de comprobación con saldo inicial/cargos/abonos/saldo final, jerarquía de grupos por `padre_id`, cuadre debe=haber, ocultar sin movimiento; estado de resultados estructurado con ingresos/costos/utilidad bruta/admin/comercialización/utilidad de operación/otros ingresos/financieros/resultado antes de impuestos, SIN ISR, comparativo del período anterior, familia de cierre con `SQL_FAMILIA_CIERRE_EXCLUIDA`; situación financiera a corte con activo/pasivo/patrimonio, corriente/no corriente según tabla documentada de grupos (no corriente: 15), resultado del ejercicio aún no cerrado como línea de patrimonio, Activo = Pasivo + Patrimonio antes y después del cierre, saldos contrarios visibles, comparativo). Importes en `bigint` todo el camino (verificado con 9e13 USD que no caben en `Number`). Sin migración.
+- **Comandos**: `libro:partidas`, `libro:partida`, `balance:comprobacion`, `resultados:estructurado`, `situacion:consultar` (allowlist del preload actualizada).
+- **Navegación**: grupo Contabilidad con Libro diario y Estados financieros (pestañas: Balance de comprobación, Estado de resultados, Estado de situación financiera).
+- **PDF**: canal `arkon:reportePdf` con `webContents.printToPDF`, `displayHeaderFooter` y `footerTemplate` con numeración «N de M»; encabezado con logo azul (assets del build), título, período, moneda USD, ámbito administrativo y leyenda de control interno; firmas Elaboró/Revisó/Autorizó. Impresión de partida individual y del libro por rango.
+- **Pruebas** (`pruebas/libroEstados.prueba.ts`, 11, importes calculados a mano): tres formas de búsqueda; ver partida con reverso; filtros y paginación; comprobación con jerarquía y cuadre; estructura completa (bruta 60/operación 45/antes de impuestos 46) e igualdad con `reporte:estadoResultados`; mes sin movimientos y reverso en mes distinto (siembra sintética documentada: el motor fecha el reverso con la fecha original); cierre sin duplicar resultado; situación cuadrada antes/después del cierre con resultado como línea; saldos contrarios visibles; grupo sin movimiento directo; importes altos fuera de `Number`.
+
+### Límites documentados
+
+- El motor fecha el reverso de una anulación con la `fecha_operacion` del original; el escenario «reverso en mes distinto» se siembra por SQL con las invariantes del motor (borrador → líneas → contabilizado, `reverso_de_id`, original anulado).
+- La clasificación corriente/no corriente y la agrupación del estado de resultados son tablas documentadas por código de grupo del catálogo, explícitamente para revisión del contador.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK.
+- `npx vitest run` → exit 0, 367/367, 0 Errors (62 archivos), DOS ejecuciones consecutivas con exit 0.

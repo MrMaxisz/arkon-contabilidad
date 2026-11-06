@@ -1,0 +1,245 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { api } from '../api';
+import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonSecundario, EstadoCarga, EstadoError, formatoDineroPantalla } from '../componentes';
+
+interface FilaComprobacion {
+  cuentaId: number;
+  codigo: string;
+  nombre: string;
+  tipo: string;
+  esGrupo: boolean;
+  saldoInicialMinor: string;
+  cargosMinor: string;
+  abonosMinor: string;
+  saldoFinalMinor: string;
+}
+
+interface BalanceComprobacion {
+  desde: string;
+  hasta: string;
+  filas: FilaComprobacion[];
+  totalCargosMinor: string;
+  totalAbonosMinor: string;
+  cuadra: boolean;
+}
+
+interface Seccion { codigo: string; nombre: string; importeMinor: string }
+
+interface EstadoResultadosEstructurado {
+  desde: string;
+  hasta: string;
+  ingresos: Seccion[];
+  costos: Seccion[];
+  utilidadBrutaMinor: string;
+  gastosAdministracion: Seccion[];
+  gastosComercializacion: Seccion[];
+  utilidadOperacionMinor: string;
+  otrosIngresos: Seccion[];
+  gastosFinancieros: Seccion[];
+  resultadoAntesImpuestosMinor: string;
+  periodoAnterior: EstadoResultadosEstructurado | null;
+}
+
+interface FilaSituacion { codigo: string; nombre: string; corriente: boolean; saldoMinor: string }
+
+interface EstadoSituacionFinanciera {
+  corte: string;
+  activo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; totalMinor: string };
+  pasivo: { corriente: FilaSituacion[]; noCorriente: FilaSituacion[]; totalMinor: string };
+  patrimonio: { filas: FilaSituacion[]; resultadoEjercicioMinor: string; totalMinor: string };
+  cuadra: boolean;
+  saldosContrarios: Array<{ codigo: string; nombre: string; saldoMinor: string }>;
+  comparativo: EstadoSituacionFinanciera | null;
+}
+
+type Pestana = 'comprobacion' | 'resultados' | 'situacion';
+
+export default function EstadosFinancieros() {
+  const [pestana, setPestana] = useState<Pestana>('comprobacion');
+  const [desde, setDesde] = useState('2026-01-01');
+  const [hasta, setHasta] = useState('2026-12-31');
+  const [ocultarSinMovimiento, setOcultarSinMovimiento] = useState(false);
+  const [comprobacion, setComprobacion] = useState<BalanceComprobacion | null>(null);
+  const [resultados, setResultados] = useState<EstadoResultadosEstructurado | null>(null);
+  const [corte, setCorte] = useState('2026-12-31');
+  const [corteComparativo, setCorteComparativo] = useState('');
+  const [situacion, setSituacion] = useState<EstadoSituacionFinanciera | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  const cargarComprobacion = useCallback(() => {
+    setCargando(true);
+    void api()
+      .invocar('balance:comprobacion', { desde, hasta, ocultarSinMovimiento })
+      .then(r => setComprobacion(r as BalanceComprobacion))
+      .catch(err => setMensaje(limpiarMensajeError(err)))
+      .finally(() => setCargando(false));
+  }, [desde, hasta, ocultarSinMovimiento]);
+
+  const cargarResultados = useCallback(() => {
+    setCargando(true);
+    void api()
+      .invocar('resultados:estructurado', { desde, hasta, comparativo: true })
+      .then(r => setResultados(r as EstadoResultadosEstructurado))
+      .catch(err => setMensaje(limpiarMensajeError(err)))
+      .finally(() => setCargando(false));
+  }, [desde, hasta]);
+
+  const cargarSituacion = useCallback(() => {
+    setCargando(true);
+    void api()
+      .invocar('situacion:consultar', { corte, corteComparativo: corteComparativo || undefined })
+      .then(r => setSituacion(r as EstadoSituacionFinanciera))
+      .catch(err => setMensaje(limpiarMensajeError(err)))
+      .finally(() => setCargando(false));
+  }, [corte, corteComparativo]);
+
+  useEffect(() => {
+    if (pestana === 'comprobacion') {
+      cargarComprobacion();
+    } else if (pestana === 'resultados') {
+      cargarResultados();
+    } else {
+      cargarSituacion();
+    }
+  }, [pestana, cargarComprobacion, cargarResultados, cargarSituacion]);
+
+  async function imprimir(titulo: string, periodo: string, cuerpo: string) {
+    try {
+      const r = (await api().reportePdf(titulo, periodo, cuerpo)) as { guardado: boolean; ruta?: string };
+      setMensaje(r.guardado && r.ruta ? `Reporte guardado en ${r.ruta}.` : 'Impresión cancelada.');
+    } catch (err) {
+      setMensaje(limpiarMensajeError(err));
+    }
+  }
+
+  function seccion(titulo: string, filas: Seccion[]): string {
+    return `<h3>${titulo}</h3><table><tbody>${filas.map(f => `<tr><td>${f.codigo}</td><td>${f.nombre}</td><td class="numero">${f.importeMinor}</td></tr>`).join('')}</tbody></table>`;
+  }
+
+  return (
+    <div>
+      <h1>Estados financieros</h1>
+      {mensaje && <EstadoError mensaje={mensaje} />}
+      <p className="aviso">
+        Registro de control interno, no estado financiero legal. ARKON sin constituir ni inscrita en IVA.
+        Clasificación corriente/no corriente y agrupación documentadas para revisión del contador.
+      </p>
+      <div className="fila no-imprimir" role="tablist">
+        <BotonSecundario onClick={() => setPestana('comprobacion')} className={pestana === 'comprobacion' ? 'activo-pestana' : ''}>Balance de comprobación</BotonSecundario>
+        <BotonSecundario onClick={() => setPestana('resultados')} className={pestana === 'resultados' ? 'activo-pestana' : ''}>Estado de resultados</BotonSecundario>
+        <BotonSecundario onClick={() => setPestana('situacion')} className={pestana === 'situacion' ? 'activo-pestana' : ''}>Estado de situación financiera</BotonSecundario>
+      </div>
+
+      {cargando && <EstadoCarga texto="Calculando estado…" />}
+
+      {pestana === 'comprobacion' && !cargando && comprobacion && (
+        <div>
+          <div className="fila no-imprimir">
+            <label>Desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} /></label>
+            <label>Hasta<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
+            <label>Ocultar sin movimiento
+              <select value={ocultarSinMovimiento ? 'si' : 'no'} onChange={e => setOcultarSinMovimiento(e.target.value === 'si')}>
+                <option value="no">No</option>
+                <option value="si">Sí</option>
+              </select>
+            </label>
+            <BotonSecundario onClick={() => cargarComprobacion()}>Recalcular</BotonSecundario>
+            <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, `<table><thead><tr><th>Cuenta</th><th>Nombre</th><th class="numero">Saldo inicial</th><th class="numero">Cargos</th><th class="numero">Abonos</th><th class="numero">Saldo final</th></tr></thead><tbody>${comprobacion.filas.map(f => `<tr${f.esGrupo ? ' class="total"' : ''}><td>${f.codigo}</td><td>${f.nombre}</td><td class="numero">${f.saldoInicialMinor}</td><td class="numero">${f.cargosMinor}</td><td class="numero">${f.abonosMinor}</td><td class="numero">${f.saldoFinalMinor}</td></tr>`).join('')}<tr class="total"><td>Totales</td><td></td><td></td><td class="numero">${comprobacion.totalCargosMinor}</td><td class="numero">${comprobacion.totalAbonosMinor}</td><td></td></tr></tbody></table>`)}>Imprimir…</BotonSecundario>
+          </div>
+          <table>
+            <thead><tr><th>Cuenta</th><th>Nombre</th><th className="numero">Saldo inicial</th><th className="numero">Cargos</th><th className="numero">Abonos</th><th className="numero">Saldo final</th></tr></thead>
+            <tbody>
+              {comprobacion.filas.map(f => (
+                <tr key={f.cuentaId} className={f.esGrupo ? 'total' : ''}>
+                  <td className="folio">{f.codigo}</td>
+                  <td>{f.nombre}</td>
+                  <td className="numero">{formatoDineroPantalla(f.saldoInicialMinor)}</td>
+                  <td className="numero">{formatoDineroPantalla(f.cargosMinor)}</td>
+                  <td className="numero">{formatoDineroPantalla(f.abonosMinor)}</td>
+                  <td className="numero">{formatoDineroPantalla(f.saldoFinalMinor)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Totales</td>
+                <td></td>
+                <td></td>
+                <td className="numero">{formatoDineroPantalla(comprobacion.totalCargosMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(comprobacion.totalAbonosMinor)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p className={`aviso ${comprobacion.cuadra ? 'ok' : 'error'}`}>
+            {comprobacion.cuadra ? 'Debe y haber cuadran en el rango.' : 'Debe y haber NO cuadran en el rango.'}
+          </p>
+        </div>
+      )}
+
+      {pestana === 'resultados' && !cargando && resultados && (
+        <div>
+          <div className="fila no-imprimir">
+            <label>Desde<input type="date" value={desde} onChange={e => setDesde(e.target.value)} /></label>
+            <label>Hasta<input type="date" value={hasta} onChange={e => setHasta(e.target.value)} /></label>
+            <BotonSecundario onClick={() => cargarResultados()}>Recalcular</BotonSecundario>
+            <BotonSecundario onClick={() => void imprimir('Estado de resultados', `${resultados.desde} a ${resultados.hasta}`, `${seccion('Ingresos', resultados.ingresos)}<p>Utilidad bruta: ${resultados.utilidadBrutaMinor}</p>${seccion('Gastos de administración', resultados.gastosAdministracion)}${seccion('Gastos de comercialización', resultados.gastosComercializacion)}<p>Utilidad de operación: ${resultados.utilidadOperacionMinor}</p>${seccion('Otros ingresos', resultados.otrosIngresos)}${seccion('Gastos financieros', resultados.gastosFinancieros)}<p>Resultado antes de impuestos: ${resultados.resultadoAntesImpuestosMinor}</p>`)}>
+              Imprimir…
+            </BotonSecundario>
+          </div>
+          <h2>Ingresos</h2>
+          <table><tbody>{resultados.ingresos.map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody></table>
+          <h2>Costos</h2>
+          <table><tbody>{resultados.costos.map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Utilidad bruta</td><td></td><td className="numero">{formatoDineroPantalla(resultados.utilidadBrutaMinor)}</td></tr></tfoot></table>
+          <h2>Gastos de administración y comercialización</h2>
+          <table><tbody>{[...resultados.gastosAdministracion, ...resultados.gastosComercializacion].map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Utilidad de operación</td><td></td><td className="numero">{formatoDineroPantalla(resultados.utilidadOperacionMinor)}</td></tr></tfoot></table>
+          <h2>Otros ingresos y gastos financieros</h2>
+          <table><tbody>{[...resultados.otrosIngresos, ...resultados.gastosFinancieros].map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.importeMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Resultado antes de impuestos</td><td></td><td className="numero">{formatoDineroPantalla(resultados.resultadoAntesImpuestosMinor)}</td></tr></tfoot></table>
+          <p className="menor">Sin cálculo de ISR: queda como decisión del contador.</p>
+          {resultados.periodoAnterior && (
+            <p className="menor">
+              Comparativo {resultados.periodoAnterior.desde} a {resultados.periodoAnterior.hasta}: resultado antes de impuestos {formatoDineroPantalla(resultados.periodoAnterior.resultadoAntesImpuestosMinor)}.
+            </p>
+          )}
+        </div>
+      )}
+
+      {pestana === 'situacion' && !cargando && situacion && (
+        <div>
+          <div className="fila no-imprimir">
+            <label>Corte<input type="date" value={corte} onChange={e => setCorte(e.target.value)} /></label>
+            <label>Corte comparativo (opcional)<input type="date" value={corteComparativo} onChange={e => setCorteComparativo(e.target.value)} /></label>
+            <BotonSecundario onClick={() => cargarSituacion()}>Recalcular</BotonSecundario>
+          </div>
+          <h2>Activo</h2>
+          <table><tbody>{[...situacion.activo.corriente, ...situacion.activo.noCorriente].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre} {f.corriente ? '' : '(no corriente)'}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Total activo</td><td></td><td className="numero">{formatoDineroPantalla(situacion.activo.totalMinor)}</td></tr></tfoot></table>
+          <h2>Pasivo</h2>
+          <table><tbody>{[...situacion.pasivo.corriente, ...situacion.pasivo.noCorriente].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Total pasivo</td><td></td><td className="numero">{formatoDineroPantalla(situacion.pasivo.totalMinor)}</td></tr></tfoot></table>
+          <h2>Patrimonio</h2>
+          <table><tbody>{situacion.patrimonio.filas.map((f, i) => <tr key={i}><td className="folio">{f.codigo}</td><td>{f.nombre}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
+            <tfoot><tr className="total"><td>Total patrimonio</td><td></td><td className="numero">{formatoDineroPantalla(situacion.patrimonio.totalMinor)}</td></tr></tfoot></table>
+          <p className={`aviso ${situacion.cuadra ? 'ok' : 'error'}`}>
+            {situacion.cuadra ? 'Activo = Pasivo + Patrimonio al corte.' : 'Activo ≠ Pasivo + Patrimonio al corte.'}
+          </p>
+          {situacion.saldosContrarios.length > 0 && (
+            <p className="aviso seguridad">
+              Saldos contrarios visibles: {situacion.saldosContrarios.map(s => `${s.codigo} (${s.saldoMinor})`).join(', ')}. Revíselos con el contador.
+            </p>
+          )}
+          {situacion.comparativo && (
+            <p className="menor">
+              Comparativo al {situacion.comparativo.corte}: activo {formatoDineroPantalla(situacion.comparativo.activo.totalMinor)}, pasivo {formatoDineroPantalla(situacion.comparativo.pasivo.totalMinor)}, patrimonio {formatoDineroPantalla(situacion.comparativo.patrimonio.totalMinor)}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

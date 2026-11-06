@@ -1,7 +1,8 @@
 import path from 'path';
 import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerrarPeriodo, reabrirPeriodo } from './servicios/motorAsientos';
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
-import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
+import { balanceResumen, saldosPorCuenta, balanceComprobacion, estadoResultadosEstructurado, estadoSituacionFinanciera } from './servicios/estadosFinancieros';
+import { listarPartidas, verPartida } from './servicios/libroDiario';
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { listarAdjuntos, verificarAdjunto } from './servicios/adjuntos';
 import { respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
@@ -151,6 +152,49 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     reabrirPeriodo(ctx.db, entero(p, 'periodoId'), texto(p, 'responsable'), texto(p, 'motivo'));
     return { ok: true };
+  },
+  'libro:partidas': (ctx, payload) => {
+    const p = objeto(payload);
+    return listarPartidas(ctx.db, {
+      busqueda: typeof p.busqueda === 'string' && p.busqueda.trim() ? p.busqueda.trim() : undefined,
+      desdeNumero: typeof p.desdeNumero === 'number' ? p.desdeNumero : undefined,
+      hastaNumero: typeof p.hastaNumero === 'number' ? p.hastaNumero : undefined,
+      desdeFecha: typeof p.desdeFecha === 'string' && p.desdeFecha ? p.desdeFecha : undefined,
+      hastaFecha: typeof p.hastaFecha === 'string' && p.hastaFecha ? p.hastaFecha : undefined,
+      concepto: typeof p.concepto === 'string' && p.concepto.trim() ? p.concepto.trim() : undefined,
+      cuentaId: typeof p.cuentaId === 'number' && p.cuentaId ? p.cuentaId : undefined,
+      origen: typeof p.origen === 'string' && p.origen ? p.origen : undefined,
+      estado: typeof p.estado === 'string' && p.estado ? p.estado : undefined,
+      desde: typeof p.desde === 'number' ? p.desde : 0,
+      limite: typeof p.limite === 'number' ? p.limite : 50
+    });
+  },
+  'libro:partida': (ctx, payload) => {
+    const p = objeto(payload);
+    return verPartida(ctx.db, entero(p, 'partidaId'));
+  },
+  'balance:comprobacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return balanceComprobacion(ctx.db, {
+      desde: texto(p, 'desde'),
+      hasta: texto(p, 'hasta'),
+      ocultarSinMovimiento: p.ocultarSinMovimiento === true
+    });
+  },
+  'resultados:estructurado': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoResultadosEstructurado(ctx.db, {
+      desde: texto(p, 'desde'),
+      hasta: texto(p, 'hasta'),
+      comparativo: p.comparativo === true
+    });
+  },
+  'situacion:consultar': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoSituacionFinanciera(ctx.db, {
+      corte: texto(p, 'corte'),
+      corteComparativo: typeof p.corteComparativo === 'string' && p.corteComparativo ? p.corteComparativo : undefined
+    });
   },
   'balance:resumen': ctx => balanceResumen(ctx.db),
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
