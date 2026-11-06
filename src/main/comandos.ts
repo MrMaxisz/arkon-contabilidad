@@ -26,6 +26,7 @@ import {
   ultimoLoteDepreciacion
 } from './servicios/activosFijos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
+import { costosPorProyecto, costosPorTipo, conciliacionCostos, csvCostos } from './servicios/costos';
 import { consultarEjercicio } from './servicios/ejercicioAnual';
 import {
   completarMetadatosRetencion,
@@ -114,6 +115,13 @@ function entero(p: Record<string, unknown>, campo: string): number {
     throw new ErrorValidacion(`Campo entero positivo requerido: ${campo}`);
   }
   return v as number;
+}
+
+function rangoCostos(p: Record<string, unknown>) {
+  return {
+    desde: texto(p, 'desde'), hasta: texto(p, 'hasta'),
+    ambitoId: p.ambitoId === undefined ? undefined : texto(p, 'ambitoId')
+  };
 }
 
 export const comandos: Record<string, Manejador> = {
@@ -667,7 +675,29 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     return estadoResultados(ctx.db, texto(p, 'mes'));
   },
-  'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
+  'reporte:rentabilidadProyectos': (ctx, payload) => {
+    const p = objeto(payload);
+    return rentabilidadProyectos(ctx.db, {
+      desde: p.desde === undefined ? undefined : texto(p, 'desde'),
+      hasta: p.hasta === undefined ? undefined : texto(p, 'hasta'),
+      ambitoId: p.ambitoId === undefined ? undefined : texto(p, 'ambitoId')
+    });
+  },
+  'reporte:costosPorProyecto': (ctx, payload) => costosPorProyecto(ctx.db, rangoCostos(objeto(payload))),
+  'reporte:costosPorTipo': (ctx, payload) => {
+    const p = objeto(payload);
+    return costosPorTipo(ctx.db, {
+      ...rangoCostos(p), comparativo: p.comparativo === undefined ? undefined : exigirBooleano(p, 'comparativo')
+    });
+  },
+  'reporte:costosConciliacion': (ctx, payload) => conciliacionCostos(ctx.db, rangoCostos(objeto(payload))),
+  'reporte:costosCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    if (p.reporte !== undefined && p.reporte !== 'proyecto' && p.reporte !== 'tipo') {
+      throw new ErrorValidacion('Reporte de costos inválido');
+    }
+    return csvCostos(ctx.db, { ...rangoCostos(p), reporte: p.reporte as 'proyecto' | 'tipo' | undefined });
+  },
   'activo:listar': ctx => listarActivosFijos(ctx.db),
   'activo:ficha': (ctx, payload) => {
     const p = objeto(payload);
