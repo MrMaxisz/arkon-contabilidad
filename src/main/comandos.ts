@@ -13,9 +13,17 @@ export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
 import {
+  anularUltimoLote,
   cuadroGeneralActivosFijos,
   conciliacionActivosFijos,
-  csvCuadroGeneralActivosFijos
+  csvCuadroGeneralActivosFijos,
+  darAltaActivoFijo,
+  darBajaActivoFijo,
+  depreciarMes,
+  fichaActivoFijo,
+  listarActivosFijos,
+  previsualizarDepreciacion,
+  ultimoLoteDepreciacion
 } from './servicios/activosFijos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
 import { consultarEjercicio } from './servicios/ejercicioAnual';
@@ -660,6 +668,64 @@ export const comandos: Record<string, Manejador> = {
     return estadoResultados(ctx.db, texto(p, 'mes'));
   },
   'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
+  'activo:listar': ctx => listarActivosFijos(ctx.db),
+  'activo:ficha': (ctx, payload) => {
+    const p = objeto(payload);
+    return fichaActivoFijo(ctx.db, entero(p, 'activoId'));
+  },
+  'activo:alta': (ctx, payload) => {
+    const p = objeto(payload);
+    return darAltaActivoFijo(ctx.db, {
+      descripcion: texto(p, 'descripcion'),
+      categoria: texto(p, 'categoria'),
+      ubicacion: texto(p, 'ubicacion'),
+      responsable: texto(p, 'responsable'),
+      fechaAdquisicion: texto(p, 'fechaAdquisicion'),
+      fechaInicioUso: texto(p, 'fechaInicioUso'),
+      costoMinor: texto(p, 'costoMinor'),
+      residualMinor:
+        typeof p.residualMinor === 'string' && p.residualMinor.trim() ? p.residualMinor : '0.00',
+      vidaUtilMeses: entero(p, 'vidaUtilMeses'),
+      cuentaActivoId: entero(p, 'cuentaActivoId'),
+      cuentaDepreciacionId: entero(p, 'cuentaDepreciacionId'),
+      cuentaGastoId: entero(p, 'cuentaGastoId'),
+      cuentaContrapartidaId:
+        p.cuentaContrapartidaId === undefined ? undefined : entero(p, 'cuentaContrapartidaId'),
+      compraId: p.compraId === undefined ? undefined : entero(p, 'compraId'),
+      proyectoId: p.proyectoId === undefined ? undefined : entero(p, 'proyectoId'),
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    });
+  },
+  'activo:previsualizarDepreciacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return previsualizarDepreciacion(ctx.db, texto(p, 'mes'));
+  },
+  'activo:depreciarMes': (ctx, payload) => {
+    const p = objeto(payload);
+    return depreciarMes(ctx.db, { mes: texto(p, 'mes'), responsable: texto(p, 'responsable') });
+  },
+  'activo:ultimoLote': ctx => ultimoLoteDepreciacion(ctx.db),
+  'activo:anularUltimoLote': (ctx, payload) => {
+    const p = objeto(payload);
+    return anularUltimoLote(ctx.db, { responsable: texto(p, 'responsable'), motivo: texto(p, 'motivo') });
+  },
+  'activo:baja': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo');
+    if (tipo !== 'baja' && tipo !== 'venta') {
+      throw new ErrorValidacion('Tipo de baja inválido');
+    }
+    return darBajaActivoFijo(ctx.db, {
+      activoId: entero(p, 'activoId'),
+      tipo,
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      importeMinor:
+        typeof p.importeMinor === 'string' && p.importeMinor.trim() ? p.importeMinor : '0.00',
+      cuentaCobroId: p.cuentaCobroId === undefined ? undefined : entero(p, 'cuentaCobroId'),
+      responsable: texto(p, 'responsable'),
+      motivo: texto(p, 'motivo')
+    });
+  },
   'reporte:activosFijosCuadro': (ctx, payload) => {
     const p = objeto(payload);
     return cuadroGeneralActivosFijos(ctx.db, texto(p, 'corte'));

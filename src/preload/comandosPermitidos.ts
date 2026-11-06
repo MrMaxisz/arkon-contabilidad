@@ -93,5 +93,13 @@ export const COMANDOS_PERMITIDOS = new Set([
   'reporte:rentabilidadProyectos',
   'reporte:activosFijosCuadro',
   'reporte:activosFijosConciliacion',
-  'reporte:activosFijosCsv'
+  'reporte:activosFijosCsv',
+  'activo:listar',
+  'activo:ficha',
+  'activo:alta',
+  'activo:previsualizarDepreciacion',
+  'activo:depreciarMes',
+  'activo:ultimoLote',
+  'activo:anularUltimoLote',
+  'activo:baja'
 ]);

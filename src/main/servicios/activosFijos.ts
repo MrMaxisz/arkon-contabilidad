@@ -957,6 +957,229 @@ export function conciliacionActivosFijos(db: Database.Database, corte: string): 
   };
 }
 
+// ─── Bloque 3E: lectura para la interfaz (listado, ficha y último lote) ───
+// Solo lectura: no crea ni modifica asientos. Importes en menores convertidos a texto.
+
+export interface ActivoFijoListado {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  categoria: string;
+  ubicacion: string;
+  responsable: string;
+  fechaAdquisicion: string;
+  fechaInicioUso: string;
+  costoMinor: string;
+  residualMinor: string;
+  vidaUtilMeses: number;
+  estado: string;
+  cuentaActivoId: number;
+  cuentaDepreciacionId: number;
+  cuentaGastoId: number;
+  compraId: number | null;
+  proyectoId: number | null;
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+}
+
+export function listarActivosFijos(db: Database.Database): ActivoFijoListado[] {
+  const filas = db
+    .prepare(
+      `SELECT f.id, f.codigo, f.descripcion, f.categoria, f.ubicacion, f.responsable,
+              f.fecha_adquisicion AS fechaAdquisicion, f.fecha_inicio_uso AS fechaInicioUso,
+              f.costo_minor AS costo, f.residual_minor AS residual, f.vida_util_meses AS vidaUtilMeses,
+              f.estado, f.cuenta_activo_id AS cuentaActivoId,
+              f.cuenta_depreciacion_id AS cuentaDepreciacionId, f.cuenta_gasto_id AS cuentaGastoId,
+              f.compra_id AS compraId, f.proyecto_id AS proyectoId,
+              COALESCE((
+                SELECT SUM(d.cuota_minor)
+                FROM depreciacion_detalle d
+                JOIN depreciacion_lote l ON l.id = d.lote_id
+                JOIN asiento a ON a.id = l.asiento_id
+                WHERE d.activo_fijo_id = f.id AND a.estado = 'contabilizado'
+              ), 0) AS acumulada
+       FROM activo_fijo f
+       WHERE f.ambito_id = 'administrativo'
+       ORDER BY f.codigo`
+    )
+    .safeIntegers(true)
+    .all() as Array<{
+    id: bigint;
+    codigo: string;
+    descripcion: string;
+    categoria: string;
+    ubicacion: string;
+    responsable: string;
+    fechaAdquisicion: string;
+    fechaInicioUso: string;
+    costo: bigint;
+    residual: bigint;
+    vidaUtilMeses: bigint;
+    estado: string;
+    cuentaActivoId: bigint;
+    cuentaDepreciacionId: bigint;
+    cuentaGastoId: bigint;
+    compraId: bigint | null;
+    proyectoId: bigint | null;
+    acumulada: bigint;
+  }>;
+  return filas.map(f => ({
+    id: Number(f.id),
+    codigo: f.codigo,
+    descripcion: f.descripcion,
+    categoria: f.categoria,
+    ubicacion: f.ubicacion,
+    responsable: f.responsable,
+    fechaAdquisicion: f.fechaAdquisicion,
+    fechaInicioUso: f.fechaInicioUso,
+    costoMinor: minorATexto(f.costo),
+    residualMinor: minorATexto(f.residual),
+    vidaUtilMeses: Number(f.vidaUtilMeses),
+    estado: f.estado,
+    cuentaActivoId: Number(f.cuentaActivoId),
+    cuentaDepreciacionId: Number(f.cuentaDepreciacionId),
+    cuentaGastoId: Number(f.cuentaGastoId),
+    compraId: f.compraId === null ? null : Number(f.compraId),
+    proyectoId: f.proyectoId === null ? null : Number(f.proyectoId),
+    acumuladaMinor: minorATexto(f.acumulada),
+    valorLibrosMinor: minorATexto(f.costo - f.acumulada)
+  }));
+}
+
+export interface CuotaFichaActivo extends CuotaDepreciacion {
+  aplicada: boolean;
+  loteId: number | null;
+  asientoFolio: string | null;
+  fechaAplicacion: string | null;
+}
+
+export interface BajaActivoFijoFicha {
+  id: number;
+  fechaOperacion: string;
+  tipo: 'baja' | 'venta';
+  importeMinor: string;
+  acumuladaMinor: string;
+  estado: string;
+  responsable: string;
+  motivo: string;
+}
+
+export interface FichaActivoFijo {
+  activo: ActivoFijoListado;
+  mesInicio: string;
+  cuotas: CuotaFichaActivo[];
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+  baja: BajaActivoFijoFicha | null;
+}
+
+export function fichaActivoFijo(db: Database.Database, activoId: number): FichaActivoFijo {
+  const activo = listarActivosFijos(db).find(a => a.id === activoId);
+  if (!activo) {
+    throw new ErrorActivoFijo(`No existe el activo fijo ${activoId} en el ámbito administrativo`);
+  }
+  const aplicadas = db
+    .prepare(
+      `SELECT d.mes, l.id AS loteId, a.folio, a.fecha_operacion AS fecha
+       FROM depreciacion_detalle d
+       JOIN depreciacion_lote l ON l.id = d.lote_id
+       JOIN asiento a ON a.id = l.asiento_id
+       WHERE d.activo_fijo_id = ? AND a.estado = 'contabilizado'`
+    )
+    .safeIntegers(true)
+    .all(activoId) as Array<{ mes: string; loteId: bigint; folio: string; fecha: string }>;
+  const porMes = new Map(
+    aplicadas.map(a => [a.mes, { loteId: Number(a.loteId), folio: a.folio, fecha: a.fecha }])
+  );
+  const cuadro = cuotasDepreciacionActivo(db, activoId);
+  const cuotas: CuotaFichaActivo[] = cuadro.cuotas.map(cuota => {
+    const aplicada = porMes.get(cuota.mes);
+    return {
+      ...cuota,
+      aplicada: aplicada !== undefined,
+      loteId: aplicada?.loteId ?? null,
+      asientoFolio: aplicada?.folio ?? null,
+      fechaAplicacion: aplicada?.fecha ?? null
+    };
+  });
+  const baja = db
+    .prepare(
+      `SELECT id, fecha_operacion AS fechaOperacion, tipo, importe_minor AS importe,
+              acumulada_minor AS acumulada, estado, responsable, motivo
+       FROM baja_activo_fijo
+       WHERE activo_fijo_id = ? AND estado = 'registrada'
+       ORDER BY id DESC LIMIT 1`
+    )
+    .safeIntegers(true)
+    .get(activoId) as
+    | {
+        id: bigint;
+        fechaOperacion: string;
+        tipo: 'baja' | 'venta';
+        importe: bigint;
+        acumulada: bigint;
+        estado: string;
+        responsable: string;
+        motivo: string;
+      }
+    | undefined;
+  return {
+    activo,
+    mesInicio: cuadro.mesInicio,
+    cuotas,
+    acumuladaMinor: activo.acumuladaMinor,
+    valorLibrosMinor: activo.valorLibrosMinor,
+    baja: baja
+      ? {
+          id: Number(baja.id),
+          fechaOperacion: baja.fechaOperacion,
+          tipo: baja.tipo,
+          importeMinor: minorATexto(baja.importe),
+          acumuladaMinor: minorATexto(baja.acumulada),
+          estado: baja.estado,
+          responsable: baja.responsable,
+          motivo: baja.motivo
+        }
+      : null
+  };
+}
+
+export interface LoteDepreciacion {
+  id: number;
+  mes: string;
+  totalMinor: string;
+  responsable: string;
+  asientoFolio: string;
+  fecha: string;
+}
+
+// Último lote por id, que es el único anulable por reverso.
+export function ultimoLoteDepreciacion(db: Database.Database): LoteDepreciacion | null {
+  const lote = db
+    .prepare(
+      `SELECT l.id, l.mes, l.total_minor AS total, l.responsable,
+              a.folio, a.fecha_operacion AS fecha
+       FROM depreciacion_lote l
+       JOIN asiento a ON a.id = l.asiento_id
+       ORDER BY l.id DESC LIMIT 1`
+    )
+    .safeIntegers(true)
+    .get() as
+    | { id: bigint; mes: string; total: bigint; responsable: string; folio: string; fecha: string }
+    | undefined;
+  if (!lote) {
+    return null;
+  }
+  return {
+    id: Number(lote.id),
+    mes: lote.mes,
+    totalMinor: minorATexto(lote.total),
+    responsable: lote.responsable,
+    asientoFolio: lote.folio,
+    fecha: lote.fecha
+  };
+}
+
 // CSV del cuadro general con el mismo saneamiento del paquete del contador (`escaparCsv`).
 export function csvCuadroGeneralActivosFijos(
   db: Database.Database,
