@@ -123,14 +123,15 @@ export default function Ventas() {
       return;
     }
     const alPresionar = (evento: KeyboardEvent) => {
-      if (evento.key === 'Escape') {
+      if (evento.key === 'Escape' && !ocupadoAnular) {
+        // Con la anulación en curso, Escape no hace nada (auditoría 70).
         cancelarAnulacion();
         origenAnulacionRef.current?.focus();
       }
     };
     document.addEventListener('keydown', alPresionar);
     return () => document.removeEventListener('keydown', alPresionar);
-  }, [anulando]);
+  }, [anulando, ocupadoAnular]);
 
   function cancelarAnulacion() {
     setAnulando(null);
@@ -296,7 +297,7 @@ export default function Ventas() {
           <tbody>
             {ventas.map(v => (
               <tr key={v.id}>
-                <td>{v.folio}</td>
+                <td className="folio">{v.folio}</td>
                 <td>{v.fecha}</td>
                 <td>{v.concepto}</td>
                 <td>{v.contraparteNombre}</td>

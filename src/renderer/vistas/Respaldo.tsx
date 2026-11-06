@@ -243,7 +243,7 @@ export default function Respaldo() {
                 <td>{a.entidad}</td>
                 <td>{a.entidadId}</td>
                 <td>{a.nombreOriginal}</td>
-                <td className="menor">{a.hashSha256.slice(0, 16)}…</td>
+                <td className="mono">{a.hashSha256.slice(0, 16)}…</td>
                 <td>{a.creadoEn}</td>
                 <td>
                   <button type="button" onClick={() => void verificarAdjunto(a.id)}>Verificar</button>{' '}

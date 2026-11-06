@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
-import { BotonSecundario, EncabezadoReporte, EstadoCarga, EstadoVacio } from '../componentes';
+import { BotonSecundario, EncabezadoReporte, EstadoCarga, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface FilaAuxiliar {
   contraparteId: number;
@@ -237,12 +237,17 @@ export default function Reportes() {
               {auxiliarContrapartes.clientes.map(c => (
                 <tr key={c.contraparteId}>
                   <td>{c.contraparteNombre}</td>
-                  <td className="numero">${c.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(c.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total clientes</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarContrapartes.totalClientesMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total clientes: ${auxiliarContrapartes.totalClientesMinor}</p>
         </>
       ) : (
         <EstadoVacio texto="Sin saldos pendientes de clientes." />
@@ -257,12 +262,17 @@ export default function Reportes() {
               {auxiliarContrapartes.proveedores.map(p => (
                 <tr key={p.contraparteId}>
                   <td>{p.contraparteNombre}</td>
-                  <td className="numero">${p.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(p.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total proveedores</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarContrapartes.totalProveedoresMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total proveedores: ${auxiliarContrapartes.totalProveedoresMinor}</p>
         </>
       ) : (
         <EstadoVacio texto="Sin saldos pendientes de proveedores." />
@@ -285,12 +295,17 @@ export default function Reportes() {
               {auxiliarEfectivo.cuentas.map(c => (
                 <tr key={c.cuentaId}>
                   <td>{c.codigo} · {c.nombre}</td>
-                  <td className="numero">${c.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(c.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total efectivo</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarEfectivo.totalMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total efectivo: ${auxiliarEfectivo.totalMinor}</p>
         </>
       ) : (
         <EstadoVacio texto="Sin movimientos de efectivo." />
@@ -325,7 +340,7 @@ export default function Reportes() {
       </div>
       {detalle && (
         <>
-          <p className="menor">Saldo al corte: ${detalle.saldoMinor}</p>
+          <p className="menor">Saldo al corte: {formatoDineroPantalla(detalle.saldoMinor)}</p>
           {detalle.documentos.length === 0 ? (
             <EstadoVacio texto="Sin documentos al corte seleccionado." />
           ) : (
@@ -337,9 +352,9 @@ export default function Reportes() {
                     <td>{d.folio}</td>
                     <td>{d.fecha}</td>
                     <td>{d.concepto}</td>
-                    <td className="numero">${d.totalMinor}</td>
-                    <td className="numero">${d.aplicadoMinor}</td>
-                    <td className="numero">${d.saldoMinor}</td>
+                    <td className="numero">{formatoDineroPantalla(d.totalMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(d.aplicadoMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(d.saldoMinor)}</td>
                   </tr>
                 ))}
               </tbody>

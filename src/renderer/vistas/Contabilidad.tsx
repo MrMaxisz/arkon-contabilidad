@@ -65,6 +65,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
   const [ocupado, setOcupado] = useState(false);
   const [anulando, setAnulando] = useState<AsientoResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
+  const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
   const claveOperacion = useRef<string>(nuevaClave());
 
   const cargar = useCallback(() => {
@@ -128,10 +129,25 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
     }
   }
 
-  function pedirAnulacion(a: AsientoResumen) {
+  function pedirAnulacion(a: AsientoResumen, origen: HTMLButtonElement) {
+    origenAnulacionRef.current = origen;
     setAnulando(a);
     setMotivoAnular('');
   }
+
+  useEffect(() => {
+    if (!anulando) {
+      return;
+    }
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape' && !ocupado) {
+        setAnulando(null);
+        origenAnulacionRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', alPresionar);
+    return () => document.removeEventListener('keydown', alPresionar);
+  }, [anulando, ocupado]);
 
   async function confirmarAnulacion() {
     if (!anulando) {
@@ -244,12 +260,12 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <tbody>
             {asientos.map(a => (
               <tr key={a.id}>
-                <td>{a.folio}</td>
+                <td className="folio">{a.folio}</td>
                 <td>{a.fechaOperacion}</td>
                 <td>{a.concepto}</td>
                 <td>{a.estado}</td>
                 <td className="numero">${a.totalMinor}</td>
-                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={() => pedirAnulacion(a)}>Anular</button>}</td>
+                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={e => pedirAnulacion(a, e.currentTarget)}>Anular</button>}</td>
               </tr>
             ))}
           </tbody>

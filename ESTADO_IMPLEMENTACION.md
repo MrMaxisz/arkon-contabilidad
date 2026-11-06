@@ -1096,3 +1096,25 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 345/345, 0 Errors (60 archivos).
 - `npm run build` → OK; ambos SVG presentes en `dist/renderer/assets`.
+
+## Bloque auditoría 70 (correcciones al sistema visual, bloque 1)
+
+### Corregido (hallazgos P1-70-1 a P2-70-10)
+
+- **P1-70-1**: Escape no hace nada con la anulación en curso (guarda con `ocupadoAnular` en Ventas, Compras y CajaBancos): el diálogo sigue abierto y no se puede reenviar. Prueba con promesa pendiente.
+- **P2-70-2**: Contabilidad maneja Escape con retorno de foco al botón Anular de origen, con la misma guarda de ocupado.
+- **P2-70-3**: `@fontsource/barlow` desinstalado; subtítulos en Barlow Condensed 600, cabeceras de tabla y botones en IBM Plex Sans 600; ninguna referencia a `'Barlow'` queda en el CSS.
+- **P2-70-4**: folios (Ventas, Contabilidad) y hashes (Respaldo) en IBM Plex Mono; cifras de dinero en tablas e Inicio en IBM Plex Sans con `tabular-nums`.
+- **P2-70-5**: contenido sobre blanco (body `--arkon-blanco`); el azul suave queda para cabeceras de tabla y bloques puntuales; formularios separados por línea fina.
+- **P2-70-6**: lema «Potencia con precisión» al pie del lateral, fuera del área de protección del logo; `#C9D8F2` y los `rgba` del lateral sustituidos por tokens (`--arkon-linea-clara`, `--lateral-borde`, `--lateral-realce`, `--lateral-hover`).
+- **P2-70-7**: totales de clientes/proveedores/efectivo como fila `tfoot` bajo su columna; `formatoDineroPantalla` con separador de miles (`$4,851.25`) en pantalla e impresión (Reportes, detalle e Inicio); CSV y cálculos sin cambios.
+- **P2-70-8**: `@media print` oculta también `select` e `input` (prueba de guarda). Límite documentado: la verificación con `Page.printToPDF` requiere Chromium/Electron, no ejecutable en este Linux (libglib ausente); queda para el auditor en Windows.
+- **P2-70-9**: `:focus-visible` azul sobre claro y blanco sobre marino en el lateral, ambos ≥3:1 (prueba con los valores reales de los tokens).
+- **P2-70-10**: prueba de Escape enfoca OTRO elemento antes (exige el retorno real); contraste calculado con los valores reales de los tokens; prueba inestable de adjuntos espera a que la opción `CMP-000002` exista.
+- Mutaciones confirmadas localmente (restauradas): quitar la guarda de ocupado en Escape → 1 fallo; quitar select/input del print → 2 fallos.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK.
+- `npx vitest run` → exit 0, 350/350, 0 Errors (60 archivos), DOS ejecuciones consecutivas con exit 0.

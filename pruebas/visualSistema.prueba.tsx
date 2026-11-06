@@ -68,32 +68,65 @@ describe('auditoría 69: tokens de color', () => {
     expect(estilos.match(/--funcional-exito:/g)?.length).toBe(1);
   });
 
-  it('contraste AA (≥ 4.5) de los pares de texto y fondo', () => {
+  it('contraste AA (≥ 4.5) con los valores REALES de los tokens', () => {
+    const token = (nombre: string): string => {
+      const m = estilos.match(new RegExp(`--${nombre}:\\s*(#[0-9A-Fa-f]{6})`));
+      expect(m, `falta el token --${nombre}`).toBeTruthy();
+      return m![1];
+    };
     const pares: Array<[string, string]> = [
-      ['#0B1B33', '#FFFFFF'],
-      ['#FFFFFF', '#0B1B33'],
-      ['#FFFFFF', '#0A4DB3'],
-      ['#0B1B33', '#E4EDFB'],
-      ['#4A5B75', '#FFFFFF'],
-      ['#B3261E', '#FBEAE9'],
-      ['#1E6B34', '#EAF5EE'],
-      ['#C9D8F2', '#0B1B33'],
-      ['#B45309', '#FFFFFF']
+      [token('texto'), token('arkon-blanco')],
+      [token('arkon-blanco'), token('arkon-marino')],
+      [token('arkon-blanco'), token('arkon-azul')],
+      [token('texto'), token('arkon-azul-suave')],
+      [token('texto-suave'), token('arkon-blanco')],
+      [token('funcional-error'), token('funcional-error-fondo')],
+      [token('funcional-exito'), token('funcional-exito-fondo')],
+      [token('arkon-linea-clara'), token('arkon-marino')],
+      [token('arkon-seguridad'), token('arkon-blanco')]
     ];
     for (const [texto, fondo] of pares) {
       expect(contraste(texto, fondo), `contraste insuficiente ${texto} sobre ${fondo}`).toBeGreaterThanOrEqual(4.5);
     }
   });
+
+  it('foco visible: azul sobre claro y blanco sobre marino, ambos ≥ 3:1', () => {
+    const azul = estilos.match(/:focus-visible \{[\s\S]*?outline: 3px solid var\(--arkon-azul\)/);
+    expect(azul).toBeTruthy();
+    const lateral = estilos.match(/\.lateral :focus-visible \{[\s\S]*?outline: 3px solid var\(--arkon-blanco\)/);
+    expect(lateral).toBeTruthy();
+    const token = (nombre: string): string => estilos.match(new RegExp(`--${nombre}:\\s*(#[0-9A-Fa-f]{6})`))![1];
+    expect(contraste(token('arkon-azul'), token('arkon-blanco'))).toBeGreaterThanOrEqual(3);
+    expect(contraste(token('arkon-blanco'), token('arkon-marino'))).toBeGreaterThanOrEqual(3);
+  });
+
+  it('contenido sobre blanco: el azul suave solo en cabeceras y bloques puntuales', () => {
+    expect(estilos).toMatch(/body \{[\s\S]*?background: var\(--arkon-blanco\);/);
+    expect(estilos).toMatch(/thead th \{ position: sticky; top: 0; background: var\(--arkon-azul-suave\); \}/);
+  });
+
+  it('formato de pantalla con separador de miles; CSV y cálculos sin tocar', async () => {
+    const { formatoDineroPantalla } = await import('../src/renderer/componentes');
+    expect(formatoDineroPantalla('4851.25')).toBe('$4,851.25');
+    expect(formatoDineroPantalla('100.00')).toBe('$100.00');
+    expect(formatoDineroPantalla('1234567.89')).toBe('$1,234,567.89');
+  });
+
+  it('impresión: ningún select ni input en papel', () => {
+    const bloque = estilos.slice(estilos.indexOf('@media print'));
+    expect(bloque).toMatch(/select, input, \.no-imprimir \{ display: none !important; \}/);
+  });
 });
 
 describe('auditoría 69: tipografía local sin red', () => {
   it('Barlow Condensed 700, Barlow 400/600, IBM Plex Sans 400/600 e IBM Plex Mono 400 importadas', () => {
+    expect(indexTsx).toContain("@fontsource/barlow-condensed/600.css");
     expect(indexTsx).toContain("@fontsource/barlow-condensed/700.css");
-    expect(indexTsx).toContain("@fontsource/barlow/400.css");
-    expect(indexTsx).toContain("@fontsource/barlow/600.css");
     expect(indexTsx).toContain("@fontsource/ibm-plex-sans/400.css");
     expect(indexTsx).toContain("@fontsource/ibm-plex-sans/600.css");
     expect(indexTsx).toContain("@fontsource/ibm-plex-mono/400.css");
+    expect(indexTsx).not.toContain("@fontsource/barlow/");
+    expect(estilos).not.toContain("'Barlow',");
   });
 
   it('sin URL externas de fuentes ni CDN', () => {
@@ -168,13 +201,13 @@ describe('auditoría 69: navegación agrupada y barra de contexto', () => {
 describe('auditoría 69: impresión y foco', () => {
   it('@media print oculta navegación y controles, con logo azul y filas sin cortar', () => {
     expect(estilos).toContain('@media print');
-    expect(estilos).toMatch(/\.lateral, \.barra-contexto form, form, button, \.no-imprimir \{ display: none !important; \}/);
+    expect(estilos).toMatch(/\.lateral, \.barra-contexto form, form, button, select, input, \.no-imprimir \{ display: none !important; \}/);
     expect(estilos).toContain('page-break-inside: avoid');
     expect(estilos).toContain('.logo-impresion { display: block;');
   });
 
   it(':focus-visible claro definido', () => {
     expect(estilos).toContain(':focus-visible');
-    expect(estilos).toContain('outline: 3px solid var(--arkon-chispa)');
+    expect(estilos).toMatch(/:focus-visible \{[\s\S]*?outline: 3px solid var\(--arkon-azul\)/);
   });
 });

@@ -15,7 +15,7 @@ import Catalogo from './vistas/Catalogo';
 import Reportes from './vistas/Reportes';
 import Ajustes from './vistas/Ajustes';
 import Cierre from './vistas/Cierre';
-import { EstadoCarga } from './componentes';
+import { EstadoCarga, formatoDineroPantalla } from './componentes';
 import logoBlanco from './recursos/arkon-logo-blanco.svg';
 
 interface BalanceResumen {
@@ -54,7 +54,7 @@ const NAVEGACION: Array<{ grupo: string; destinos: Seccion[] }> = [
 ];
 
 function formatoDinero(minorTexto: string): string {
-  return `$${minorTexto}`;
+  return formatoDineroPantalla(minorTexto);
 }
 
 function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCargar: () => void }) {
@@ -112,7 +112,6 @@ export default function App() {
       <aside className="lateral">
         <div className="marca">
           <img src={logoBlanco} alt="ARKON Ingeniería Eléctrica" width={148} height={52} />
-          <p className="lema">Potencia con precisión</p>
         </div>
         <nav aria-label="Secciones">
           {NAVEGACION.map(grupo => (
@@ -130,6 +129,9 @@ export default function App() {
             </React.Fragment>
           ))}
         </nav>
+        <div className="pie">
+          <p className="lema">Potencia con precisión</p>
+        </div>
       </aside>
       <main className="contenido">
         <div className="barra-contexto">

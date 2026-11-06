@@ -88,3 +88,13 @@ export function EstadoVacio(props: { texto: string }): React.JSX.Element {
 export function EstadoSinResultados(props: { texto: string }): React.JSX.Element {
   return <p className="estado-sin-resultados">{props.texto}</p>;
 }
+
+// Cifras de dinero para pantalla e impresión con separador de miles (auditoría 70).
+// Los CSV y los cálculos NO usan este formato: solo presentación.
+export function formatoDineroPantalla(minorTexto: string): string {
+  const partes = minorTexto.split('.');
+  const entero = partes[0] ?? '0';
+  const decimales = partes[1] ?? '00';
+  const conSeparador = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `$${conSeparador}.${decimales}`;
+}

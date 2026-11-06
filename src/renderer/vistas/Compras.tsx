@@ -146,14 +146,15 @@ export default function Compras() {
       return;
     }
     const alPresionar = (evento: KeyboardEvent) => {
-      if (evento.key === 'Escape') {
+      if (evento.key === 'Escape' && !ocupadoAnular) {
+        // Con la anulación en curso, Escape no hace nada (auditoría 70).
         cancelarAnulacion();
         origenAnulacionRef.current?.focus();
       }
     };
     document.addEventListener('keydown', alPresionar);
     return () => document.removeEventListener('keydown', alPresionar);
-  }, [anulando]);
+  }, [anulando, ocupadoAnular]);
 
   function cancelarAnulacion() {
     setAnulando(null);
