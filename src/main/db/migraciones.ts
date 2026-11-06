@@ -592,4 +592,49 @@ ALTER TABLE retencion ADD COLUMN involucra_nomina INTEGER;
 ALTER TABLE retencion ADD COLUMN persona_natural INTEGER;
 `
   },
+  {
+    version: 20,
+    nombre: 'activos_fijos',
+    sql: `
+CREATE TABLE activo_fijo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL UNIQUE,
+  descripcion TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  ubicacion TEXT NOT NULL,
+  responsable TEXT NOT NULL,
+  fecha_adquisicion TEXT NOT NULL,
+  fecha_inicio_uso TEXT NOT NULL,
+  costo_minor INTEGER NOT NULL CHECK (costo_minor >= 0),
+  residual_minor INTEGER NOT NULL DEFAULT 0 CHECK (residual_minor >= 0),
+  vida_util_meses INTEGER NOT NULL CHECK (vida_util_meses > 0),
+  cuenta_activo_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cuenta_depreciacion_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cuenta_gasto_id INTEGER NOT NULL REFERENCES cuenta(id),
+  compra_id INTEGER,
+  proyecto_id INTEGER,
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','dado_de_baja','vendido')),
+  ambito_id TEXT NOT NULL DEFAULT 'administrativo' REFERENCES ambito(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE depreciacion_lote (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mes TEXT NOT NULL UNIQUE,
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  total_minor INTEGER NOT NULL,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE depreciacion_detalle (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lote_id INTEGER NOT NULL REFERENCES depreciacion_lote(id),
+  activo_fijo_id INTEGER NOT NULL REFERENCES activo_fijo(id),
+  mes TEXT NOT NULL,
+  cuota_minor INTEGER NOT NULL,
+  UNIQUE (activo_fijo_id, mes)
+);
+`
+  },
 ];
