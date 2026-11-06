@@ -82,6 +82,21 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
   });
 
+  it('motivo corto en la vista: no se invoca el comando y el error queda dentro del diálogo', async () => {
+    fireEvent.click(await abrirDialogo());
+    await waitFor(() => screen.getByText(/Anular venta V-000002/));
+    const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'corto' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    const dialogo = screen.getByRole('dialog');
+    await waitFor(() => within(dialogo).getByRole('alert'));
+    expect(within(dialogo).getByRole('alert').textContent).toContain('mínimo 10 caracteres');
+    expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
+    expect(screen.getByText('registrada')).toBeTruthy();
+  });
+
   it('confirmación invoca una sola vez con motivo/responsable y muestra aviso de anulación', async () => {
     let anulada = false;
     invocar.mockImplementation((comando: string) => {

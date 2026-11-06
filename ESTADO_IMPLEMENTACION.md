@@ -928,3 +928,30 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → **exit 0, 263/263, 0 Errors** (55 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 55 (prefijo IPC protegido y mínimo en vista Compras/CajaBancos)
+
+### Corregido (hallazgos de la auditoría 55)
+
+- **P2-1 Limpieza del prefijo sin proteger**: `limpiarMensajeError` movida a módulo compartido `src/renderer/limpiarMensajeError.ts` (único cambio de src, comportamiento idéntico); Ventas, Compras y CajaBancos importan del módulo y ya no tienen copia local. Pruebas nuevas con el **formato real de IPC** (`Error invoking remote method 'arkon': Error: …`, forzado por mock solo en ese caso) en las tres vistas: comprueban el **texto exacto** (`toBe`) dentro de `within(dialog).getByRole('alert')` y que el documento/movimiento sigue registrado.
+- **P2-2 Mínimo en vista sin proteger en Compras y CajaBancos**: pruebas nuevas con motivo «corto» → error «mínimo 10 caracteres» dentro del diálogo, comando no invocado (registro de invocaciones en el mock) y estado `registrada`/`registrado` en SQLite.
+- Mutaciones confirmadas localmente (restauradas, sin quedar en el commit): quitar los `replace` del módulo compartido → 4 fallos; cambiar el mínimo por `!trim()` en Compras/CajaBancos → 2 fallos.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → **exit 0, 268/268, 0 Errors** (55 archivos).
+- `npm run build` → OK.
+
+## Bloque auditoría 56 (mínimo en vista de Ventas y bitácora de estado)
+
+### Corregido (hallazgos de la auditoría 56)
+
+- **P2-1 Mínimo en vista sin proteger en Ventas**: prueba nueva en `anulacionComponente.prueba.tsx` con motivo «corto» → error «mínimo 10 caracteres» dentro del diálogo (`within(dialog).getByRole('alert')`), `documento:anular` no invocado y la venta sigue «registrada» en pantalla.
+- **P2-2 ESTADO_IMPLEMENTACION.md sin bloque 55**: añadidos los bloques 55 y 56 con conteo y exit code reales.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 269/269, 0 Errors (55 archivos).
+- `npm run build` → OK.
