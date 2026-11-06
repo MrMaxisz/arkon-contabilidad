@@ -95,18 +95,18 @@ export function cuotasDepreciacionActivo(
     .safeIntegers(true)
     .get(activoId) as
     | {
-        id: number;
+        id: bigint;
         codigo: string;
         fechaInicioUso: string;
         costo: bigint;
         residual: bigint;
-        vidaUtilMeses: number;
+        vidaUtilMeses: bigint;
       }
     | undefined;
   if (!activo) {
     throw new ErrorActivoFijo(`No existe el activo fijo ${activoId}`);
   }
-  const cuotas = calcularCuotas(activo.costo - activo.residual, activo.vidaUtilMeses);
+  const cuotas = calcularCuotas(activo.costo - activo.residual, Number(activo.vidaUtilMeses));
   const inicio = mesSiguiente(activo.fechaInicioUso);
   const anioInicio = Number(inicio.slice(0, 4));
   const mesInicio = Number(inicio.slice(5, 7));
@@ -502,6 +502,12 @@ export function anularUltimoLote(
     if (!lote) {
       throw new ErrorActivoFijo('No hay lotes de depreciación que anular');
     }
+    const afectaBaja = db.prepare(`SELECT 1 FROM depreciacion_detalle d
+      JOIN baja_activo_fijo b ON b.activo_fijo_id = d.activo_fijo_id AND b.estado = 'registrada'
+      WHERE d.lote_id = ? LIMIT 1`).get(lote.id);
+    if (afectaBaja) {
+      throw new ErrorActivoFijo('El lote afecta una baja o venta vigente; anule primero la baja');
+    }
     const reverso = anularAsiento(db, lote.asiento_id, entrada.responsable.trim(), entrada.motivo.trim());
     db.prepare('DELETE FROM depreciacion_detalle WHERE lote_id = ?').run(lote.id);
     db.prepare('DELETE FROM depreciacion_lote WHERE id = ?').run(lote.id);
@@ -513,4 +519,169 @@ export function anularUltimoLote(
     return { loteId: lote.id, mes: lote.mes, reversoFolio: reverso.folio };
   });
   return ejecutar();
+}
+
+// ─── Bloque 3C: baja o venta administrativa, sin IVA ───
+export interface EntradaBajaActivoFijo {
+  activoId: number;
+  tipo: 'baja' | 'venta';
+  fechaOperacion: string;
+  importeMinor?: string;
+  cuentaCobroId?: number;
+  responsable: string;
+  motivo: string;
+}
+
+export interface ResultadoBajaActivoFijo {
+  bajaId: number;
+  asientoId: number;
+  asientoFolio: string;
+  depreciacionPendienteMinor: string;
+  acumuladaMinor: string;
+  valorLibrosMinor: string;
+  resultadoMinor: string;
+}
+
+export function darBajaActivoFijo(
+  db: Database.Database,
+  entrada: EntradaBajaActivoFijo
+): ResultadoBajaActivoFijo {
+  validarFechaCalendario(entrada.fechaOperacion);
+  if (!entrada.responsable?.trim() || !entrada.motivo?.trim()) {
+    throw new ErrorActivoFijo('La baja requiere responsable y motivo');
+  }
+  if (entrada.tipo !== 'baja' && entrada.tipo !== 'venta') {
+    throw new ErrorActivoFijo('Tipo de baja inválido');
+  }
+  const importe = parseMontoMinor(entrada.importeMinor ?? '0');
+  if (importe < 0n || (entrada.tipo === 'baja' && importe !== 0n)) {
+    throw new ErrorActivoFijo('Importe inválido para la baja o venta');
+  }
+  return db.transaction((): ResultadoBajaActivoFijo => {
+    const activo = db.prepare(`SELECT codigo, estado, fecha_adquisicion AS fechaAdquisicion,
+        costo_minor AS costo, cuenta_activo_id AS cuentaActivoId,
+        cuenta_depreciacion_id AS cuentaDepreciacionId, cuenta_gasto_id AS cuentaGastoId
+      FROM activo_fijo WHERE id = ? AND ambito_id = 'administrativo'`)
+      .safeIntegers(true).get(entrada.activoId) as {
+        codigo: string; estado: string; fechaAdquisicion: string; costo: bigint;
+        cuentaActivoId: bigint; cuentaDepreciacionId: bigint; cuentaGastoId: bigint;
+      } | undefined;
+    if (!activo || activo.estado !== 'activo') {
+      throw new ErrorActivoFijo('El activo no existe en el ámbito administrativo o ya está de baja');
+    }
+    if (entrada.fechaOperacion < activo.fechaAdquisicion) {
+      throw new ErrorActivoFijo('La baja no puede ser anterior a la adquisición');
+    }
+    if (importe > 0n) {
+      cuentaValida(db, entrada.cuentaCobroId ?? 0, 'activo', 'cobro');
+      if ([Number(activo.cuentaActivoId), Number(activo.cuentaDepreciacionId)].includes(entrada.cuentaCobroId!)) {
+        throw new ErrorActivoFijo('La cuenta de cobro debe ser distinta del activo y su acumulada');
+      }
+    }
+    const aplicadas = db.prepare(`SELECT d.mes, d.cuota_minor AS cuota, a.fecha_operacion AS fecha
+      FROM depreciacion_detalle d JOIN depreciacion_lote l ON l.id = d.lote_id
+      JOIN asiento a ON a.id = l.asiento_id WHERE d.activo_fijo_id = ?`)
+      .safeIntegers(true).all(entrada.activoId) as Array<{ mes: string; cuota: bigint; fecha: string }>;
+    const mes = entrada.fechaOperacion.slice(0, 7);
+    if (aplicadas.some(c => c.mes > mes || c.fecha > entrada.fechaOperacion)) {
+      throw new ErrorActivoFijo('El activo tiene depreciación posterior a la fecha de baja');
+    }
+    const mesesAplicados = new Set(aplicadas.map(c => c.mes));
+    const pendientes = cuotasDepreciacionActivo(db, entrada.activoId).cuotas
+      .filter(c => c.mes <= mes && !mesesAplicados.has(c.mes));
+    const pendiente = pendientes.reduce((s, c) => s + parseMontoMinor(c.cuotaMinor), 0n);
+    const acumulada = aplicadas.reduce((s, c) => s + c.cuota, pendiente);
+    const libros = activo.costo - acumulada;
+    if (libros < 0n) {
+      throw new ErrorActivoFijo('La depreciación acumulada supera el costo del activo');
+    }
+    const resultado = importe - libros;
+    const lineas: Array<{ cuentaId: number; debeMinor: string; haberMinor: string }> = [];
+    const linea = (cuentaId: number, debe: bigint, haber = 0n): void => {
+      if (debe !== 0n || haber !== 0n) {
+        lineas.push({ cuentaId, debeMinor: minorATexto(debe), haberMinor: minorATexto(haber) });
+      }
+    };
+    // Las cuotas pendientes se devengan a la fecha de baja (incluye todo su mes).
+    // El mismo asiento retira costo y acumulada y reconoce el resultado.
+    linea(Number(activo.cuentaGastoId), pendiente);
+    linea(Number(activo.cuentaDepreciacionId), 0n, pendiente);
+    linea(Number(activo.cuentaActivoId), 0n, activo.costo);
+    linea(Number(activo.cuentaDepreciacionId), acumulada);
+    if (importe > 0n) linea(entrada.cuentaCobroId!, importe);
+    if (resultado !== 0n) {
+      const cuenta = db.prepare('SELECT id FROM cuenta WHERE codigo = ?')
+        .get(resultado > 0n ? '4202' : '6402') as { id: number } | undefined;
+      if (!cuenta) throw new ErrorActivoFijo('Falta la cuenta de resultado de baja o venta');
+      cuentaValida(db, cuenta.id, resultado > 0n ? 'ingreso' : 'gasto', 'resultado');
+      linea(cuenta.id, resultado < 0n ? -resultado : 0n, resultado > 0n ? resultado : 0n);
+    }
+    const asiento = contabilizarAsiento(db, {
+      fechaOperacion: entrada.fechaOperacion,
+      concepto: `${entrada.tipo === 'venta' ? 'Venta' : 'Baja'} de activo fijo ${activo.codigo}: ${entrada.motivo.trim()}`,
+      responsable: entrada.responsable.trim(), ambitoId: 'administrativo', lineas,
+      origenTipo: 'baja_activo_fijo', origenId: String(entrada.activoId)
+    });
+    if (pendientes.length > 0) {
+      const lote = db.prepare(`INSERT INTO depreciacion_lote (mes, asiento_id, total_minor, responsable)
+        VALUES (?, ?, ?, ?)`).run(mes, asiento.asientoId, pendiente, entrada.responsable.trim());
+      const insertar = db.prepare(`INSERT INTO depreciacion_detalle (lote_id, activo_fijo_id, mes, cuota_minor)
+        VALUES (?, ?, ?, ?)`);
+      for (const cuota of pendientes) {
+        insertar.run(lote.lastInsertRowid, entrada.activoId, cuota.mes, parseMontoMinor(cuota.cuotaMinor));
+      }
+    }
+    const baja = db.prepare(`INSERT INTO baja_activo_fijo
+      (activo_fijo_id, fecha_operacion, tipo, importe_minor, acumulada_minor, asiento_id, responsable, motivo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(entrada.activoId, entrada.fechaOperacion,
+      entrada.tipo, importe, acumulada, asiento.asientoId, entrada.responsable.trim(), entrada.motivo.trim());
+    db.prepare('UPDATE activo_fijo SET estado = ? WHERE id = ?')
+      .run(entrada.tipo === 'venta' ? 'vendido' : 'dado_de_baja', entrada.activoId);
+    const salida: ResultadoBajaActivoFijo = {
+      bajaId: Number(baja.lastInsertRowid), asientoId: asiento.asientoId, asientoFolio: asiento.folio,
+      depreciacionPendienteMinor: minorATexto(pendiente), acumuladaMinor: minorATexto(acumulada),
+      valorLibrosMinor: minorATexto(libros), resultadoMinor: minorATexto(resultado)
+    };
+    registroEvento(db, entrada.responsable.trim(), 'activo_fijo_baja', 'activo_fijo', String(entrada.activoId), {
+      ...salida, tipo: entrada.tipo, importe: minorATexto(importe), motivo: entrada.motivo.trim()
+    });
+    return salida;
+  })();
+}
+
+export function anularBajaActivoFijo(
+  db: Database.Database,
+  entrada: { bajaId: number; responsable: string; motivo: string }
+): { reversoFolio: string } {
+  if (!entrada.responsable?.trim() || !entrada.motivo?.trim()) {
+    throw new ErrorActivoFijo('La anulación de la baja requiere responsable y motivo');
+  }
+  return db.transaction(() => {
+    const baja = db.prepare(`SELECT b.activo_fijo_id AS activoId, b.asiento_id AS asientoId,
+        b.fecha_operacion AS fecha
+      FROM baja_activo_fijo b JOIN activo_fijo f ON f.id = b.activo_fijo_id
+      WHERE b.id = ? AND b.estado = 'registrada' AND f.ambito_id = 'administrativo'`)
+      .get(entrada.bajaId) as { activoId: number; asientoId: number; fecha: string } | undefined;
+    if (!baja) throw new ErrorActivoFijo('No existe una baja vigente en el ámbito administrativo');
+    const posterior = db.prepare(`SELECT 1 FROM asiento a WHERE a.ambito_id = 'administrativo'
+      AND a.estado IN ('contabilizado','anulado') AND a.id != ?
+      AND (a.id > ? OR a.fecha_operacion > ?)
+      AND ((a.origen_tipo IN ('activo_fijo','baja_activo_fijo') AND a.origen_id = ?)
+        OR EXISTS (SELECT 1 FROM depreciacion_lote l JOIN depreciacion_detalle d ON d.lote_id = l.id
+                   WHERE l.asiento_id = a.id AND d.activo_fijo_id = ?)) LIMIT 1`)
+      .get(baja.asientoId, baja.asientoId, baja.fecha, String(baja.activoId), baja.activoId);
+    if (posterior) throw new ErrorActivoFijo('El activo tiene movimientos posteriores a la baja');
+    const reverso = anularAsiento(db, baja.asientoId, entrada.responsable.trim(), entrada.motivo.trim(), true);
+    // Solo se liberan las cuotas creadas por esta baja; los lotes previos se conservan.
+    db.prepare(`DELETE FROM depreciacion_detalle WHERE lote_id IN
+      (SELECT id FROM depreciacion_lote WHERE asiento_id = ?)`).run(baja.asientoId);
+    db.prepare('DELETE FROM depreciacion_lote WHERE asiento_id = ?').run(baja.asientoId);
+    db.prepare("UPDATE baja_activo_fijo SET estado = 'anulada', reverso_id = ? WHERE id = ?")
+      .run(reverso.asientoId, entrada.bajaId);
+    db.prepare("UPDATE activo_fijo SET estado = 'activo' WHERE id = ?").run(baja.activoId);
+    registroEvento(db, entrada.responsable.trim(), 'activo_fijo_baja_anulada', 'activo_fijo', String(baja.activoId), {
+      bajaId: entrada.bajaId, reverso: reverso.folio, motivo: entrada.motivo.trim()
+    });
+    return { reversoFolio: reverso.folio };
+  })();
 }

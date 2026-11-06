@@ -205,7 +205,7 @@ export function contabilizarAsiento(
   return ejecutar();
 }
 
-const ORIGENES_ADMINISTRADOS = new Set(['venta', 'compra', 'cobro', 'pago', 'transferencia', 'aplicacion_anticipo']);
+const ORIGENES_ADMINISTRADOS = new Set(['venta', 'compra', 'cobro', 'pago', 'transferencia', 'aplicacion_anticipo', 'baja_activo_fijo']);
 
 export function anularAsiento(
   db: Database.Database,
@@ -266,7 +266,8 @@ export function anularAsiento(
   }
   const lineas = db
     .prepare('SELECT cuenta_id, debe_minor, haber_minor FROM asiento_linea WHERE asiento_id = ?')
-    .all(asientoId) as Array<{ cuenta_id: number; debe_minor: number; haber_minor: number }>;
+    .safeIntegers(true)
+    .all(asientoId) as Array<{ cuenta_id: bigint; debe_minor: bigint; haber_minor: bigint }>;
 
   const ejecutar = db.transaction((): ResultadoContabilizacion => {
     const siguiente = db
