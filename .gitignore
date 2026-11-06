@@ -1,0 +1,6 @@
+node_modules/
+dist/
+paquete/
+paquete-qa/
+*.log
+.vibe/

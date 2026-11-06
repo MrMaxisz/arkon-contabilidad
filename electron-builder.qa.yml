@@ -1,0 +1,29 @@
+# Empaquetado QA de aceptación: canal "qa" con barrera de perfil aislado en el proceso principal.
+# NO altera electron-builder.yml (producción). Salida separada en paquete-qa para no sobrescribir.
+appId: sv.arkon.contabilidad.qa.aceptacion
+productName: ARKON Contabilidad QA
+directories:
+  output: paquete-qa
+files:
+  - dist/**/*
+  - package.json
+asarUnpack:
+  - node_modules/better-sqlite3
+npmRebuild: false
+# npmRebuild=false: el ABI se fija con scripts/rebuild-electron.mjs + probe ANTES de empaquetar.
+extraMetadata:
+  arkonCanal: qa
+  name: arkon-contabilidad-qa
+  productName: ARKON Contabilidad QA
+win:
+  target:
+    - nsis
+  # winCodeSign no puede extraerse en Windows sin privilegio de symlink: QA local sin firma.
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: false
+  shortcutName: ARKON Contabilidad QA

@@ -1,0 +1,40 @@
+# MANUAL BREVE DE USO (hito 1)
+
+## Instalación (pendiente de verificar en Windows)
+
+1. Ejecutar el instalador NSIS generado con `npm run dist:win` y elegir el directorio.
+2. Al abrirse, la aplicación crea sus datos en `%LOCALAPPDATA%\ARKON Contabilidad\` (base, adjuntos, respaldos, registros). No requiere internet, Node ni descargas.
+3. Para actualizar: instalar la nueva versión sobre la anterior; los datos no se tocan. Ante cambios de esquema la aplicación respalda antes de migrar (pendiente: respaldo automático previo a migración, ver `ESTADO_IMPLEMENTACION.md`).
+
+## Operación diaria
+
+- **Clientes y proveedores**: registre contrapartes con su rol (cliente, proveedor o ambos). NRC/NIT solo cuando existan; la aplicación no crea identificaciones ficticias.
+- **Cotizaciones**: líneas de servicio y material con precio con o sin IVA incluido (el desglose nunca aumenta el total). Una cotización no genera ingresos ni cuentas por cobrar. «Nueva revisión» crea la revisión siguiente; «Aprobar» congela esa versión; anular exige motivo.
+- **Proyectos**: código único, contraparte y, opcionalmente, la cotización aprobada que originó el acuerdo.
+- **Compras y gastos**: proveedor, líneas con cuenta de costo/gasto/activo y tratamiento tributario (gravado/exento/no sujeto). La compra reconoce la obligación con proveedores; pagar después no duplica el gasto. El IVA documentado se conserva y va al costo por defecto.
+- **Cobros y pagos**: aplique a documentos pendientes; la aplicación no puede exceder el saldo y el excedente queda como anticipo. Cobrar no vuelve a registrar el ingreso ya reconocido.
+- **Caja y bancos**: transferencias entre cuentas propias (no generan ingreso ni gasto) y listado de movimientos con anulación por reverso.
+
+- **Inicio**: resumen del balance (activo, pasivo, patrimonio, resultado) derivado del mayor, con indicador de cuadre de partida doble. Muestra la advertencia de ámbito administrativo previo a la constitución.
+- **Contabilidad**:
+  - *Nuevo asiento manual*: fecha de operación, concepto, responsable y líneas (cuenta de movimiento, importe en Debe **o** Haber). El motor rechaza asientos descuadrados, cuentas de agrupación, cuentas inexistentes o inactivas y períodos cerrados antes de escribir nada.
+  - *Asientos recientes*: lista con folio, estado y total (en unidades monetarias, igual que el mayor y los reportes). «Anular» abre un diálogo propio que exige motivo y responsable; crea un asiento reverso trazable y el original queda conservado como `anulado`. El envío del formulario se bloquea mientras se procesa y cada operación lleva una clave de idempotencia que se conserva entre reintentos, para que un doble clic o un reintento no dupliquen el asiento.
+  - *Mayor de cuenta*: movimientos y saldo corrido de la cuenta seleccionada.
+- **Respaldo**: «Crear respaldo ahora» genera una copia consistente (API de respaldo de SQLite), verifica integridad, calcula hash SHA-256 y escribe un manifiesto `.manifest.json`. La restauración verifica hash e integridad, preserva copia del estado anterior y bloquea esquemas futuros incompatibles.
+- **Bitácora**: últimos eventos (contabilizaciones, anulaciones, cierres, respaldos, migraciones).
+
+## Corregir errores
+
+- Nunca se edita un asiento contabilizado: se anula con motivo (crea reverso) o se registra un ajuste trazable.
+- Un doble clic o reintento con la misma clave de idempotencia devuelve el mismo asiento sin duplicar.
+
+## Respaldar y restaurar
+
+- Respaldar con regularidad desde la vista Respaldo; las copias quedan en `respaldos\`.
+- Restaurar: desde la vista Respaldo, botón «Restaurar» de la copia elegida y confirmación. Se verifica hash e integridad, se conserva copia `.antes-restauracion` del estado anterior y la restauración queda registrada en la bitácora de la base restaurada.
+
+## Qué NO es esta aplicación todavía
+
+- No emite documentos tributarios electrónicos ni cotizaciones/PDF (hitos 3+).
+- No calcula declaraciones; los libros y exportaciones fiscales llegan en el hito 4+.
+- El catálogo sembrado es una propuesta editable pendiente de revisión del contador responsable.
