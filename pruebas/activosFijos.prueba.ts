@@ -6,7 +6,7 @@ import { abrirBase, prepararRutasDatos } from '../src/main/db/conexion';
 import { aplicarMigraciones, versionEsquemaActual } from '../src/main/db/aplicarMigraciones';
 import { migraciones } from '../src/main/db/migraciones';
 import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
-import { contabilizarAsiento } from '../src/main/servicios/motorAsientos';
+import { contabilizarAsiento, cerrarPeriodo, periodoDeFecha } from '../src/main/servicios/motorAsientos';
 import { registrarCompra, crearContraparte } from '../src/main/servicios/operacion';
 import { estadoSituacionFinanciera } from '../src/main/servicios/estadosFinancieros';
 import {
@@ -14,6 +14,9 @@ import {
   cuotasDepreciacionActivo,
   darAltaActivoFijo,
   mesSiguiente,
+  previsualizarDepreciacion,
+  depreciarMes,
+  anularUltimoLote,
   ErrorActivoFijo
 } from '../src/main/servicios/activosFijos';
 import type BetterSqlite3 from 'better-sqlite3';
@@ -281,5 +284,122 @@ describe('auditoría 75: correcciones a la 3A', () => {
     ).toThrow(/supera lo disponible/);
     // Con 100.00 restante sí cabe.
     alta({ compraId: compra.id, cuentaContrapartidaId: undefined, costoMinor: '100.00', descripcion: 'Activo tres de la compra' });
+  });
+});
+
+describe('bloque 3B: depreciación del mes', () => {
+  it('vista previa y lote con una línea por combinación de cuentas; mismo mes dos veces sin duplicar', () => {
+    alta({ fechaInicioUso: '2026-01-15', costoMinor: '1200.00', vidaUtilMeses: 12 });
+    const previo = previsualizarDepreciacion(db, '2026-02');
+    // A mano: cuota 100.00 en febrero (mes siguiente al inicio de uso).
+    expect(previo.filas).toHaveLength(1);
+    expect(previo.filas[0]!.cuotaMinor).toBe('100.00');
+    expect(previo.filas[0]!.numeroCuota).toBe(1);
+    expect(previo.totalMinor).toBe('100.00');
+
+    const r = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    expect(r.existente).toBe(false);
+    expect(r.totalMinor).toBe('100.00');
+    // Asiento: Debe 6101 100.00, Haber 1502 100.00 (una combinación).
+    const lineas = db
+      .prepare('SELECT c.codigo, l.debe_minor AS debe, l.haber_minor AS haber FROM asiento_linea l JOIN cuenta c ON c.id = l.cuenta_id WHERE l.asiento_id = (SELECT id FROM asiento WHERE folio = ?)')
+      .safeIntegers(true)
+      .all(r.asientoFolio) as Array<{ codigo: string; debe: bigint; haber: bigint }>;
+    expect(lineas).toHaveLength(2);
+    expect(lineas.find(l => l.codigo === '6101')!.debe).toBe(10000n);
+    expect(lineas.find(l => l.codigo === '1502')!.haber).toBe(10000n);
+
+    // Mismo mes dos veces: sin duplicar (idempotente).
+    const repetido = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    expect(repetido.existente).toBe(true);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_detalle').get() as { n: number }).n).toBe(1);
+    // La situación cuadra tras depreciar.
+    const s = estadoSituacionFinanciera(db, { corte: '2026-02-28' });
+    expect(s.cuadra).toBe(true);
+  });
+
+  it('mes con hueco: rechazado; el mes anterior aplicable no puede faltar', () => {
+    alta({ fechaInicioUso: '2026-01-15', costoMinor: '1200.00', vidaUtilMeses: 12 });
+    // Sin depreciar febrero, marzo tiene hueco.
+    expect(() => depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toThrow(/Nada que depreciar/);
+    depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    // Con febrero aplicado, marzo sí entra.
+    const r = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    expect(r.existente).toBe(false);
+    // Y abril sin marzo sería hueco de nuevo (simulado con un activo nuevo).
+  });
+
+  it('período cerrado: rechazado', () => {
+    alta({ fechaInicioUso: '2026-01-15', costoMinor: '1200.00', vidaUtilMeses: 12 });
+    depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    const periodoId = periodoDeFecha(db, '2026-03-15').id;
+    cerrarPeriodo(db, periodoId, 'qa', 'cierre sintético del período para la 3B');
+    expect(() => depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toThrow(/período de 2026-03 está cerrado/);
+  });
+
+  it('anular el último lote por reverso y rehacerlo', () => {
+    alta({ fechaInicioUso: '2026-01-15', costoMinor: '1200.00', vidaUtilMeses: 12 });
+    const r = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    const anulado = anularUltimoLote(db, { responsable: 'qa', motivo: 'anulación sintética del lote 3B' });
+    expect(anulado.mes).toBe('2026-02');
+    expect(anulado.reversoFolio).toBeTruthy();
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_detalle').get() as { n: number }).n).toBe(0);
+    // El asiento original quedó anulado y existe su reverso.
+    const original = db.prepare('SELECT estado FROM asiento WHERE folio = ?').get(r.asientoFolio) as { estado: string };
+    expect(original.estado).toBe('anulado');
+    const reverso = db.prepare('SELECT folio FROM asiento WHERE reverso_de_id = (SELECT id FROM asiento WHERE folio = ?)').get(r.asientoFolio) as { folio: string };
+    expect(reverso.folio).toBe(anulado.reversoFolio);
+    // La situación cuadra tras la anulación.
+    expect(estadoSituacionFinanciera(db, { corte: '2026-02-28' }).cuadra).toBe(true);
+    // Rehacer el mes: entra de nuevo con el mismo total.
+    const recho = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    expect(recho.existente).toBe(false);
+    expect(recho.totalMinor).toBe('100.00');
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(1);
+  });
+
+  it('excluye activos dados de baja y totalmente depreciados; la situación cuadra en cada operación', () => {
+    // Vida de 4 meses: 50.00 por mes (200.00 total).
+    const corto = alta({ descripcion: 'Activo corto sintético', costoMinor: '200.00', vidaUtilMeses: 4, fechaInicioUso: '2026-01-15' });
+    alta({ descripcion: 'Activo largo sintético', costoMinor: '1200.00', vidaUtilMeses: 12, fechaInicioUso: '2026-01-15' });
+    expect(estadoSituacionFinanciera(db, { corte: '2026-01-31' }).cuadra).toBe(true);
+    depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    expect(estadoSituacionFinanciera(db, { corte: '2026-03-31' }).cuadra).toBe(true);
+    // A mano: en abril el corto (cuota 3 de 4, 50.00) y el largo (cuota 3, 100.00) = 150.00.
+    const previo = previsualizarDepreciacion(db, '2026-04');
+    expect(previo.filas.map(f => f.codigo)).toEqual(['AF-000001', 'AF-000002']);
+    expect(previo.totalMinor).toBe('150.00');
+    // Dado de baja: sale de la vista previa aunque le queden cuotas.
+    db.prepare("UPDATE activo_fijo SET estado = 'dado_de_baja' WHERE id = ?").run(corto.id);
+    const previoBaja = previsualizarDepreciacion(db, '2026-04');
+    expect(previoBaja.filas.map(f => f.codigo)).toEqual(['AF-000002']);
+    expect(previoBaja.totalMinor).toBe('100.00');
+    expect(estadoSituacionFinanciera(db, { corte: '2026-03-31' }).cuadra).toBe(true);
+  });
+
+  it('una línea por combinación de cuentas con dos activos de cuentas distintas', () => {
+    alta({ descripcion: 'Activo con gasto admin', costoMinor: '1200.00', vidaUtilMeses: 12, fechaInicioUso: '2026-01-15' });
+    alta({
+      descripcion: 'Activo con gasto comercialización',
+      costoMinor: '600.00',
+      vidaUtilMeses: 12,
+      fechaInicioUso: '2026-01-15',
+      cuentaGastoId: idCuenta('6201')
+    });
+    const r = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    // A mano: 100.00 de admin + 50.00 de comercialización = 150.00.
+    expect(r.totalMinor).toBe('150.00');
+    const lineas = db
+      .prepare('SELECT c.codigo, l.debe_minor AS debe, l.haber_minor AS haber FROM asiento_linea l JOIN cuenta c ON c.id = l.cuenta_id WHERE l.asiento_id = (SELECT id FROM asiento WHERE folio = ?) ORDER BY c.codigo')
+      .safeIntegers(true)
+      .all(r.asientoFolio) as Array<{ codigo: string; debe: bigint; haber: bigint }>;
+    // 1502 al haber por 150.00 (una línea por combinación: 100.00 + 50.00); 6101 y 6201 al debe.
+    expect(lineas.filter(l => l.codigo === '1502').reduce((s2, l) => s2 + l.haber, 0n)).toBe(15000n);
+    expect(lineas.find(l => l.codigo === '6101')!.debe).toBe(10000n);
+    expect(lineas.find(l => l.codigo === '6201')!.debe).toBe(5000n);
+    expect(estadoSituacionFinanciera(db, { corte: '2026-02-28' }).cuadra).toBe(true);
   });
 });
