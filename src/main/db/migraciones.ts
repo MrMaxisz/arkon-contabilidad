@@ -620,7 +620,7 @@ CREATE TABLE activo_fijo (
 
 CREATE TABLE depreciacion_lote (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  mes TEXT NOT NULL UNIQUE,
+  mes TEXT NOT NULL,
   asiento_id INTEGER NOT NULL REFERENCES asiento(id),
   total_minor INTEGER NOT NULL,
   responsable TEXT NOT NULL,

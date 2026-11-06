@@ -52,6 +52,14 @@ function alta(entrada: Partial<Parameters<typeof darAltaActivoFijo>[1]> = {}) {
   });
 }
 
+function gastoDepreciacionMinor(): bigint {
+  return (db.prepare(`SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS total
+                     FROM asiento_linea l JOIN asiento a ON a.id = l.asiento_id
+                     WHERE l.cuenta_id = ? AND a.ambito_id = 'administrativo'
+                       AND a.estado IN ('contabilizado', 'anulado')`)
+    .safeIntegers(true).get(idCuenta('6101')) as { total: bigint }).total;
+}
+
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arkon-3a-'));
   rutas = prepararRutasDatos(path.join(dir, 'datos'));
@@ -97,6 +105,9 @@ describe('bloque 3A: migración de activos fijos', () => {
     const insertar = db.prepare('INSERT INTO depreciacion_detalle (lote_id, activo_fijo_id, mes, cuota_minor) VALUES (?, ?, ?, 100)');
     insertar.run(loteId, rAlta.id, '2026-02');
     expect(() => insertar.run(loteId, rAlta.id, '2026-02')).toThrow();
+    // Otro lote del mismo mes es válido; la unicidad del detalle abarca todos los lotes.
+    const segundo = db.prepare("INSERT INTO depreciacion_lote (mes, asiento_id, total_minor, responsable) VALUES ('2026-02', ?, 0, 'qa')").run(asientoId);
+    expect(() => insertar.run(segundo.lastInsertRowid, rAlta.id, '2026-02')).toThrow();
   });
 
   it('una base con esquema anterior (v19) migra a la 20 conservando los datos', () => {
@@ -319,15 +330,23 @@ describe('bloque 3B: depreciación del mes', () => {
     expect(s.cuadra).toBe(true);
   });
 
-  it('mes con hueco: rechazado; el mes anterior aplicable no puede faltar', () => {
+  it('mes con hueco: recupera todas las cuotas anteriores y las muestra en orden', () => {
     alta({ fechaInicioUso: '2026-01-15', costoMinor: '1200.00', vidaUtilMeses: 12 });
-    // Sin depreciar febrero, marzo tiene hueco.
-    expect(() => depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toThrow(/Nada que depreciar/);
-    depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
-    // Con febrero aplicado, marzo sí entra.
+    // A mano: febrero 100.00 + marzo 100.00 = 200.00, contabilizados el 31 de marzo.
+    const previo = previsualizarDepreciacion(db, '2026-03');
+    expect(previo.filas.map(f => [f.mes, f.numeroCuota, f.cuotaMinor])).toEqual([
+      ['2026-02', 1, '100.00'], ['2026-03', 2, '100.00']
+    ]);
+    expect(previo.totalMinor).toBe('200.00');
     const r = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
     expect(r.existente).toBe(false);
-    // Y abril sin marzo sería hueco de nuevo (simulado con un activo nuevo).
+    expect(r.totalMinor).toBe('200.00');
+    expect(gastoDepreciacionMinor()).toBe(20000n);
+    expect(db.prepare('SELECT fecha_operacion AS fecha FROM asiento WHERE folio = ?').get(r.asientoFolio)).toEqual({ fecha: '2026-03-31' });
+    expect(db.prepare('SELECT mes FROM depreciacion_detalle ORDER BY mes').all()).toEqual([
+      { mes: '2026-02' }, { mes: '2026-03' }
+    ]);
+    expect(depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toEqual({ ...r, existente: true });
   });
 
   it('período cerrado: rechazado', () => {
@@ -336,6 +355,87 @@ describe('bloque 3B: depreciación del mes', () => {
     const periodoId = periodoDeFecha(db, '2026-03-15').id;
     cerrarPeriodo(db, periodoId, 'qa', 'cierre sintético del período para la 3B');
     expect(() => depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toThrow(/período de 2026-03 está cerrado/);
+  });
+
+  it('dos inicios distintos: marzo recupera febrero y abril deja todas las cuotas al día', () => {
+    const primero = alta({ fechaInicioUso: '2026-01-15' });
+    const segundo = alta({ fechaInicioUso: '2026-02-15' });
+    // A mano: AF-1 febrero y marzo, AF-2 marzo: 3 x 100.00 = 300.00.
+    const previo = previsualizarDepreciacion(db, '2026-03');
+    expect(previo.filas.map(f => [f.activoId, f.mes, f.numeroCuota])).toEqual([
+      [primero.id, '2026-02', 1], [primero.id, '2026-03', 2], [segundo.id, '2026-03', 1]
+    ]);
+    expect(previo.totalMinor).toBe('300.00');
+    const marzo = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    expect(marzo.totalMinor).toBe('300.00');
+    // Febrero ya está cubierto, aunque no existe lote con mes febrero.
+    expect(depreciarMes(db, { mes: '2026-02', responsable: 'qa' })).toEqual({ ...marzo, existente: true });
+    const abril = depreciarMes(db, { mes: '2026-04', responsable: 'qa' });
+    expect(abril.totalMinor).toBe('200.00');
+    // Hasta abril: AF-1 3 x 100.00 + AF-2 2 x 100.00 = 500.00.
+    expect(gastoDepreciacionMinor()).toBe(50000n);
+    expect(db.prepare('SELECT activo_fijo_id AS activoId, mes FROM depreciacion_detalle ORDER BY activo_fijo_id, mes').all()).toEqual([
+      { activoId: primero.id, mes: '2026-02' }, { activoId: primero.id, mes: '2026-03' },
+      { activoId: primero.id, mes: '2026-04' }, { activoId: segundo.id, mes: '2026-03' },
+      { activoId: segundo.id, mes: '2026-04' }
+    ]);
+    expect(previsualizarDepreciacion(db, '2026-04').filas).toEqual([]);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(2);
+  });
+
+  it('alta tardía: otro lote de marzo recupera febrero y marzo; abril queda completo', () => {
+    alta();
+    depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    const tardio = alta({ descripcion: 'Alta tardía sintética', costoMinor: '600.00' });
+    // A mano: el tardío debe 2 cuotas de 50.00. Las del primer activo ya están aplicadas.
+    const previo = previsualizarDepreciacion(db, '2026-03');
+    expect(previo.filas.map(f => [f.activoId, f.mes, f.cuotaMinor])).toEqual([
+      [tardio.id, '2026-02', '50.00'], [tardio.id, '2026-03', '50.00']
+    ]);
+    const recuperado = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    expect(recuperado.existente).toBe(false);
+    expect(recuperado.totalMinor).toBe('100.00');
+    expect((db.prepare("SELECT COUNT(*) AS n FROM depreciacion_lote WHERE mes = '2026-03'").get() as { n: number }).n).toBe(2);
+    const asientosAntes = (db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n;
+    expect(depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toEqual({ ...recuperado, existente: true });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n).toBe(asientosAntes);
+    const abril = depreciarMes(db, { mes: '2026-04', responsable: 'qa' });
+    expect(abril.totalMinor).toBe('150.00');
+    // Hasta abril: 3 x 100.00 + 3 x 50.00 = 450.00.
+    expect(gastoDepreciacionMinor()).toBe(45000n);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_detalle').get() as { n: number }).n).toBe(6);
+    expect(previsualizarDepreciacion(db, '2026-04').filas).toEqual([]);
+  });
+
+  it('cuotas atrasadas de período cerrado se contabilizan al fin del mes pedido abierto', () => {
+    alta();
+    const febrero = periodoDeFecha(db, '2026-02-01').id;
+    cerrarPeriodo(db, febrero, 'qa', 'Cierre sintético de febrero');
+    // A mano: febrero y marzo suman 200.00; el cierre de febrero impide aplicarlos allí.
+    expect(() => depreciarMes(db, { mes: '2026-02', responsable: 'qa' })).toThrow(/cerrado/);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(0);
+    const marzo = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    expect(marzo.totalMinor).toBe('200.00');
+    expect(db.prepare('SELECT fecha_operacion AS fecha FROM asiento WHERE folio = ?').get(marzo.asientoFolio)).toEqual({ fecha: '2026-03-31' });
+    expect(gastoDepreciacionMinor()).toBe(20000n);
+  });
+
+  it('anula por último id aunque su mes sea anterior al de otro lote', () => {
+    alta();
+    const abril = depreciarMes(db, { mes: '2026-04', responsable: 'qa' });
+    alta({ costoMinor: '600.00', descripcion: 'Tardío para anulación sintética' });
+    const marzo = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    // A mano: abril del primero 300.00; recuperación del segundo 100.00.
+    expect(abril.totalMinor).toBe('300.00');
+    expect(marzo.totalMinor).toBe('100.00');
+    expect(gastoDepreciacionMinor()).toBe(40000n);
+    const anulado = anularUltimoLote(db, { responsable: 'qa', motivo: 'Anular la última ejecución' });
+    expect(anulado.loteId).toBe(marzo.loteId);
+    expect(anulado.mes).toBe('2026-03');
+    expect(db.prepare('SELECT id FROM depreciacion_lote').all()).toEqual([{ id: abril.loteId }]);
+    expect(gastoDepreciacionMinor()).toBe(30000n);
+    expect(previsualizarDepreciacion(db, '2026-04').totalMinor).toBe('150.00');
   });
 
   it('anular el último lote por reverso y rehacerlo', () => {
@@ -353,11 +453,20 @@ describe('bloque 3B: depreciación del mes', () => {
     expect(reverso.folio).toBe(anulado.reversoFolio);
     // La situación cuadra tras la anulación.
     expect(estadoSituacionFinanciera(db, { corte: '2026-02-28' }).cuadra).toBe(true);
-    // Rehacer el mes: entra de nuevo con el mismo total.
+    // Rehacer: asiento NUEVO contabilizado; original y reverso se compensan y queda 100.00.
     const recho = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
     expect(recho.existente).toBe(false);
     expect(recho.totalMinor).toBe('100.00');
+    expect(recho.asientoFolio).not.toBe(r.asientoFolio);
+    expect(db.prepare('SELECT estado FROM asiento WHERE folio = ?').get(recho.asientoFolio)).toEqual({ estado: 'contabilizado' });
+    expect(db.prepare(`SELECT a.folio FROM depreciacion_lote l JOIN asiento a ON a.id = l.asiento_id WHERE l.id = ?`).get(recho.loteId)).toEqual({ folio: recho.asientoFolio });
+    expect(gastoDepreciacionMinor()).toBe(10000n);
+    const asientosAntes = (db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n;
+    expect(depreciarMes(db, { mes: '2026-02', responsable: 'qa' })).toEqual({ ...recho, existente: true });
+    expect((db.prepare('SELECT COUNT(*) AS n FROM asiento').get() as { n: number }).n).toBe(asientosAntes);
     expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote').get() as { n: number }).n).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM depreciacion_detalle').get() as { n: number }).n).toBe(1);
+    expect(gastoDepreciacionMinor()).toBe(10000n);
   });
 
   it('excluye activos dados de baja y totalmente depreciados; la situación cuadra en cada operación', () => {

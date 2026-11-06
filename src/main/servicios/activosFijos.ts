@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { minorATexto, parseMontoMinor } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
@@ -332,6 +333,7 @@ export interface FilaPrevisualizacionDepreciacion {
   cuentaGastoId: number;
   cuentaDepreciacionId: number;
   numeroCuota: number;
+  mes: string;
   cuotaMinor: string;
 }
 
@@ -341,14 +343,7 @@ export interface PrevisualizacionDepreciacion {
   totalMinor: string;
 }
 
-function cuotasAplicadas(db: Database.Database, activoId: number): number {
-  return (
-    db.prepare('SELECT COUNT(*) AS n FROM depreciacion_detalle WHERE activo_fijo_id = ?').get(activoId) as { n: number }
-  ).n;
-}
-
-// Vista previa del mes: activos con cuota pendiente EN ese mes, sin huecos por activo
-// (la cuota n exige las 1..n-1 aplicadas), excluyendo dados de baja y totalmente depreciados.
+// Incluye todas las cuotas pendientes hasta el mes pedido, en orden de mes y activo.
 export function previsualizarDepreciacion(db: Database.Database, mes: string): PrevisualizacionDepreciacion {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
     throw new ErrorActivoFijo(`Mes inválido: ${mes}`);
@@ -356,7 +351,7 @@ export function previsualizarDepreciacion(db: Database.Database, mes: string): P
   const activos = db
     .prepare(
       `SELECT id, codigo, descripcion, cuenta_gasto_id AS cuentaGastoId, cuenta_depreciacion_id AS cuentaDepreciacionId
-       FROM activo_fijo WHERE estado = 'activo' ORDER BY codigo`
+       FROM activo_fijo WHERE estado = 'activo' AND ambito_id = 'administrativo' ORDER BY codigo`
     )
     .all() as Array<{
     id: number;
@@ -369,29 +364,28 @@ export function previsualizarDepreciacion(db: Database.Database, mes: string): P
   let total = 0n;
   for (const activo of activos) {
     const cuadro = cuotasDepreciacionActivo(db, activo.id);
-    const aplicadas = cuotasAplicadas(db, activo.id);
-    if (aplicadas >= cuadro.cuotas.length) {
-      continue; // totalmente depreciado
+    const aplicadas = new Set(
+      (db.prepare('SELECT mes FROM depreciacion_detalle WHERE activo_fijo_id = ?').all(activo.id) as Array<{ mes: string }>)
+        .map(c => c.mes)
+    );
+    for (const cuota of cuadro.cuotas) {
+      if (cuota.mes > mes || aplicadas.has(cuota.mes)) {
+        continue;
+      }
+      filas.push({
+        activoId: activo.id,
+        codigo: activo.codigo,
+        descripcion: activo.descripcion,
+        cuentaGastoId: activo.cuentaGastoId,
+        cuentaDepreciacionId: activo.cuentaDepreciacionId,
+        numeroCuota: cuota.numero,
+        mes: cuota.mes,
+        cuotaMinor: cuota.cuotaMinor
+      });
+      total += parseMontoMinor(cuota.cuotaMinor);
     }
-    const cuota = cuadro.cuotas.find(c => c.mes === mes);
-    if (!cuota) {
-      continue; // sin cuota en ese mes
-    }
-    if (cuota.numero !== aplicadas + 1) {
-      continue; // hueco: exige la cuota siguiente a la última aplicada
-    }
-    const cuotaMinor = parseMontoMinor(cuota.cuotaMinor);
-    filas.push({
-      activoId: activo.id,
-      codigo: activo.codigo,
-      descripcion: activo.descripcion,
-      cuentaGastoId: activo.cuentaGastoId,
-      cuentaDepreciacionId: activo.cuentaDepreciacionId,
-      numeroCuota: cuota.numero,
-      cuotaMinor: cuota.cuotaMinor
-    });
-    total += cuotaMinor;
   }
+  filas.sort((a, b) => a.mes.localeCompare(b.mes) || a.codigo.localeCompare(b.codigo));
   return { mes, filas, totalMinor: minorATexto(total) };
 }
 
@@ -402,9 +396,8 @@ export interface ResultadoDepreciacionMes {
   existente: boolean;
 }
 
-// Depreciación del mes (acción explícita; la vista previa es aparte). Un asiento por mes
-// con clave idempotente depreciacion:YYYY-MM y una línea por combinación de cuentas.
-// Respeta períodos cerrados y no admite huecos por activo.
+// Cada ejecución con pendientes crea un asiento propio al cierre del mes pedido.
+// La idempotencia se determina por las cuotas pendientes, incluso con altas tardías.
 export function depreciarMes(
   db: Database.Database,
   entrada: { mes: string; responsable: string }
@@ -413,21 +406,22 @@ export function depreciarMes(
     throw new ErrorActivoFijo('La depreciación requiere responsable');
   }
   const ejecutar = db.transaction((): ResultadoDepreciacionMes => {
-    // Idempotente PRIMERO: si el mes ya tiene lote, no se duplica aunque ya no quede nada pendiente.
-    const existente = db
-      .prepare('SELECT id, asiento_id, total_minor FROM depreciacion_lote WHERE mes = ?')
-      .get(entrada.mes) as { id: number; asiento_id: number; total_minor: number } | undefined;
-    if (existente) {
-      const folio = (db.prepare('SELECT folio FROM asiento WHERE id = ?').get(existente.asiento_id) as { folio: string }).folio;
-      return {
-        loteId: existente.id,
-        asientoFolio: folio,
-        totalMinor: minorATexto(BigInt(existente.total_minor)),
-        existente: true
-      };
-    }
     const previo = previsualizarDepreciacion(db, entrada.mes);
     if (previo.filas.length === 0) {
+      const existente = db
+        .prepare(`SELECT l.id, a.folio, l.total_minor AS total
+                  FROM depreciacion_lote l JOIN asiento a ON a.id = l.asiento_id
+                  ORDER BY l.id DESC LIMIT 1`)
+        .safeIntegers(true)
+        .get() as { id: bigint; folio: string; total: bigint } | undefined;
+      if (existente) {
+        return {
+          loteId: Number(existente.id),
+          asientoFolio: existente.folio,
+          totalMinor: minorATexto(existente.total),
+          existente: true
+        };
+      }
       throw new ErrorActivoFijo(`Nada que depreciar en ${entrada.mes}`);
     }
     // Período cerrado: se rechaza antes de contabilizar.
@@ -458,7 +452,7 @@ export function depreciarMes(
       lineas,
       origenTipo: 'depreciacion',
       origenId: entrada.mes,
-      claveIdempotencia: `depreciacion:${entrada.mes}`
+      claveIdempotencia: `depreciacion:${entrada.mes}:${randomUUID()}`
     });
     const asientoId = (db.prepare('SELECT id FROM asiento WHERE folio = ?').get(asiento.folio) as { id: number }).id;
     const lote = db
@@ -469,14 +463,14 @@ export function depreciarMes(
       db.prepare('INSERT INTO depreciacion_detalle (lote_id, activo_fijo_id, mes, cuota_minor) VALUES (?, ?, ?, ?)').run(
         loteId,
         fila.activoId,
-        entrada.mes,
+        fila.mes,
         parseMontoMinor(fila.cuotaMinor)
       );
     }
     registroEvento(db, entrada.responsable.trim(), 'depreciacion_mes', 'depreciacion_lote', String(loteId), {
       mes: entrada.mes,
       total: minorATexto(totalMinor),
-      activos: previo.filas.length,
+      activos: new Set(previo.filas.map(f => f.activoId)).size,
       asiento: asiento.folio
     });
     return { loteId, asientoFolio: asiento.folio, totalMinor: minorATexto(totalMinor), existente: false };
@@ -503,17 +497,10 @@ export function anularUltimoLote(
   }
   const ejecutar = db.transaction((): { loteId: number; mes: string; reversoFolio: string } => {
     const lote = db
-      .prepare('SELECT id, mes, asiento_id FROM depreciacion_lote ORDER BY mes DESC LIMIT 1')
+      .prepare('SELECT id, mes, asiento_id FROM depreciacion_lote ORDER BY id DESC LIMIT 1')
       .get() as { id: number; mes: string; asiento_id: number } | undefined;
     if (!lote) {
       throw new ErrorActivoFijo('No hay lotes de depreciación que anular');
-    }
-    // Solo el último: no debe existir ningún lote posterior.
-    const posteriores = (
-      db.prepare('SELECT COUNT(*) AS n FROM depreciacion_lote WHERE mes > ?').get(lote.mes) as { n: number }
-    ).n;
-    if (posteriores > 0) {
-      throw new ErrorActivoFijo('Solo se puede anular el último lote');
     }
     const reverso = anularAsiento(db, lote.asiento_id, entrada.responsable.trim(), entrada.motivo.trim());
     db.prepare('DELETE FROM depreciacion_detalle WHERE lote_id = ?').run(lote.id);
