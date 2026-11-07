@@ -251,7 +251,7 @@ export default function Costos() {
       )}
       <p className="aviso">
         Registro de control interno, no estado financiero legal. Los costos se calculan con asientos del ámbito
-        administrativo y excluyen la familia de cierre.
+        administrativo y excluyen los asientos de cierre del ejercicio.
       </p>
       <div className="fila no-imprimir">
         <label>Desde

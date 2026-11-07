@@ -92,9 +92,11 @@ export function EstadoSinResultados(props: { texto: string }): React.JSX.Element
 // Cifras de dinero para pantalla e impresión con separador de miles (auditoría 70).
 // Los CSV y los cálculos NO usan este formato: solo presentación.
 export function formatoDineroPantalla(minorTexto: string): string {
-  const partes = minorTexto.split('.');
+  const negativo = minorTexto.startsWith('-');
+  const cuerpo = negativo ? minorTexto.slice(1) : minorTexto;
+  const partes = cuerpo.split('.');
   const entero = partes[0] ?? '0';
   const decimales = partes[1] ?? '00';
   const conSeparador = entero.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `$${conSeparador}.${decimales}`;
+  return `${negativo ? '-$' : '$'}${conSeparador}.${decimales}`;
 }

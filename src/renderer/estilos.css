@@ -244,5 +244,8 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
 /* Pestañas de estados financieros (bloque 2). */
 .activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco); border-color: var(--arkon-azul); }
 
+/* Acciones de fila agrupadas en una sola barra compacta. */
+.acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
 /* Fila compacta general (auditoría 72): también fuera de formularios. */
 .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }

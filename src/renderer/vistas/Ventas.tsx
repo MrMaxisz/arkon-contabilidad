@@ -3,7 +3,7 @@ import { api } from '../api';
 import type { VentaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
-import { formatoDineroPantalla } from '../componentes';
+import { BotonPrimario, BotonPeligro, BotonSecundario, EstadoCarga, EstadoError, EstadoSinResultados, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
 interface Proyecto { id: number; codigo: string; nombre: string }
@@ -35,6 +35,8 @@ export default function Ventas() {
   const [motivoClas, setMotivoClas] = useState('');
   const [mesFiltro, setMesFiltro] = useState('');
   const [pagina, setPagina] = useState(0);
+  const [cargandoLista, setCargandoLista] = useState(true);
+  const [errorLista, setErrorLista] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(nuevaClave());
 
@@ -47,16 +49,20 @@ export default function Ventas() {
 
   const cargarDocumentos = useCallback(() => {
     const id = ++cargaDocumentosId.current;
+    setCargandoLista(true);
     api()
       .invocar('venta:listar', { mes: mesFiltro || undefined, limite: 100, desde: pagina * 100 })
       .then(r => {
         if (cargaDocumentosId.current === id) {
           setVentas(r as VentaResumen[]);
+          setErrorLista(null);
+          setCargandoLista(false);
         }
       })
       .catch(err => {
         if (cargaDocumentosId.current === id) {
-          setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
+          setErrorLista(limpiarMensajeError(err));
+          setCargandoLista(false);
         }
       });
   }, [mesFiltro, pagina]);
@@ -226,7 +232,7 @@ export default function Ventas() {
           <label>Base (sin IVA)<input value={base} onChange={e => setBase(e.target.value)} required placeholder="0.00" /></label>
           <label>Tasa IVA %<input value={tasa} onChange={e => setTasa(e.target.value)} /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar venta'}</button>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar venta'}</BotonPrimario>
         </div>
         <p className="menor">
           La clasificación tributaria y el tipo documental son necesarios para la exportación de trabajo; los documentos sin clasificar bloquean la exportación. No se emiten documentos fiscales electrónicos.
@@ -279,19 +285,25 @@ export default function Ventas() {
               </select>
             </label>
             <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={motivoClas} onChange={e => setMotivoClas(e.target.value)} required /></label>
-            <button className="primario" type="submit">Completar clasificación</button>
-            <button type="button" onClick={() => setClasificando(null)}>Cancelar</button>
+            <BotonPrimario type="submit">Completar clasificación</BotonPrimario>
+            <BotonSecundario type="button" onClick={() => setClasificando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
       <h2>{mesFiltro ? `Ventas de ${mesFiltro}` : 'Ventas recientes'}</h2>
-      <div className="fila">
+      <div className="fila no-imprimir">
         <label>Filtrar por mes (vacío = recientes)<input type="month" value={mesFiltro} onChange={e => { setMesFiltro(e.target.value); setPagina(0); }} /></label>
-        <button onClick={() => setPagina(p => Math.max(0, p - 1))} disabled={pagina === 0}>Anteriores</button>
-        <button onClick={() => setPagina(p => p + 1)} disabled={ventas.length < 100}>Siguientes</button>
+        <BotonSecundario onClick={() => setPagina(p => Math.max(0, p - 1))} disabled={pagina === 0}>Anteriores</BotonSecundario>
+        <BotonSecundario onClick={() => setPagina(p => p + 1)} disabled={ventas.length < 100}>Siguientes</BotonSecundario>
       </div>
-      {ventas.length === 0 ? (
-        <p className="vacio">Sin ventas reconocidas.</p>
+      {errorLista ? (
+        <EstadoError mensaje={errorLista} />
+      ) : cargandoLista && ventas.length === 0 ? (
+        <EstadoCarga texto="Cargando ventas…" />
+      ) : ventas.length === 0 ? (
+        mesFiltro
+          ? <EstadoSinResultados texto={`Sin ventas en ${mesFiltro}.`} />
+          : <EstadoVacio texto="Sin ventas reconocidas." />
       ) : (
         <table>
           <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th>Cliente</th><th className="numero">Total</th><th className="numero">Saldo</th><th>Estado</th><th>Clasificación</th><th></th></tr></thead>
@@ -307,15 +319,17 @@ export default function Ventas() {
                 <td>{v.estado}</td>
                 <td>{v.clasificacionDocumento && v.tipoDocumento ? `${v.clasificacionDocumento} · ${v.tipoDocumento}` : 'Pendiente'}</td>
                 <td>
-                  {v.estado === 'registrada' && (
-                    <button onClick={() => {
-                      setClasificando(v);
-                      setClasValor(v.clasificacionDocumento ?? '');
-                      setTipoDocValor(v.tipoDocumento ?? '');
-                      setMotivoClas('');
-                    }}>Clasificar</button>
-                  )}
-                  {v.estado === 'registrada' && <button onClick={e => abrirAnulacion(v, e.currentTarget)}>Anular</button>}
+                  <div className="acciones-fila">
+                    {v.estado === 'registrada' && (
+                      <BotonSecundario onClick={() => {
+                        setClasificando(v);
+                        setClasValor(v.clasificacionDocumento ?? '');
+                        setTipoDocValor(v.tipoDocumento ?? '');
+                        setMotivoClas('');
+                      }}>Clasificar</BotonSecundario>
+                    )}
+                    {v.estado === 'registrada' && <BotonPeligro onClick={e => abrirAnulacion(v, e.currentTarget)}>Anular</BotonPeligro>}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -340,10 +354,10 @@ export default function Ventas() {
               </label>
             </div>
             <div className="fila">
-              <button className="peligro" type="submit" disabled={ocupadoAnular}>
+              <BotonPeligro type="submit" disabled={ocupadoAnular}>
                 {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
-              </button>
-              <button type="button" onClick={cancelarAnulacion}>Cancelar</button>
+              </BotonPeligro>
+              <BotonSecundario type="button" onClick={cancelarAnulacion}>Cancelar</BotonSecundario>
             </div>
           </form>
         </div>

@@ -110,6 +110,9 @@ describe('auditoría 69: tokens de color', () => {
     expect(formatoDineroPantalla('4851.25')).toBe('$4,851.25');
     expect(formatoDineroPantalla('100.00')).toBe('$100.00');
     expect(formatoDineroPantalla('1234567.89')).toBe('$1,234,567.89');
+    // Negativos: el signo va antes del símbolo, -$170.50 y no $-170.50.
+    expect(formatoDineroPantalla('-170.50')).toBe('-$170.50');
+    expect(formatoDineroPantalla('-1234567.89')).toBe('-$1,234,567.89');
   });
 
   it('impresión: ningún select ni input en papel', () => {
