@@ -90,6 +90,16 @@ export default function Respaldo() {
     }
   }
 
+  async function traspasar(comando: 'traspaso:exportar' | 'traspaso:importar') {
+    setOcupado(true); setMensaje(null);
+    try {
+      const r = await api().invocar(comando) as { detalle: string };
+      setMensaje({ texto: r.detalle, tipo: 'ok' });
+      cargar(); cargarAdjuntos(); cargarEstadoPeriodico();
+    } catch (error) { setMensaje({ texto: limpiarMensajeError(error), tipo: 'error' }); }
+    finally { setOcupado(false); }
+  }
+
   async function ejecutarPeriodico() {
     setOcupado(true);
     setMensaje(null);
@@ -158,6 +168,8 @@ export default function Respaldo() {
         <BotonPrimario onClick={crear} disabled={ocupado}>
           {ocupado && !confirmando ? 'Procesando…' : 'Crear respaldo ahora'}
         </BotonPrimario>
+        {' '}<BotonSecundario disabled={ocupado} onClick={() => void traspasar('traspaso:exportar')}>Exportar para otro dispositivo</BotonSecundario>
+        {' '}<BotonSecundario disabled={ocupado} onClick={() => void traspasar('traspaso:importar')}>Importar de otro dispositivo</BotonSecundario>
       </p>
       {confirmando && (
         <p className="aviso">

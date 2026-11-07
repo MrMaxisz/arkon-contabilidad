@@ -16,6 +16,7 @@ import {
 import { registroEvento } from './servicios/bitacora';
 import { construirHtmlReporte, type DatosReporte, type TablaReporte } from './servicios/reportesPdf';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
+import { exportarTraspaso, importarTraspaso } from './servicios/traspaso';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -25,12 +26,26 @@ function objetoSolicitud(payload: unknown): Record<string, unknown> {
 }
 
 export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): void {
-  ipcMain.handle('arkon', (evento, solicitud) => {
+  ipcMain.handle('arkon', async (evento, solicitud) => {
     if (evento.sender.id !== ventanaWebContentsId) {
       throw new Error('Remitente no autorizado');
     }
     const p = objetoSolicitud(solicitud);
     const nombre = typeof p.comando === 'string' ? p.comando : '';
+    if (nombre === 'traspaso:exportar') {
+      const destino = await dialog.showSaveDialog({ title: 'Exportar para otro dispositivo', defaultPath: 'arkon.arkon', filters: [{ name: 'Traspaso ARKON', extensions: ['arkon'] }] });
+      if (destino.canceled || !destino.filePath) return { detalle: 'Exportación cancelada.' };
+      const paquete = await exportarTraspaso(ctx);
+      fs.writeFileSync(destino.filePath, paquete.bytes);
+      return { detalle: 'Paquete exportado para otro dispositivo.' };
+    }
+    if (nombre === 'traspaso:importar') {
+      const seleccion = await dialog.showOpenDialog({ title: 'Importar de otro dispositivo', properties: ['openFile'], filters: [{ name: 'Traspaso ARKON', extensions: ['arkon'] }] });
+      if (seleccion.canceled || !seleccion.filePaths[0]) return { detalle: 'Importación cancelada.' };
+      const confirmacion = await dialog.showMessageBox({ type: 'warning', message: '¿Restaurar la base de otro dispositivo?', detail: 'Se conservará una copia del estado actual antes de sustituir la base.', buttons: ['Cancelar', 'Sí, restaurar'], defaultId: 0, cancelId: 0 });
+      if (confirmacion.response !== 1) return { detalle: 'Importación cancelada.' };
+      return importarTraspaso(ctx, fs.readFileSync(seleccion.filePaths[0]));
+    }
     return despachar(ctx, nombre, p.datos);
   });
 

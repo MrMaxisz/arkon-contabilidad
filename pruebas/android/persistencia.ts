@@ -1,4 +1,5 @@
 import { crearPuenteAndroid } from '../../src/plataforma/puenteAndroid';
+import { probarTraspaso } from './traspaso';
 
 const esperar = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function abrir() {
@@ -38,5 +39,6 @@ function abrir() {
   const trasCorte = await motor.api.invocar('balance:resumen');
   await motor.api.invocar('$cerrar');
   motor.worker.terminate();
-  return { persistido, trasCorte, contrapartes, rechazos, aislado: crossOriginIsolated };
+  const traspaso = await probarTraspaso();
+  return { persistido, trasCorte, contrapartes, rechazos, traspaso, aislado: crossOriginIsolated };
 })();

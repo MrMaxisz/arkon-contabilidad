@@ -15,6 +15,8 @@ export const COMANDOS_PERMITIDOS = new Set([
   'resultados:estructurado',
   'situacion:consultar',
   'respaldo:crear',
+  'traspaso:exportar',
+  'traspaso:importar',
   'respaldo:listar',
   'respaldo:restaurar',
   'bitacora:listar',

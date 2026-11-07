@@ -243,7 +243,7 @@ export function restaurarRespaldo(
   const versionActual = versionEsquemaActual();
   if (versionRespaldo > versionActual) {
     throw new ErrorRespaldo(
-      `El respaldo usa esquema ${versionRespaldo}, superior al soportado (${versionActual}); restauración bloqueada`
+      `El respaldo usa esquema ${versionRespaldo}, superior al soportado (${versionActual}); restauración bloqueada. Actualiza la app para abrirlo.`
     );
   }
   const areaTemporal = `${rutaBaseActiva}.restauracion-tmp`;
