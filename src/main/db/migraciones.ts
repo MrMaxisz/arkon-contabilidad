@@ -596,6 +596,10 @@ ALTER TABLE retencion ADD COLUMN persona_natural INTEGER;
     version: 20,
     nombre: 'activos_fijos',
     sql: `
+-- v4 podía crear 1203 sin padre cuando aún no estaba sembrado el grupo 12.
+UPDATE cuenta SET padre_id = (SELECT id FROM cuenta WHERE codigo = '12')
+WHERE codigo = '1203' AND padre_id IS NULL;
+
 -- En bases nuevas el catálogo se siembra después de migrar; en bases v19
 -- estas cuentas se incorporan aquí bajo sus grupos de resultado.
 INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id)

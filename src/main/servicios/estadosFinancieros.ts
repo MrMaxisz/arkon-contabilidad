@@ -499,7 +499,7 @@ export function estadoSituacionFinanciera(
       cuentaPorId.set(g.id, { codigo: g.codigo, padreId: g.padreId });
     }
     // Primer ancestro (subiendo por padre_id) cuyo código esté en la tabla de clasificación;
-    // si ninguno está, la cuenta queda SIN CLASIFICAR (marcada, nunca dada por corriente).
+    // sin padre se usa el grupo del código propio; si ninguno está, queda SIN CLASIFICAR.
     const clasificacionDe = (id: number, visitados: Set<number>): string | undefined => {
       const info = cuentaPorId.get(id);
       if (!info || visitados.has(id)) {
@@ -520,7 +520,9 @@ export function estadoSituacionFinanciera(
       // una cuenta 1199 colgada bajo el grupo 15 es NO corriente aunque su prefijo sea 11.
       grupoRaiz.set(
         Number(f.id),
-        f.padreId === null ? '' : clasificacionDe(Number(f.padreId), new Set([Number(f.id)])) ?? ''
+        f.padreId === null
+          ? clasificacionDe(Number(f.id), new Set()) ?? ''
+          : clasificacionDe(Number(f.padreId), new Set([Number(f.id)])) ?? ''
       );
     }
 

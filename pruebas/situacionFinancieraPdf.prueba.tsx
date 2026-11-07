@@ -93,10 +93,10 @@ afterEach(() => {
   cleanup();
 });
 
-async function abrirEImprimir(comparativo: boolean, conContrarios = true) {
+async function abrirEImprimir(comparativo: boolean, conContrarios = true, estado = situacion(comparativo, conContrarios)) {
   invocar.mockImplementation((comando: string) => {
     if (comando === 'situacion:consultar') {
-      return Promise.resolve(situacion(comparativo, conContrarios));
+      return Promise.resolve(estado);
     }
     return Promise.resolve(null);
   });
@@ -114,6 +114,24 @@ async function abrirEImprimir(comparativo: boolean, conContrarios = true) {
 }
 
 describe('6D: PDF del estado de situación financiera', () => {
+  it('6F: omite secciones vacías sin perder totales ni filas con saldo cero', async () => {
+    const e = situacion(false, false);
+    e.activo.noCorriente = [];
+    e.activo.sinClasificar = [];
+    e.pasivo.noCorriente = [];
+    e.pasivo.sinClasificar = [];
+    e.activo.totalMinor = '1234.56';
+    e.pasivo.totalMinor = '500.00';
+    e.patrimonio.filas = [fila('3101', 'Capital', false, false, '734.56'), fila('3201', 'Resultado', false, false, '0.00')];
+    e.patrimonio.totalMinor = '734.56'; // 500 + 734.56 = 1234.56.
+    const r = await abrirEImprimir(false, false, e);
+    expect(r.tablas.map(t => t.titulo)).toEqual(['Activo corriente', 'Pasivo corriente', 'Patrimonio', 'Totales']);
+    expect(r.tablas[2]!.filas).toContainEqual(['3201', 'Resultado', '$0.00']);
+    expect(r.tablas[3]!.filas).toEqual([
+      ['Total activo', '', '$1,234.56'], ['Total pasivo', '', '$500.00'], ['Total patrimonio', '', '$734.56']
+    ]);
+  });
+
   it('incluye secciones, sin clasificar, totales, saldos contrarios y comparativo con separador de miles', async () => {
     const capturada = await abrirEImprimir(true);
 

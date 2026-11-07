@@ -98,7 +98,7 @@ function tablasSituacion(e: EstadoSituacionFinanciera): Array<{
         ['Total patrimonio', '', formatoDineroPantalla(e.patrimonio.totalMinor)]
       ]
     }
-  ];
+  ].filter(tabla => tabla.filas.length > 0);
   if (e.saldosContrarios.length > 0) {
     tablas.push(seccion('Saldos contrarios', e.saldosContrarios));
   }
