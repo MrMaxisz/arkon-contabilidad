@@ -67,6 +67,58 @@ function filasSeccion(filas: Seccion[], deduccion: boolean): string[][] {
   return filas.map(f => [f.codigo, f.nombre, deduccion ? importeDeduccion(f.importeMinor) : f.importeMinor]);
 }
 
+// El PDF conserva el signo de los saldos contrarios y usa separador de miles.
+function filasImporte(filas: Array<{ codigo: string; nombre: string; saldoMinor: string }>): string[][] {
+  return filas.map(f => [f.codigo, f.nombre, formatoDineroPantalla(f.saldoMinor)]);
+}
+
+function tablasSituacion(e: EstadoSituacionFinanciera): Array<{
+  titulo?: string;
+  encabezados: string[];
+  filas: string[][];
+  total?: string[];
+}> {
+  const encabezados = ['Código', 'Nombre', 'Importe'];
+  const seccion = (titulo: string, filas: Array<{ codigo: string; nombre: string; saldoMinor: string }>) => ({
+    titulo,
+    encabezados,
+    filas: filasImporte(filas)
+  });
+  const tablas = [
+    seccion('Activo corriente', e.activo.corriente),
+    seccion('Activo no corriente', e.activo.noCorriente),
+    seccion('Activo sin clasificar', e.activo.sinClasificar),
+    seccion('Pasivo corriente', e.pasivo.corriente),
+    seccion('Pasivo no corriente', e.pasivo.noCorriente),
+    seccion('Pasivo sin clasificar', e.pasivo.sinClasificar),
+    seccion('Patrimonio', e.patrimonio.filas),
+    {
+      titulo: 'Totales',
+      encabezados,
+      filas: [
+        ['Total activo', '', formatoDineroPantalla(e.activo.totalMinor)],
+        ['Total pasivo', '', formatoDineroPantalla(e.pasivo.totalMinor)],
+        ['Total patrimonio', '', formatoDineroPantalla(e.patrimonio.totalMinor)]
+      ]
+    }
+  ];
+  if (e.saldosContrarios.length > 0) {
+    tablas.push(seccion('Saldos contrarios', e.saldosContrarios));
+  }
+  if (e.comparativo) {
+    tablas.push({
+      titulo: `Comparativo al ${e.comparativo.corte}`,
+      encabezados: ['Concepto', 'Importe'],
+      filas: [
+        ['Total activo', formatoDineroPantalla(e.comparativo.activo.totalMinor)],
+        ['Total pasivo', formatoDineroPantalla(e.comparativo.pasivo.totalMinor)],
+        ['Total patrimonio', formatoDineroPantalla(e.comparativo.patrimonio.totalMinor)]
+      ]
+    });
+  }
+  return tablas;
+}
+
 export default function EstadosFinancieros() {
   const [pestana, setPestana] = useState<Pestana>('comprobacion');
   const [desde, setDesde] = useState('2026-01-01');
@@ -298,6 +350,7 @@ export default function EstadosFinancieros() {
             <label>Corte<input type="date" value={corte} onChange={e => setCorte(e.target.value)} /></label>
             <label>Corte comparativo (opcional)<input type="date" value={corteComparativo} onChange={e => setCorteComparativo(e.target.value)} /></label>
             <BotonSecundario onClick={() => cargarSituacion()}>Recalcular</BotonSecundario>
+            <BotonSecundario onClick={() => void imprimir('Estado de situación financiera', `Al ${situacion.corte}`, tablasSituacion(situacion))}>Imprimir…</BotonSecundario>
           </div>
           <h2>Activo</h2>
           <table><tbody>{[...situacion.activo.corriente, ...situacion.activo.noCorriente, ...situacion.activo.sinClasificar].map(f => <tr key={f.codigo}><td className="folio">{f.codigo}</td><td>{f.nombre} {f.sinClasificar ? '(sin clasificar)' : f.corriente ? '' : '(no corriente)'}</td><td className="numero">{formatoDineroPantalla(f.saldoMinor)}</td></tr>)}</tbody>
