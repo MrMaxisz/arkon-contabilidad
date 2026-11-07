@@ -110,6 +110,30 @@ export function MenuAccionesFila(props: { etiqueta: string; children: React.Reac
   );
 }
 
+// Controles visibles de paginación (bloque 5D). Solo presentación; la lista que se muestra
+// ya viene filtrada por quien la usa.
+export function Paginacion(props: {
+  elemento: string;
+  total: number;
+  pagina: number;
+  tamano: number;
+  enAnteriores: () => void;
+  enSiguientes: () => void;
+}): React.JSX.Element {
+  const totalPaginas = Math.max(1, Math.ceil(props.total / props.tamano));
+  return (
+    <div className="controles-pagina">
+      <p className="menor">
+        {props.total} {props.elemento}(s) · Página {props.pagina + 1} de {totalPaginas}
+      </p>
+      <div className="paginacion">
+        <BotonSecundario onClick={props.enAnteriores} disabled={props.pagina === 0}>Anteriores</BotonSecundario>
+        <BotonSecundario onClick={props.enSiguientes} disabled={(props.pagina + 1) * props.tamano >= props.total}>Siguientes</BotonSecundario>
+      </div>
+    </div>
+  );
+}
+
 // Cifras de dinero para pantalla e impresión con separador de miles (auditoría 70).
 // Los CSV y los cálculos NO usan este formato: solo presentación.
 export function formatoDineroPantalla(minorTexto: string): string {

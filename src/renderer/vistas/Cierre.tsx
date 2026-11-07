@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { EstadoSinResultados, BotonPrimario, BotonSecundario, Paginacion } from '../componentes';
 
 interface Periodo {
   id: number;
@@ -28,6 +29,11 @@ export default function Cierre() {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const clave = useRef(`cierre-${Date.now()}`);
+
+  // Búsqueda y paginación de las cuentas de resultado con saldo (bloque 5D).
+  const TAMANO_PAGINA_RESULTADOS = 10;
+  const [busquedaResultados, setBusquedaResultados] = useState('');
+  const [paginaResultados, setPaginaResultados] = useState(0);
 
   async function consultar(limpiarMensaje = true) {
     if (limpiarMensaje) {
@@ -104,7 +110,7 @@ export default function Cierre() {
             placeholder="2026"
           />
         </label>
-        <button onClick={() => void consultar()}>Consultar estado</button>
+        <BotonSecundario onClick={() => void consultar()}>Consultar estado</BotonSecundario>
       </div>
 
       {estado && (
@@ -131,18 +137,59 @@ export default function Cierre() {
           {estado.cuentasResultado.length === 0 ? (
             <p className="vacio">Sin saldos pendientes en cuentas de resultados.</p>
           ) : (
-            <table>
-              <thead><tr><th>Cuenta</th><th>Tipo</th><th className="numero">Saldo</th></tr></thead>
-              <tbody>
-                {estado.cuentasResultado.map(c => (
-                  <tr key={c.codigo}>
-                    <td>{c.codigo} · {c.nombre}</td>
-                    <td>{c.tipo}</td>
-                    <td className="numero">${c.saldoMinor}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <>
+              <div className="fila no-imprimir">
+                <label>Buscar cuenta
+                  <input
+                    value={busquedaResultados}
+                    onChange={e => {
+                      setBusquedaResultados(e.target.value);
+                      setPaginaResultados(0);
+                    }}
+                    placeholder="Código o nombre"
+                  />
+                </label>
+              </div>
+              {(() => {
+                const texto = busquedaResultados.trim().toLowerCase();
+                const filtradas = estado.cuentasResultado.filter(c =>
+                  !texto ||
+                  c.codigo.toLowerCase().includes(texto) ||
+                  c.nombre.toLowerCase().includes(texto)
+                );
+                const visibles = filtradas.slice(
+                  paginaResultados * TAMANO_PAGINA_RESULTADOS,
+                  (paginaResultados + 1) * TAMANO_PAGINA_RESULTADOS
+                );
+                if (filtradas.length === 0) {
+                  return <EstadoSinResultados texto="Ninguna cuenta de resultado coincide con la búsqueda." />;
+                }
+                return (
+                  <>
+                    <table>
+                      <thead><tr><th>Cuenta</th><th>Tipo</th><th className="numero">Saldo</th></tr></thead>
+                      <tbody>
+                        {visibles.map(c => (
+                          <tr key={c.codigo}>
+                            <td>{c.codigo} · {c.nombre}</td>
+                            <td>{c.tipo}</td>
+                            <td className="numero">${c.saldoMinor}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <Paginacion
+                      elemento="cuenta"
+                      total={filtradas.length}
+                      pagina={paginaResultados}
+                      tamano={TAMANO_PAGINA_RESULTADOS}
+                      enAnteriores={() => setPaginaResultados(p => Math.max(0, p - 1))}
+                      enSiguientes={() => setPaginaResultados(p => p + 1)}
+                    />
+                  </>
+                );
+              })()}
+            </>
           )}
           <p className="menor">Resultado neto del ejercicio: ${estado.resultadoNetoMinor}</p>
           {estado.cierreExistente ? (
@@ -172,12 +219,12 @@ export default function Cierre() {
           </label>
         </div>
         <div className="fila">
-          <button className="primario" type="submit" disabled={ocupado || !estado}>
+          <BotonPrimario type="submit" disabled={ocupado || !estado}>
             {ocupado ? 'Cerrando…' : 'Contabilizar cierre y cerrar diciembre'}
-          </button>
-          <button type="button" disabled={!estado || estado.periodoDiciembreAbierto} onClick={() => void reabrir()}>
+          </BotonPrimario>
+          <BotonSecundario type="button" disabled={!estado || estado.periodoDiciembreAbierto} onClick={() => void reabrir()}>
             Reabrir diciembre
-          </button>
+          </BotonSecundario>
         </div>
       </form>
       <p className="menor">

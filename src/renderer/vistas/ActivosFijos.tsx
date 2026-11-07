@@ -170,6 +170,16 @@ interface FormAlta {
 
 type Mensaje = { texto: string; tipo: 'ok' | 'error' } | null;
 
+// Sección plegable (bloque 5D): divide la pantalla larga en bloques con encabezado clicable.
+function SeccionPlegable(props: { titulo: string; abierta?: boolean; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <details className="seccion-plegable" open={props.abierta ?? false}>
+      <summary><h2>{props.titulo}</h2></summary>
+      <div className="cuerpo-seccion">{props.children}</div>
+    </details>
+  );
+}
+
 function altaInicial(): FormAlta {
   const hoy = fechaLocalElSalvador();
   return {
@@ -785,7 +795,7 @@ export default function ActivosFijos() {
       <h1>Activos fijos</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo}`}>{mensaje.texto}</p>}
 
-      <h2>Listado</h2>
+      <SeccionPlegable titulo="Listado" abierta>
       <div className="fila">
         <label>Buscar
           <input
@@ -848,7 +858,7 @@ export default function ActivosFijos() {
                 <td className="numero">{formatoDineroPantalla(a.valorLibrosMinor)}</td>
                 <td>{a.estado}</td>
                 <td>
-                  <button onClick={() => abrirFicha(a.id)}>Ficha</button>
+                  <BotonSecundario onClick={() => abrirFicha(a.id)}>Ficha</BotonSecundario>
                 </td>
               </tr>
             ))}
@@ -927,8 +937,9 @@ export default function ActivosFijos() {
           )}
         </section>
       )}
+      </SeccionPlegable>
 
-      <h2>Depreciación del mes</h2>
+      <SeccionPlegable titulo="Depreciación del mes">
       <div className="fila">
         <label>Mes
           <input type="month" value={mesDepreciacion} onChange={e => cambiarMesDepreciacion(e.target.value)} />
@@ -997,7 +1008,9 @@ export default function ActivosFijos() {
         </>
       )}
 
-      <h2>Alta de activo fijo</h2>
+      </SeccionPlegable>
+
+      <SeccionPlegable titulo="Alta de activo fijo">
       {errorAlta && <EstadoError mensaje={errorAlta} />}
       <form onSubmit={registrarAlta}>
         <div className="fila">
@@ -1063,8 +1076,9 @@ export default function ActivosFijos() {
           Sin compra de origen, el alta contabiliza el asiento con la cuenta de contrapartida elegida.
         </p>
       </form>
+      </SeccionPlegable>
 
-      <h2>Cuadro general</h2>
+      <SeccionPlegable titulo="Cuadro general">
       <div className="fila">
         <label>Fecha de corte
           <input type="date" value={corte} onChange={e => cambiarCorte(e.target.value)} />
@@ -1183,6 +1197,8 @@ export default function ActivosFijos() {
           )}
         </>
       )}
+
+      </SeccionPlegable>
 
       {dialogoAnular && ultimoLote && (
         <div className="aviso" role="dialog" aria-label={`Anular último lote ${ultimoLote.mes}`}>

@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
-import { BotonPrimario, BotonSecundario, EstadoVacio, formatoDineroPantalla } from '../componentes';
+import { BotonPeligro, BotonPrimario, BotonSecundario, EstadoVacio, formatoDineroPantalla } from '../componentes';
+import { minorATexto, parseMontoMinor } from '../../shared/dinero';
 
 interface Cuenta {
   id: number;
@@ -92,6 +93,21 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
   }, [cuentaMayor, cuentas]);
 
   const movimientos = cuentas.filter(c => !c.esGrupo && c.activa);
+
+  // Totales del asiento en pantalla: solo sumas exactas de montos ya válidos; lo que
+  // aún no se puede leer como monto no se suma (bloque 5D, solo presentación).
+  const montoDeTexto = (texto: string): bigint => {
+    if (!/^\d+(\.\d+)?$/.test(texto.trim())) {
+      return 0n;
+    }
+    try {
+      return parseMontoMinor(texto);
+    } catch {
+      return 0n;
+    }
+  };
+  const totalDebe = lineas.reduce((suma, l) => suma + montoDeTexto(l.debe), 0n);
+  const totalHaber = lineas.reduce((suma, l) => suma + montoDeTexto(l.haber), 0n);
 
   async function contabilizar(e: React.FormEvent) {
     e.preventDefault();
@@ -187,9 +203,15 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
+        <div className="fila-linea cabecera-lineas" aria-hidden="true">
+          <span>Cuenta</span>
+          <span className="numero">Debe</span>
+          <span className="numero">Haber</span>
+          <span></span>
+        </div>
         {lineas.map((l, i) => (
-          <div className="fila" key={i}>
-            <label style={{ flex: 3 }}>
+          <div className="fila-linea" key={i}>
+            <label>
               Cuenta
               <select
                 value={l.cuentaId}
@@ -221,13 +243,19 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             )}
           </div>
         ))}
+        <div className="fila-linea totales-lineas">
+          <span>Totales</span>
+          <span className="numero">{formatoDineroPantalla(minorATexto(totalDebe))}</span>
+          <span className="numero">{formatoDineroPantalla(minorATexto(totalHaber))}</span>
+          <span className="numero">Diferencia: {formatoDineroPantalla(minorATexto(totalDebe - totalHaber))}</span>
+        </div>
         <div className="fila">
           <BotonSecundario onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
             Agregar línea
           </BotonSecundario>
-          <button className="primario" type="submit" disabled={ocupado}>
+          <BotonPrimario type="submit" disabled={ocupado}>
             {ocupado ? 'Contabilizando…' : 'Contabilizar'}
-          </button>
+          </BotonPrimario>
         </div>
       </form>
 
@@ -247,7 +275,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             <label style={{ flex: 2 }}>Motivo (obligatorio)
               <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
             </label>
-            <button className="peligro" type="submit" disabled={anulandoAsiento}>{anulandoAsiento ? 'Anulando…' : 'Confirmar anulación'}</button>
+            <BotonPeligro type="submit" disabled={anulandoAsiento}>{anulandoAsiento ? 'Anulando…' : 'Confirmar anulación'}</BotonPeligro>
             <BotonSecundario onClick={() => setAnulando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
@@ -269,7 +297,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
                 <td>{a.concepto}</td>
                 <td>{a.estado}</td>
                 <td className="numero">{formatoDineroPantalla(a.totalMinor)}</td>
-                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={e => pedirAnulacion(a, e.currentTarget)}>Anular</button>}</td>
+                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <BotonSecundario onClick={e => pedirAnulacion(a, e.currentTarget)}>Anular</BotonSecundario>}</td>
               </tr>
             ))}
           </tbody>

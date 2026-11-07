@@ -241,8 +241,8 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
 /* Filtros activos como texto en impresión (auditoría 71): visibles en papel, ocultos los controles. */
 .filtros-impresion { margin: 0 0 8px; }
 
-/* Pestañas de estados financieros (bloque 2). */
-.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco); border-color: var(--arkon-azul); }
+/* Pestañas de estados financieros y fiscal (bloques 2 y 5D): fondo azul aunque el botón sea secundario. */
+button.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco); border-color: var(--arkon-azul); }
 
 /* Acciones de fila agrupadas en una sola barra compacta. */
 .acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
@@ -268,3 +268,22 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
 
 /* Fila compacta general (auditoría 72): también fuera de formularios. */
 .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+
+/* Líneas del asiento en cuadrícula (bloque 5D): columnas estables Cuenta / Debe / Haber / acción. */
+.fila-linea { display: grid; grid-template-columns: minmax(220px, 3fr) 140px 140px auto; gap: 10px; align-items: end; margin-bottom: 8px; }
+.cabecera-lineas { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--texto-suave); font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; }
+.fila-linea .numero { text-align: right; font-variant-numeric: tabular-nums; }
+.totales-lineas { border-top: 2px solid var(--arkon-marino); padding-top: 8px; margin-bottom: 12px; font-weight: 600; }
+
+/* Controles visibles de búsqueda y paginación (bloque 5D). */
+.controles-pagina { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 16px; }
+.controles-pagina .paginacion { display: flex; gap: 8px; align-items: center; }
+
+/* Secciones plegables (bloque 5D): pestañas largas se dividen en bloques con encabezado clicable. */
+.seccion-plegable { border: 1px solid var(--borde); background: var(--arkon-blanco); margin-bottom: 20px; }
+.seccion-plegable > summary { cursor: pointer; list-style: none; padding: 10px 14px; }
+.seccion-plegable > summary::-webkit-details-marker { display: none; }
+.seccion-plegable > summary:hover { background: var(--arkon-azul-suave); }
+.seccion-plegable > summary h2 { display: inline; margin: 0; }
+.seccion-plegable[open] > summary { border-bottom: 1px solid var(--borde); }
+.seccion-plegable .cuerpo-seccion { padding: 0 14px 8px; }

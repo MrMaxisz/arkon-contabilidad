@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { ContraparteResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonSecundario } from '../componentes';
 
 interface Vigencia {
   id: number;
@@ -301,11 +302,10 @@ export default function Impuestos() {
   return (
     <div>
       <h1>Impuestos</h1>
-      <div className="fila" role="tablist" aria-label="Subáreas de impuestos">
+      <div className="fila no-imprimir" role="tablist" aria-label="Subáreas de impuestos">
         {subareas.map((area, indice) => (
-          <button
+          <BotonSecundario
             key={area.id}
-            type="button"
             role="tab"
             id={`impuestos-tab-${area.id}`}
             aria-controls={`impuestos-panel-${area.id}`}
@@ -324,7 +324,7 @@ export default function Impuestos() {
               setSubarea(siguiente.id);
               document.getElementById(`impuestos-tab-${siguiente.id}`)?.focus();
             }}
-          >{area.texto}</button>
+          >{area.texto}</BotonSecundario>
         ))}
       </div>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
@@ -360,8 +360,8 @@ export default function Impuestos() {
           <div className="fila">
             <label>Hasta<input type="date" value={cierreFecha} onChange={e => setCierreFecha(e.target.value)} required /></label>
             <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={cierreMotivo} onChange={e => setCierreMotivo(e.target.value)} required /></label>
-            <button className="primario" type="submit">Confirmar cierre</button>
-            <button type="button" onClick={() => setCerrandoId(null)}>Cancelar</button>
+            <BotonPrimario type="submit">Confirmar cierre</BotonPrimario>
+            <BotonSecundario type="button" onClick={() => setCerrandoId(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
@@ -380,7 +380,7 @@ export default function Impuestos() {
                 <td>{v.fuente ?? '—'}</td>
                 <td>
                   {v.hasta === null && (
-                    <button onClick={() => { setCerrandoId(v.id); setCierreMotivo(''); }}>Cerrar vigencia</button>
+                    <BotonSecundario onClick={() => { setCerrandoId(v.id); setCierreMotivo(''); }}>Cerrar vigencia</BotonSecundario>
                   )}
                 </td>
               </tr>
@@ -435,10 +435,10 @@ export default function Impuestos() {
         <p className="vacio">Sin ventas en el mes.</p>
       )}
       <div className="fila">
-        <button onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</button>
-        <button onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</button>
-        <button onClick={() => void guardarArchivo('venta')}>Guardar libro de ventas en archivo…</button>
-        <button onClick={() => void guardarArchivo('compra')}>Guardar libro de compras en archivo…</button>
+        <BotonSecundario onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</BotonSecundario>
+        <BotonSecundario onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarArchivo('venta')}>Guardar libro de ventas en archivo…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarArchivo('compra')}>Guardar libro de compras en archivo…</BotonSecundario>
       </div>
       {exportacion && (
         <div>
@@ -552,12 +552,12 @@ export default function Impuestos() {
         <label>Período del anexo (AAAA-MM)
           <input value={anexoMes} onChange={e => setAnexoMes(e.target.value)} placeholder="2026-11" />
         </label>
-        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void diagnosticarAnexo()}>
+        <BotonSecundario type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void diagnosticarAnexo()}>
           Diagnosticar
-        </button>
-        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void guardarAnexo()}>
+        </BotonSecundario>
+        <BotonSecundario type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void guardarAnexo()}>
           Guardar anexo de presentación…
-        </button>
+        </BotonSecundario>
       </div>
       {anexoDiagnostico && (
         <div>
@@ -569,7 +569,7 @@ export default function Impuestos() {
           {anexoDiagnostico.folios.map(f => (
             <p key={f.folio} className="menor">
               {f.folio}: {f.faltantes.join(' · ')}{' '}
-              <button type="button" onClick={() => void seleccionarDocumento(f.documentoId, anexoDiagnostico.tipoDocumento)}>Completar…</button>
+              <BotonSecundario type="button" onClick={() => void seleccionarDocumento(f.documentoId, anexoDiagnostico.tipoDocumento)}>Completar…</BotonSecundario>
             </p>
           ))}
         </div>
@@ -741,54 +741,54 @@ export default function Impuestos() {
       </form>
       <h2>Anexo 2 F-07 v14 (ventas a consumidor final)</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo2Ventas', 2, 'venta')}
         >
           Diagnosticar Anexo 2
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarAnexoGenerico(2)}
         >
           Guardar Anexo 2…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Anexo 3 F-07 v14 (compras)</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo3Compras', 3, 'compra')}
         >
           Diagnosticar Anexo 3
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarAnexoGenerico(3)}
         >
           Guardar Anexo 3…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Anexo de Retenciones F-14 v16</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarF14()}
         >
           Diagnosticar F-14
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarF14()}
         >
           Guardar anexo F-14…
-        </button>
+        </BotonSecundario>
       </div>
       {f14Diagnostico && (
         <div>

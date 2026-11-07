@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { InfoRespaldo } from '../../shared/contratos';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPeligro, BotonPrimario, BotonSecundario, EstadoSinResultados, Paginacion } from '../componentes';
 
+// Búsqueda y paginación visibles en respaldos y adjuntos (bloque 5D).
+const TAMANO_PAGINA = 10;
 
 export default function Respaldo() {
   const [respaldos, setRespaldos] = useState<InfoRespaldo[]>([]);
@@ -24,6 +27,10 @@ export default function Respaldo() {
   const [retencionMinutos, setRetencionMinutos] = useState('5');
   const [vinculos, setVinculos] = useState<Record<string, Array<{ folio: string; concepto: string; fecha: string }>>>({ venta: [], compra: [], cotizacion: [], proyecto: [] });
   const [busquedaDocumento, setBusquedaDocumento] = useState('');
+  const [busquedaRespaldos, setBusquedaRespaldos] = useState('');
+  const [paginaRespaldos, setPaginaRespaldos] = useState(0);
+  const [busquedaAdjuntos, setBusquedaAdjuntos] = useState('');
+  const [paginaAdjuntos, setPaginaAdjuntos] = useState(0);
   const [estadoPeriodico, setEstadoPeriodico] = useState<{
     intervaloMinutos: number;
     ultimoRespaldo: { creadoEn: string; nombre: string } | null;
@@ -148,38 +155,74 @@ export default function Respaldo() {
       <h1>Respaldo y restauración</h1>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <p>
-        <button className="primario" onClick={crear} disabled={ocupado}>
+        <BotonPrimario onClick={crear} disabled={ocupado}>
           {ocupado && !confirmando ? 'Procesando…' : 'Crear respaldo ahora'}
-        </button>
+        </BotonPrimario>
       </p>
       {confirmando && (
         <p className="aviso">
           ¿Restaurar «{confirmando.nombre}»? Se conservará una copia del estado actual antes de sustituir la base.
-          <button onClick={() => void restaurar(confirmando)}>Sí, restaurar</button>{' '}
-          <button onClick={() => setConfirmando(null)}>Cancelar</button>
+          <BotonPeligro onClick={() => void restaurar(confirmando)}>Sí, restaurar</BotonPeligro>{' '}
+          <BotonSecundario onClick={() => setConfirmando(null)}>Cancelar</BotonSecundario>
         </p>
       )}
       {respaldos.length === 0 ? (
         <p className="vacio">Sin respaldos registrados.</p>
       ) : (
-        <table>
-          <thead>
-            <tr><th>Fecha</th><th>Nombre</th><th>Versión esquema</th><th>Estado</th><th></th></tr>
-          </thead>
-          <tbody>
-            {respaldos.map(r => (
-              <tr key={r.nombre}>
-                <td>{r.creadoEn}</td>
-                <td>{r.nombre}</td>
-                <td>{r.versionEsquema}</td>
-                <td>{r.estado}</td>
-                <td>
-                  <button onClick={() => setConfirmando(r)} disabled={ocupado}>Restaurar</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="fila no-imprimir">
+            <label>Buscar respaldo
+              <input
+                value={busquedaRespaldos}
+                onChange={e => {
+                  setBusquedaRespaldos(e.target.value);
+                  setPaginaRespaldos(0);
+                }}
+                placeholder="Nombre o fecha"
+              />
+            </label>
+          </div>
+          {(() => {
+            const texto = busquedaRespaldos.trim().toLowerCase();
+            const filtrados = respaldos.filter(r =>
+              !texto || r.nombre.toLowerCase().includes(texto) || r.creadoEn.toLowerCase().includes(texto)
+            );
+            const visibles = filtrados.slice(paginaRespaldos * TAMANO_PAGINA, (paginaRespaldos + 1) * TAMANO_PAGINA);
+            if (filtrados.length === 0) {
+              return <EstadoSinResultados texto="Ningún respaldo coincide con la búsqueda." />;
+            }
+            return (
+              <>
+                <table>
+                  <thead>
+                    <tr><th>Fecha</th><th>Nombre</th><th>Versión esquema</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {visibles.map(r => (
+                      <tr key={r.nombre}>
+                        <td>{r.creadoEn}</td>
+                        <td>{r.nombre}</td>
+                        <td>{r.versionEsquema}</td>
+                        <td>{r.estado}</td>
+                        <td>
+                          <BotonSecundario onClick={() => setConfirmando(r)} disabled={ocupado}>Restaurar</BotonSecundario>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Paginacion
+                  elemento="respaldo"
+                  total={filtrados.length}
+                  pagina={paginaRespaldos}
+                  tamano={TAMANO_PAGINA}
+                  enAnteriores={() => setPaginaRespaldos(p => Math.max(0, p - 1))}
+                  enSiguientes={() => setPaginaRespaldos(p => p + 1)}
+                />
+              </>
+            );
+          })()}
+        </>
       )}
       <h2>Adjuntos</h2>
       <form onSubmit={async e => {
@@ -229,30 +272,68 @@ export default function Respaldo() {
             </select>
           </label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
-          <button className="primario" type="submit">Registrar adjunto…</button>
+          <BotonPrimario type="submit">Registrar adjunto…</BotonPrimario>
         </div>
       </form>
       {adjuntos.length === 0 ? (
         <p className="vacio">Sin adjuntos registrados.</p>
       ) : (
-        <table>
-          <thead><tr><th>Entidad</th><th>Documento</th><th>Archivo</th><th>Hash</th><th>Registrado</th><th></th></tr></thead>
-          <tbody>
-            {adjuntos.map(a => (
-              <tr key={a.id}>
-                <td>{a.entidad}</td>
-                <td>{a.entidadId}</td>
-                <td>{a.nombreOriginal}</td>
-                <td className="mono">{a.hashSha256.slice(0, 16)}…</td>
-                <td>{a.creadoEn}</td>
-                <td>
-                  <button type="button" onClick={() => void verificarAdjunto(a.id)}>Verificar</button>{' '}
-                  <button type="button" onClick={() => void abrirAdjunto(a.id)}>Abrir</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="fila no-imprimir">
+            <label>Buscar adjunto
+              <input
+                value={busquedaAdjuntos}
+                onChange={e => {
+                  setBusquedaAdjuntos(e.target.value);
+                  setPaginaAdjuntos(0);
+                }}
+                placeholder="Entidad, documento o archivo"
+              />
+            </label>
+          </div>
+          {(() => {
+            const texto = busquedaAdjuntos.trim().toLowerCase();
+            const filtrados = adjuntos.filter(a =>
+              !texto ||
+              [a.entidad, a.entidadId, a.nombreOriginal]
+                .some(valor => valor.toLowerCase().includes(texto))
+            );
+            const visibles = filtrados.slice(paginaAdjuntos * TAMANO_PAGINA, (paginaAdjuntos + 1) * TAMANO_PAGINA);
+            if (filtrados.length === 0) {
+              return <EstadoSinResultados texto="Ningún adjunto coincide con la búsqueda." />;
+            }
+            return (
+              <>
+                <table>
+                  <thead><tr><th>Entidad</th><th>Documento</th><th>Archivo</th><th>Hash</th><th>Registrado</th><th></th></tr></thead>
+                  <tbody>
+                    {visibles.map(a => (
+                      <tr key={a.id}>
+                        <td>{a.entidad}</td>
+                        <td>{a.entidadId}</td>
+                        <td>{a.nombreOriginal}</td>
+                        <td className="mono">{a.hashSha256.slice(0, 16)}…</td>
+                        <td>{a.creadoEn}</td>
+                        <td>
+                          <BotonSecundario type="button" onClick={() => void verificarAdjunto(a.id)}>Verificar</BotonSecundario>{' '}
+                          <BotonSecundario type="button" onClick={() => void abrirAdjunto(a.id)}>Abrir</BotonSecundario>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Paginacion
+                  elemento="adjunto"
+                  total={filtrados.length}
+                  pagina={paginaAdjuntos}
+                  tamano={TAMANO_PAGINA}
+                  enAnteriores={() => setPaginaAdjuntos(p => Math.max(0, p - 1))}
+                  enSiguientes={() => setPaginaAdjuntos(p => p + 1)}
+                />
+              </>
+            );
+          })()}
+        </>
       )}
 
       <h2>Respaldo periódico</h2>
@@ -277,7 +358,7 @@ export default function Respaldo() {
           <label>Retención (respaldos automáticos a conservar)
             <input type="number" min="1" max="50" value={retencionMinutos} onChange={e => setRetencionMinutos(e.target.value)} required />
           </label>
-          <button className="primario" type="submit">Guardar configuración</button>
+          <BotonPrimario type="submit">Guardar configuración</BotonPrimario>
         </div>
       </form>
       {estadoPeriodico && (
@@ -294,7 +375,7 @@ export default function Respaldo() {
               Último fallo del respaldo periódico ({estadoPeriodico.ultimoFallo.creadoEn}): {estadoPeriodico.ultimoFallo.detalle}
             </p>
           )}
-          <button type="button" disabled={ocupado} onClick={() => void ejecutarPeriodico()}>Ejecutar respaldo periódico ahora</button>
+          <BotonPrimario type="button" disabled={ocupado} onClick={() => void ejecutarPeriodico()}>Ejecutar respaldo periódico ahora</BotonPrimario>
         </div>
       )}
       <p className="menor">

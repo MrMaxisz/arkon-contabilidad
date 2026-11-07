@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonSecundario } from '../componentes';
 
 interface Cuenta { id: number; codigo: string; nombre: string; tipo: string; esGrupo: boolean; activa: boolean }
 
@@ -129,13 +130,13 @@ export default function Ajustes() {
               }} placeholder="0.00" />
             </label>
             {lineas.length > 2 && (
-              <button type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button>
+              <BotonSecundario type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</BotonSecundario>
             )}
           </div>
         ))}
         <div className="fila">
-          <button type="button" onClick={() => setLineas([...lineas, { cuentaCodigo: '', debe: '', haber: '' }])}>Agregar línea</button>
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Contabilizando…' : 'Contabilizar ajuste'}</button>
+          <BotonSecundario type="button" onClick={() => setLineas([...lineas, { cuentaCodigo: '', debe: '', haber: '' }])}>Agregar línea</BotonSecundario>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Contabilizando…' : 'Contabilizar ajuste'}</BotonPrimario>
         </div>
       </form>
       <p className="menor">
