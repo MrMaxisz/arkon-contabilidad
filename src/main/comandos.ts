@@ -229,8 +229,8 @@ export const comandos: Record<string, Manejador> = {
   },
   'balance:resumen': ctx => balanceResumen(ctx.db),
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
-  'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp, ctx.rutas.adjuntos),
-  'respaldo:listar': ctx => descubrirRespaldos(ctx.rutas.respaldos),
+  'respaldo:crear': ctx => crearRespaldo(ctx.db, ctx.rutas.respaldos, ctx.versionApp, ctx.rutas.adjuntos, ctx.plataforma),
+  'respaldo:listar': ctx => descubrirRespaldos(ctx.rutas.respaldos, ctx.plataforma),
   'adjunto:listar': (ctx, payload) => {
     const p = objeto(payload);
     if (typeof p.entidad === 'string' && p.entidad) {

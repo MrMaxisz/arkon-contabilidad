@@ -1,42 +1,24 @@
-import type Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
-import crypto from 'crypto';
+import { plataformaEscritorioPorDefecto, ErrorIntegridadPlataforma, type Plataforma, type BaseDatos } from '../../plataforma/plataforma';
 import { registroEvento } from './bitacora';
-import { copiarAdjuntosRespaldo, restaurarAdjuntosRespaldo, retencionRespaldosAutomaticos } from './adjuntos';
 import type { InfoRespaldo as InfoRespaldoContrato } from '../../shared/contratos';
 import { versionEsquemaActual } from '../db/aplicarMigraciones';
 
 export class ErrorRespaldo extends Error {}
 
 
-function hashArchivo(ruta: string): string {
-  return crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
-}
-
-export function verificarIntegridad(rutaDb: string): void {
-  const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-  // Apertura read-write con query_only: una conexión de solo lectura sobre una base en modo WAL
-  // deja -wal/-shm que no puede borrar al cerrar (defecto auditoría 65). Con query_only el
-  // contenido no se modifica y el cierre elimina los archivos transitorios exactos.
-  const copia = new Database(rutaDb, { fileMustExist: true });
+export function verificarIntegridad(rutaDb: string, plataforma: Plataforma = plataformaEscritorioPorDefecto()): void {
   try {
-    copia.pragma('query_only = ON');
-    const resultado = copia.pragma('integrity_check') as unknown;
-    const texto = Array.isArray(resultado)
-      ? resultado.map(r => String(Object.values(r)[0])).join(' ')
-      : String(resultado);
-    if (!texto.includes('ok')) {
-      throw new ErrorRespaldo(`Integridad fallida: ${texto}`);
-    }
-  } finally {
-    copia.close();
+    plataforma.verificarIntegridad(rutaDb);
+  } catch (error) {
+    if (error instanceof ErrorIntegridadPlataforma) throw new ErrorRespaldo(error.message);
+    throw error;
   }
 }
 
 // Limpieza de rutas EXACTAS derivadas del temporal/destino de una operación de respaldo:
 // nunca borrados por patrón amplio. Incluye los restos -wal/-shm del temporal.
-export function limpiarRutasRespaldo(rutas: string[]): void {
+export function limpiarRutasRespaldo(rutas: string[], plataforma: Plataforma = plataformaEscritorioPorDefecto()): void {
+  const fs = plataforma.archivos;
   for (const ruta of rutas) {
     fs.rmSync(ruta, { force: true, recursive: true });
   }
@@ -61,11 +43,13 @@ export function liberarOperacionRespaldo(): void {
 }
 
 export async function crearRespaldo(
-  db: Database.Database,
+  db: BaseDatos,
   dirRespaldos: string,
   versionApp: string,
-  dirAdjuntos?: string
+  dirAdjuntos?: string,
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): Promise<InfoRespaldo> {
+  const { archivos: fs, rutas: path, copiarAdjuntosRespaldo } = plataforma;
   if (!adquirirOperacionRespaldo()) {
     throw new ErrorRespaldo('Otra operación de respaldo/restauración está en curso');
   }
@@ -79,11 +63,10 @@ export async function crearRespaldo(
     let version: number;
     let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
     try {
-      await db.backup(temporal);
-      verificarIntegridad(temporal);
-      hash = hashArchivo(temporal);
-      const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-      const dbTemporal = new Database(temporal, { fileMustExist: true });
+      await plataforma.copiarBase(db, temporal);
+      verificarIntegridad(temporal, plataforma);
+      hash = plataforma.hashArchivo(temporal);
+      const dbTemporal = plataforma.abrirCopia(temporal);
       try {
         dbTemporal.pragma('query_only = ON');
         version = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
@@ -117,7 +100,7 @@ export async function crearRespaldo(
         `${destino}-adjuntos`,
         destino,
         `${destino}.manifest.json`
-      ]);
+      ], plataforma);
       throw err;
     }
     // Registro posterior a la creación (auditoría 66): INSERT y bitácora en UNA transacción;
@@ -142,7 +125,7 @@ export async function crearRespaldo(
         estado: 'disponible'
       };
     } catch (err) {
-      limpiarRutasRespaldo([destino, `${destino}.manifest.json`, `${destino}-adjuntos`]);
+      limpiarRutasRespaldo([destino, `${destino}.manifest.json`, `${destino}-adjuntos`], plataforma);
       throw err;
     }
   } finally {
@@ -162,7 +145,7 @@ interface FilaRespaldo {
 
 export type InfoRespaldo = InfoRespaldoContrato;
 
-export function listarRespaldos(db: Database.Database): InfoRespaldo[] {
+export function listarRespaldos(db: BaseDatos): InfoRespaldo[] {
   const filas = db
     .prepare('SELECT id, creado_en, nombre, hash_sha256, version_app, version_esquema, estado FROM respaldo ORDER BY id DESC')
     .all() as FilaRespaldo[];
@@ -177,11 +160,12 @@ export function listarRespaldos(db: Database.Database): InfoRespaldo[] {
   }));
 }
 
-export function registrarRestauracion(db: Database.Database, detalle: { respaldo: string; copiaPrevia: string }): void {
+export function registrarRestauracion(db: BaseDatos, detalle: { respaldo: string; copiaPrevia: string }): void {
   registroEvento(db, 'sistema', 'restauracion_completada', 'respaldo', detalle.respaldo, detalle);
 }
 
-export function descubrirRespaldos(dirRespaldos: string): InfoRespaldo[] {
+export function descubrirRespaldos(dirRespaldos: string, plataforma: Plataforma = plataformaEscritorioPorDefecto()): InfoRespaldo[] {
+  const { archivos: fs, rutas: path } = plataforma;
   if (!fs.existsSync(dirRespaldos)) {
     return [];
   }
@@ -222,10 +206,12 @@ export function descubrirRespaldos(dirRespaldos: string): InfoRespaldo[] {
 }
 
 export function restaurarRespaldo(
-  db: Database.Database,
+  db: BaseDatos,
   rutaRespaldo: string,
-  rutaBaseActiva: string
+  rutaBaseActiva: string,
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): { ok: boolean; detalle: string; respaldo: string; copiaPrevia: string } {
+  const { archivos: fs, rutas: path } = plataforma;
   if (!fs.existsSync(rutaRespaldo)) {
     throw new ErrorRespaldo(`No existe el respaldo: ${rutaRespaldo}`);
   }
@@ -233,7 +219,7 @@ export function restaurarRespaldo(
   const registro = db
     .prepare('SELECT * FROM respaldo WHERE nombre = ?')
     .get(nombreRespaldo) as (InfoRespaldo & { hash_sha256: string }) | undefined;
-  const hash = hashArchivo(rutaRespaldo);
+  const hash = plataforma.hashArchivo(rutaRespaldo);
   if (registro && registro.hash_sha256 !== hash) {
     throw new ErrorRespaldo('El hash del respaldo no coincide con el registrado; rechazado');
   }
@@ -252,8 +238,8 @@ export function restaurarRespaldo(
   } else if (!registro) {
     throw new ErrorRespaldo('Respaldo sin manifiesto ni registro previo; restauración rechazada');
   }
-  verificarIntegridad(rutaRespaldo);
-  const versionRespaldo = leerVersionEsquema(rutaRespaldo);
+  verificarIntegridad(rutaRespaldo, plataforma);
+  const versionRespaldo = leerVersionEsquema(rutaRespaldo, plataforma);
   const versionActual = versionEsquemaActual();
   if (versionRespaldo > versionActual) {
     throw new ErrorRespaldo(
@@ -264,7 +250,7 @@ export function restaurarRespaldo(
   let previa = '';
   try {
     fs.copyFileSync(rutaRespaldo, areaTemporal);
-    verificarIntegridad(areaTemporal);
+    verificarIntegridad(areaTemporal, plataforma);
     registroEvento(db, 'sistema', 'restauracion', 'respaldo', path.basename(rutaRespaldo), {
       versionRespaldo,
       estadoPrevioPreservado: true
@@ -275,7 +261,7 @@ export function restaurarRespaldo(
     fs.renameSync(areaTemporal, rutaBaseActiva);
   } catch (err) {
     // Limpieza de rutas EXACTAS del área temporal de esta restauración (auditoría 65).
-    limpiarRutasRespaldo([areaTemporal, `${areaTemporal}-wal`, `${areaTemporal}-shm`]);
+    limpiarRutasRespaldo([areaTemporal, `${areaTemporal}-wal`, `${areaTemporal}-shm`], plataforma);
     throw err;
   }
   return {
@@ -286,9 +272,8 @@ export function restaurarRespaldo(
   };
 }
 
-export function leerVersionEsquema(rutaDb: string): number {
-  const Database = require('better-sqlite3') as typeof import('better-sqlite3');
-  const copia = new Database(rutaDb, { fileMustExist: true });
+export function leerVersionEsquema(rutaDb: string, plataforma: Plataforma = plataformaEscritorioPorDefecto()): number {
+  const copia = plataforma.abrirCopia(rutaDb);
   try {
     copia.pragma('query_only = ON');
     const fila = copia

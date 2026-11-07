@@ -1,17 +1,10 @@
-import path from 'path';
-import type { RutasDatos } from '../db/conexion';
-import { abrirBase } from '../db/conexion';
-import { inventarioAdjuntosRegistrado } from './adjuntos';
-import fs from 'fs';
-import crypto from 'crypto';
-import Database from 'better-sqlite3';
-import type { Database as TipoDatabase } from 'better-sqlite3';
+import { plataformaEscritorioPorDefecto, type Plataforma, type BaseDatos, type RutasDatos } from '../../plataforma/plataforma';
 import { aplicarMigraciones, versionEsquemaActual } from '../db/aplicarMigraciones';
 import { restaurarRespaldo, registrarRestauracion, ErrorRespaldo, adquirirOperacionRespaldo, liberarOperacionRespaldo } from './respaldo';
-import { restaurarAdjuntosRespaldo, copiarAdjuntosRespaldo, retencionRespaldosAutomaticos } from './adjuntos';
 
 export interface ContextoApp {
-  db: Database.Database;
+  db: BaseDatos;
+  plataforma?: Plataforma;
   rutas: RutasDatos;
   versionApp: string;
   rutaDb: string;
@@ -25,13 +18,14 @@ export class ErrorRecuperacionPendiente extends Error {
   }
 }
 
-function baseLegible(rutaDb: string): boolean {
+function baseLegible(rutaDb: string, plataforma: Plataforma): boolean {
+  const fs = plataforma.archivos;
   if (!fs.existsSync(rutaDb) || fs.statSync(rutaDb).size === 0) {
     return false;
   }
-  let db: TipoDatabase | null = null;
+  let db: BaseDatos | null = null;
   try {
-    db = new Database(rutaDb, { readonly: true, fileMustExist: true });
+    db = plataforma.abrirCopia(rutaDb, true);
     const integridad = db.pragma('integrity_check');
     const texto = Array.isArray(integridad)
       ? integridad.map(r => String(Object.values(r)[0])).join(' ')
@@ -59,11 +53,12 @@ function baseLegible(rutaDb: string): boolean {
   }
 }
 
-function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
-  if (!baseLegible(rutaDb)) {
+function conjuntoCoherente(rutaDb: string, dirAdjuntos: string, plataforma: Plataforma): boolean {
+  const { archivos: fs, rutas: path, inventarioAdjuntosRegistrado } = plataforma;
+  if (!baseLegible(rutaDb, plataforma)) {
     return false;
   }
-  const db = new Database(rutaDb, { readonly: true, fileMustExist: true });
+  const db = plataforma.abrirCopia(rutaDb, true);
   try {
     const inventario = inventarioAdjuntosRegistrado(db);
     for (const registro of inventario) {
@@ -71,7 +66,7 @@ function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
       if (!fs.existsSync(archivo)) {
         return false;
       }
-      const hash = crypto.createHash('sha256').update(fs.readFileSync(archivo)).digest('hex');
+      const hash = plataforma.hashArchivo(archivo);
       if (hash !== registro.hashSha256) {
         return false;
       }
@@ -86,7 +81,8 @@ function conjuntoCoherente(rutaDb: string, dirAdjuntos: string): boolean {
   }
 }
 
-function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, marcador: string): void {
+function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, marcador: string, plataforma: Plataforma): void {
+  const fs = plataforma.archivos;
   let info: { fase?: string; rutaDb?: string; adjuntos?: string; previaAdjuntos?: string; areaTemporal?: string; respaldo?: string };
   try {
     info = JSON.parse(fs.readFileSync(marcador, 'utf8'));
@@ -102,7 +98,7 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
     fs.rmSync(baseTemporal, { force: true });
   }
 
-  if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+  if (conjuntoCoherente(rutaDb, rutas.adjuntos, plataforma)) {
     fs.rmSync(areaTemporal, { recursive: true, force: true });
     fs.rmSync(previaAdjuntos, { recursive: true, force: true });
     fs.rmSync(basePrevia, { force: true });
@@ -110,13 +106,13 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
     return;
   }
 
-  if (fs.existsSync(areaTemporal) && conjuntoCoherente(rutaDb, areaTemporal)) {
+  if (fs.existsSync(areaTemporal) && conjuntoCoherente(rutaDb, areaTemporal, plataforma)) {
     fs.rmSync(previaAdjuntos, { recursive: true, force: true });
     if (fs.existsSync(rutas.adjuntos)) {
       fs.renameSync(rutas.adjuntos, previaAdjuntos);
     }
     fs.renameSync(areaTemporal, rutas.adjuntos);
-    if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+    if (conjuntoCoherente(rutaDb, rutas.adjuntos, plataforma)) {
       fs.rmSync(previaAdjuntos, { recursive: true, force: true });
       fs.rmSync(basePrevia, { force: true });
       fs.rmSync(marcador, { force: true });
@@ -127,14 +123,14 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
   if (fs.existsSync(basePrevia)) {
     fs.copyFileSync(basePrevia, `${rutaDb}.resolucion-tmp`);
     const dirAdjuntosPrevios = fs.existsSync(previaAdjuntos) ? previaAdjuntos : rutas.adjuntos;
-    if (conjuntoCoherente(`${rutaDb}.resolucion-tmp`, dirAdjuntosPrevios)) {
+    if (conjuntoCoherente(`${rutaDb}.resolucion-tmp`, dirAdjuntosPrevios, plataforma)) {
       fs.rmSync(rutaDb, { force: true });
       fs.renameSync(`${rutaDb}.resolucion-tmp`, rutaDb);
       if (fs.existsSync(previaAdjuntos)) {
         fs.rmSync(rutas.adjuntos, { recursive: true, force: true });
         fs.renameSync(previaAdjuntos, rutas.adjuntos);
       }
-      if (conjuntoCoherente(rutaDb, rutas.adjuntos)) {
+      if (conjuntoCoherente(rutaDb, rutas.adjuntos, plataforma)) {
         fs.rmSync(areaTemporal, { recursive: true, force: true });
         fs.rmSync(previaAdjuntos, { recursive: true, force: true });
         fs.rmSync(basePrevia, { force: true });
@@ -160,10 +156,12 @@ function resolverRestauracionInterrumpida(rutas: RutasDatos, rutaDb: string, mar
   );
 }
 
-export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versionApp: string): Promise<ContextoApp> {
+export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versionApp: string, plataforma: Plataforma = plataformaEscritorioPorDefecto()): Promise<ContextoApp> {
+  const { archivos: fs, rutas: path, copiarAdjuntosRespaldo, retencionRespaldosAutomaticos } = plataforma;
+  const abrirBase = (ruta: string) => plataforma.abrirBase(ruta);
   const marcador = path.join(rutas.raiz, 'restauracion-en-curso.json');
   if (fs.existsSync(marcador)) {
-    resolverRestauracionInterrumpida(rutas, rutaDb, marcador);
+    resolverRestauracionInterrumpida(rutas, rutaDb, marcador, plataforma);
   }
   const sinResolver = path.join(rutas.raiz, 'restauracion-en-curso.json.sin-resolver');
   if (fs.existsSync(sinResolver)) {
@@ -192,11 +190,10 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
         const destino = path.join(rutas.respaldos, `respaldo-previo-migracion-${marca}.db`);
         const temporal = `${destino}.tmp`;
         try {
-          await dbPrevia.backup(temporal);
+          await plataforma.copiarBase(dbPrevia, temporal);
           const { verificarIntegridad } = await import('./respaldo');
-          verificarIntegridad(temporal);
-          const crypto = await import('crypto');
-          const hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
+          verificarIntegridad(temporal, plataforma);
+          const hash = plataforma.hashArchivo(temporal);
           const adjuntos = copiarAdjuntosRespaldo(dbPrevia, rutas.adjuntos, `${destino}-adjuntos`);
           fs.renameSync(temporal, destino);
           fs.writeFileSync(
@@ -226,13 +223,12 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
             `${destino}-adjuntos`,
             destino,
             `${destino}.manifest.json`
-          ]);
+          ], plataforma);
           throw err;
         }
       } finally {
         dbPrevia.close();
       }
-      const { retencionRespaldosAutomaticos } = await import('./adjuntos');
       const dbRetencion = abrirBase(rutaDb);
       try {
         aplicarMigraciones(dbRetencion);
@@ -246,6 +242,7 @@ export async function crearContextoBase(rutas: RutasDatos, rutaDb: string, versi
   aplicarMigraciones(db);
   const ctx: ContextoApp = {
     db,
+    plataforma,
     rutas,
     versionApp,
     rutaDb,
@@ -264,6 +261,8 @@ export async function manejarRestauracion(
   ctx: ContextoApp,
   nombre: string
 ): Promise<{ ok: boolean; detalle: string; respaldo: string; copiaPrevia: string }> {
+  const plataforma = ctx.plataforma ?? plataformaEscritorioPorDefecto();
+  const { archivos: fs, rutas: path, restaurarAdjuntosRespaldo, inventarioAdjuntosRegistrado, validarRutasRelativas } = plataforma;
   if (!adquirirOperacionRespaldo()) {
     throw new ErrorRespaldo('Otra operación de respaldo/restauración está en curso');
   }
@@ -280,8 +279,9 @@ export async function manejarRestauracion(
     adjuntos?: Array<{ rutaRelativa: string; hashSha256: string }>;
   };
   const adjuntosEsperados = manifiesto.adjuntos ?? [];
-  const { inventarioAdjuntosRegistrado, validarRutasRelativas } = await import('./adjuntos');
-  const dbRespaldo = abrirBase(ruta);
+  // Inspeccionar sin activar WAL ni reescribir la imagen firmada por el manifiesto.
+  const dbRespaldo = plataforma.abrirCopia(ruta);
+  dbRespaldo.pragma('query_only = ON');
   try {
     const inventarioBase = inventarioAdjuntosRegistrado(dbRespaldo);
     validarRutasRelativas(inventarioBase.map(r => r.rutaRelativa));
@@ -340,7 +340,7 @@ export async function manejarRestauracion(
   let adjuntosPreviosPreservados = false;
   fs.writeFileSync(marcador, JSON.stringify({ respaldo: nombre, fase: 'sustituyendo-base', rutaDb: ctx.rutaDb, adjuntos: ctx.rutas.adjuntos, previaAdjuntos, areaTemporal: areaAdjuntosTemporal, creadoEn: new Date().toISOString() }, null, 2), 'utf8');
   try {
-    resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb);
+    resultado = restaurarRespaldo(ctx.db, ruta, ctx.rutaDb, plataforma);
     baseSustituida = true;
     fs.writeFileSync(marcador, JSON.stringify({ respaldo: nombre, fase: 'base-activada', rutaDb: ctx.rutaDb, adjuntos: ctx.rutas.adjuntos, previaAdjuntos, areaTemporal: areaAdjuntosTemporal, creadoEn: new Date().toISOString() }, null, 2), 'utf8');
     fs.rmSync(previaAdjuntos, { recursive: true, force: true });
@@ -409,12 +409,15 @@ export async function manejarRestauracion(
 export function restaurarAdjuntosDesdeRespaldo(
   rutaRespaldo: string,
   dirAdjuntosDestino: string,
-  esperados: Array<{ rutaRelativa: string; hashSha256: string }>
+  esperados: Array<{ rutaRelativa: string; hashSha256: string }>,
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): void {
-  restaurarAdjuntosRespaldo(`${rutaRespaldo}-adjuntos`, dirAdjuntosDestino, esperados);
+  plataforma.restaurarAdjuntosRespaldo(`${rutaRespaldo}-adjuntos`, dirAdjuntosDestino, esperados);
 }
 
 export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<{ creado: boolean; nombre?: string; omitidoPor?: string }> {
+  const plataforma = ctx.plataforma ?? plataformaEscritorioPorDefecto();
+  const { archivos: fs, rutas: path, copiarAdjuntosRespaldo, retencionRespaldosAutomaticos } = plataforma;
   const marcador = path.join(ctx.rutas.raiz, 'restauracion-en-curso.json');
   if (fs.existsSync(marcador) || fs.existsSync(`${marcador}.sin-resolver`)) {
     return { creado: false, omitidoPor: 'restauración en curso o pendiente de resolución' };
@@ -448,14 +451,13 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     let versionEsquemaCopia = 0;
     let adjuntos: Array<{ rutaRelativa: string; hashSha256: string }> = [];
     try {
-      await ctx.db.backup(temporal);
+      await plataforma.copiarBase(ctx.db, temporal);
       const { verificarIntegridad } = await import('./respaldo');
-      verificarIntegridad(temporal);
-      hash = crypto.createHash('sha256').update(fs.readFileSync(temporal)).digest('hex');
-      const dbTemporal = new Database(temporal, { fileMustExist: true });
+      verificarIntegridad(temporal, plataforma);
+      hash = plataforma.hashArchivo(temporal);
+      const dbTemporal = plataforma.abrirCopia(temporal);
       try {
         dbTemporal.pragma('query_only = ON');
-        const { copiarAdjuntosRespaldo } = await import('./adjuntos');
         adjuntos = copiarAdjuntosRespaldo(dbTemporal, ctx.rutas.adjuntos, `${destino}-adjuntos`);
         versionEsquemaCopia = (dbTemporal.prepare('SELECT MAX(version) AS v FROM _migracion').get() as { v: number | null }).v ?? 0;
       } finally {
@@ -492,7 +494,7 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
         `${destino}-adjuntos`,
         destino,
         `${destino}.manifest.json`
-      ]);
+      ], plataforma);
       throw err;
     }
     // Post-creación (auditoría 66): un fallo de registro o de RETENCIÓN no borra el respaldo nuevo;
@@ -500,7 +502,6 @@ export async function respaldoPeriodicoSiCorresponde(ctx: ContextoApp): Promise<
     ctx.db
       .prepare('INSERT INTO respaldo (nombre, hash_sha256, version_app, version_esquema, estado) VALUES (?, ?, ?, ?, ?)')
       .run(nombreArchivo, hash, ctx.versionApp, versionEsquemaCopia, 'disponible');
-    const { retencionRespaldosAutomaticos } = await import('./adjuntos');
     retencionRespaldosAutomaticos(ctx.db, ctx.rutas.respaldos);
     return { creado: true, nombre: nombreArchivo };
   } finally {

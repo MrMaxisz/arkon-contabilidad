@@ -1,7 +1,5 @@
 import type Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
+import { plataformaEscritorioPorDefecto, type Plataforma } from '../../plataforma/plataforma';
 import { registroEvento } from './bitacora';
 
 export class ErrorAdjunto extends Error {}
@@ -47,8 +45,10 @@ export function registrarAdjunto(
     nombreOriginal: string;
     rutaOrigen: string;
     responsable: string;
-  }
+  },
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): AdjuntoInfo {
+  const { archivos: fs, rutas: path } = plataforma;
   if (!entrada.entidad?.trim() || !entrada.entidadId?.trim()) {
     throw new ErrorAdjunto('El adjunto requiere entidad e identificador de origen');
   }
@@ -56,12 +56,12 @@ export function registrarAdjunto(
     throw new ErrorAdjunto(`No existe el archivo de origen: ${entrada.rutaOrigen}`);
   }
   const contenido = fs.readFileSync(entrada.rutaOrigen);
-  const hash = crypto.createHash('sha256').update(contenido).digest('hex');
+  const hash = plataforma.hashArchivo(entrada.rutaOrigen);
   fs.mkdirSync(dirAdjuntos, { recursive: true });
   const extension = path.extname(entrada.nombreOriginal);
   const rutaRelativa = `${hash.slice(0, 16)}-${Date.now()}${extension}`;
   fs.writeFileSync(path.join(dirAdjuntos, rutaRelativa), contenido);
-  const hashEscrito = crypto.createHash('sha256').update(fs.readFileSync(path.join(dirAdjuntos, rutaRelativa))).digest('hex');
+  const hashEscrito = plataforma.hashArchivo(path.join(dirAdjuntos, rutaRelativa));
   if (hashEscrito !== hash) {
     fs.rmSync(path.join(dirAdjuntos, rutaRelativa), { force: true });
     throw new ErrorAdjunto('La copia del adjunto no coincide con el original; registro revertido');
@@ -116,20 +116,22 @@ export function listarAdjuntos(db: Database.Database, entidad?: string, entidadI
 export function verificarAdjunto(
   db: Database.Database,
   dirAdjuntos: string,
-  id: number
+  id: number,
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): { id: number; nombreOriginal: string; ruta: string; existe: boolean; hashCoincide: boolean } {
+  const { archivos: fs, rutas: path } = plataforma;
   const fila = db.prepare('SELECT * FROM adjunto WHERE id = ?').get(id) as
     | { id: number; entidad: string; entidad_id: string; nombre_original: string; ruta_relativa: string; hash_sha256: string; creado_en: string }
     | undefined;
   if (!fila) {
     throw new ErrorAdjunto(`No existe el adjunto ${id}`);
   }
-  validarRutasRelativas([fila.ruta_relativa]);
+  validarRutasRelativas([fila.ruta_relativa], plataforma);
   const ruta = path.join(dirAdjuntos, fila.ruta_relativa);
   const existe = fs.existsSync(ruta) && fs.statSync(ruta).isFile();
   let hashCoincide = false;
   if (existe) {
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
+    const hash = plataforma.hashArchivo(ruta);
     hashCoincide = hash === fila.hash_sha256;
   }
   return { id: fila.id, nombreOriginal: fila.nombre_original, ruta, existe, hashCoincide };
@@ -152,9 +154,9 @@ export function inventarioAdjuntosRegistrado(db: Database.Database): Array<{ rut
   }));
 }
 
-export function validarRutasRelativas(rutas: string[]): void {
+export function validarRutasRelativas(rutas: string[], plataforma: Plataforma = plataformaEscritorioPorDefecto()): void {
   for (const ruta of rutas) {
-    if (ruta.includes('..') || path.isAbsolute(ruta) || ruta.includes('\\')) {
+    if (ruta.includes('..') || plataforma.rutas.isAbsolute(ruta) || ruta.includes('\\')) {
       throw new ErrorAdjunto(`Ruta de adjunto fuera del paquete: ${ruta}`);
     }
   }
@@ -163,8 +165,10 @@ export function validarRutasRelativas(rutas: string[]): void {
 export function copiarAdjuntosRespaldo(
   db: Database.Database,
   dirAdjuntos: string,
-  dirDestino: string
+  dirDestino: string,
+  plataforma: Plataforma = plataformaEscritorioPorDefecto()
 ): Array<{ rutaRelativa: string; hashSha256: string }> {
+  const { archivos: fs, rutas: path } = plataforma;
   const inventario = inventarioAdjuntosRegistrado(db);
   if (inventario.length === 0) {
     return [];
@@ -179,7 +183,7 @@ export function copiarAdjuntosRespaldo(
     if (!fs.existsSync(origen)) {
       throw new ErrorAdjunto(`Falta el archivo del adjunto registrado: ${registro.nombreOriginal} (${registro.rutaRelativa})`);
     }
-    const hashActual = crypto.createHash('sha256').update(fs.readFileSync(origen)).digest('hex');
+    const hashActual = plataforma.hashArchivo(origen);
     if (hashActual !== registro.hashSha256) {
       throw new ErrorAdjunto(
         `El adjunto registrado ${registro.nombreOriginal} no coincide con su hash documentado; respaldo rechazado`
@@ -191,7 +195,8 @@ export function copiarAdjuntosRespaldo(
   return copiados;
 }
 
-export function restaurarAdjuntosRespaldo(dirAdjuntosOrigen: string, dirAdjuntosDestino: string, esperados: Array<{ rutaRelativa: string; hashSha256: string }>): void {
+export function restaurarAdjuntosRespaldo(dirAdjuntosOrigen: string, dirAdjuntosDestino: string, esperados: Array<{ rutaRelativa: string; hashSha256: string }>, plataforma: Plataforma = plataformaEscritorioPorDefecto()): void {
+  const { archivos: fs, rutas: path } = plataforma;
   if (esperados.length === 0) {
     return;
   }
@@ -204,7 +209,7 @@ export function restaurarAdjuntosRespaldo(dirAdjuntosOrigen: string, dirAdjuntos
     if (!fs.existsSync(origen)) {
       throw new ErrorAdjunto(`Falta el adjunto del respaldo: ${esperado.rutaRelativa}`);
     }
-    const hash = crypto.createHash('sha256').update(fs.readFileSync(origen)).digest('hex');
+    const hash = plataforma.hashArchivo(origen);
     if (hash !== esperado.hashSha256) {
       throw new ErrorAdjunto(`El adjunto ${esperado.rutaRelativa} no coincide con el hash del manifiesto`);
     }
@@ -212,7 +217,8 @@ export function restaurarAdjuntosRespaldo(dirAdjuntosOrigen: string, dirAdjuntos
   }
 }
 
-export function retencionRespaldosAutomaticos(db: Database.Database, dirRespaldos: string): { conservados: number; depurados: number } {
+export function retencionRespaldosAutomaticos(db: Database.Database, dirRespaldos: string, plataforma: Plataforma = plataformaEscritorioPorDefecto()): { conservados: number; depurados: number } {
+  const { archivos: fs, rutas: path } = plataforma;
   const fila = db
     .prepare("SELECT valor FROM configuracion WHERE clave = 'respaldo_retencion_automatica'")
     .get() as { valor: string } | undefined;
