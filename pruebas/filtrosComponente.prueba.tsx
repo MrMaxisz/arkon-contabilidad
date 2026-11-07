@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+// Pruebas de filtros: timeout ampliado (fallaban a 5000 ms con el equipo cargado, auditoría 72).
+vi.setConfig({ testTimeout: 20000 });
+
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 const invocar = vi.hoisted(() => vi.fn());

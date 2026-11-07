@@ -1,7 +1,8 @@
 import path from 'path';
 import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerrarPeriodo, reabrirPeriodo } from './servicios/motorAsientos';
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
-import { balanceResumen, saldosPorCuenta } from './servicios/estadosFinancieros';
+import { balanceResumen, saldosPorCuenta, balanceComprobacion, estadoResultadosEstructurado, estadoSituacionFinanciera } from './servicios/estadosFinancieros';
+import { listarPartidas, verPartida } from './servicios/libroDiario';
 import { crearRespaldo, descubrirRespaldos } from './servicios/respaldo';
 import { listarAdjuntos, verificarAdjunto } from './servicios/adjuntos';
 import { respaldoPeriodicoSiCorresponde } from './servicios/restauracion';
@@ -11,7 +12,21 @@ import type { ContextoApp } from './servicios/restauracion';
 export type { ContextoApp };
 import { listarEventos } from './servicios/bitacora';
 import { registrarApertura, estadoEjercicio, cerrarEjercicio, reabrirEjercicio } from './servicios/cierre';
+import {
+  anularUltimoLote,
+  cuadroGeneralActivosFijos,
+  conciliacionActivosFijos,
+  csvCuadroGeneralActivosFijos,
+  darAltaActivoFijo,
+  darBajaActivoFijo,
+  depreciarMes,
+  fichaActivoFijo,
+  listarActivosFijos,
+  previsualizarDepreciacion,
+  ultimoLoteDepreciacion
+} from './servicios/activosFijos';
 import { generarPaqueteContador } from './servicios/paqueteContador';
+import { costosPorProyecto, costosPorTipo, conciliacionCostos, csvCostos } from './servicios/costos';
 import { consultarEjercicio } from './servicios/ejercicioAnual';
 import {
   completarMetadatosRetencion,
@@ -102,6 +117,13 @@ function entero(p: Record<string, unknown>, campo: string): number {
   return v as number;
 }
 
+function rangoCostos(p: Record<string, unknown>) {
+  return {
+    desde: texto(p, 'desde'), hasta: texto(p, 'hasta'),
+    ambitoId: p.ambitoId === undefined ? undefined : texto(p, 'ambitoId')
+  };
+}
+
 export const comandos: Record<string, Manejador> = {
   'asiento:contabilizar': (ctx, payload) => {
     const p = objeto(payload);
@@ -151,6 +173,59 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     reabrirPeriodo(ctx.db, entero(p, 'periodoId'), texto(p, 'responsable'), texto(p, 'motivo'));
     return { ok: true };
+  },
+  'libro:partidas': (ctx, payload) => {
+    const p = objeto(payload);
+    return listarPartidas(ctx.db, {
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined,
+      busqueda: typeof p.busqueda === 'string' && p.busqueda.trim() ? p.busqueda.trim() : undefined,
+      desdeNumero: typeof p.desdeNumero === 'number' ? p.desdeNumero : undefined,
+      hastaNumero: typeof p.hastaNumero === 'number' ? p.hastaNumero : undefined,
+      desdeFecha: typeof p.desdeFecha === 'string' && p.desdeFecha ? p.desdeFecha : undefined,
+      hastaFecha: typeof p.hastaFecha === 'string' && p.hastaFecha ? p.hastaFecha : undefined,
+      concepto: typeof p.concepto === 'string' && p.concepto.trim() ? p.concepto.trim() : undefined,
+      cuentaId: typeof p.cuentaId === 'number' && p.cuentaId ? p.cuentaId : undefined,
+      origen: typeof p.origen === 'string' && p.origen ? p.origen : undefined,
+      estado: typeof p.estado === 'string' && p.estado ? p.estado : undefined,
+      desde: typeof p.desde === 'number' ? p.desde : 0,
+      limite: typeof p.limite === 'number' ? p.limite : 50
+    });
+  },
+  'libro:partida': (ctx, payload) => {
+    const p = objeto(payload);
+    // El ámbito se reenvía (cierre bloque 2): el detalle respeta el ámbito del libro,
+    // igual que el listado; sin ámbito se conserva el administrativo por defecto.
+    return verPartida(
+      ctx.db,
+      entero(p, 'partidaId'),
+      typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    );
+  },
+  'balance:comprobacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return balanceComprobacion(ctx.db, {
+      desde: texto(p, 'desde'),
+      hasta: texto(p, 'hasta'),
+      ocultarSinMovimiento: p.ocultarSinMovimiento === true,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    });
+  },
+  'resultados:estructurado': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoResultadosEstructurado(ctx.db, {
+      desde: texto(p, 'desde'),
+      hasta: texto(p, 'hasta'),
+      comparativo: p.comparativo === true,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    });
+  },
+  'situacion:consultar': (ctx, payload) => {
+    const p = objeto(payload);
+    return estadoSituacionFinanciera(ctx.db, {
+      corte: texto(p, 'corte'),
+      corteComparativo: typeof p.corteComparativo === 'string' && p.corteComparativo ? p.corteComparativo : undefined,
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    });
   },
   'balance:resumen': ctx => balanceResumen(ctx.db),
   'balance:saldos': ctx => saldosPorCuenta(ctx.db),
@@ -600,7 +675,99 @@ export const comandos: Record<string, Manejador> = {
     const p = objeto(payload);
     return estadoResultados(ctx.db, texto(p, 'mes'));
   },
-  'reporte:rentabilidadProyectos': ctx => rentabilidadProyectos(ctx.db),
+  'reporte:rentabilidadProyectos': (ctx, payload) => {
+    const p = objeto(payload);
+    return rentabilidadProyectos(ctx.db, {
+      desde: p.desde === undefined ? undefined : texto(p, 'desde'),
+      hasta: p.hasta === undefined ? undefined : texto(p, 'hasta'),
+      ambitoId: p.ambitoId === undefined ? undefined : texto(p, 'ambitoId')
+    });
+  },
+  'reporte:costosPorProyecto': (ctx, payload) => costosPorProyecto(ctx.db, rangoCostos(objeto(payload))),
+  'reporte:costosPorTipo': (ctx, payload) => {
+    const p = objeto(payload);
+    return costosPorTipo(ctx.db, {
+      ...rangoCostos(p), comparativo: p.comparativo === undefined ? undefined : exigirBooleano(p, 'comparativo')
+    });
+  },
+  'reporte:costosConciliacion': (ctx, payload) => conciliacionCostos(ctx.db, rangoCostos(objeto(payload))),
+  'reporte:costosCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    if (p.reporte !== undefined && p.reporte !== 'proyecto' && p.reporte !== 'tipo') {
+      throw new ErrorValidacion('Reporte de costos inválido');
+    }
+    return csvCostos(ctx.db, { ...rangoCostos(p), reporte: p.reporte as 'proyecto' | 'tipo' | undefined });
+  },
+  'activo:listar': ctx => listarActivosFijos(ctx.db),
+  'activo:ficha': (ctx, payload) => {
+    const p = objeto(payload);
+    return fichaActivoFijo(ctx.db, entero(p, 'activoId'));
+  },
+  'activo:alta': (ctx, payload) => {
+    const p = objeto(payload);
+    return darAltaActivoFijo(ctx.db, {
+      descripcion: texto(p, 'descripcion'),
+      categoria: texto(p, 'categoria'),
+      ubicacion: texto(p, 'ubicacion'),
+      responsable: texto(p, 'responsable'),
+      fechaAdquisicion: texto(p, 'fechaAdquisicion'),
+      fechaInicioUso: texto(p, 'fechaInicioUso'),
+      costoMinor: texto(p, 'costoMinor'),
+      residualMinor:
+        typeof p.residualMinor === 'string' && p.residualMinor.trim() ? p.residualMinor : '0.00',
+      vidaUtilMeses: entero(p, 'vidaUtilMeses'),
+      cuentaActivoId: entero(p, 'cuentaActivoId'),
+      cuentaDepreciacionId: entero(p, 'cuentaDepreciacionId'),
+      cuentaGastoId: entero(p, 'cuentaGastoId'),
+      cuentaContrapartidaId:
+        p.cuentaContrapartidaId === undefined ? undefined : entero(p, 'cuentaContrapartidaId'),
+      compraId: p.compraId === undefined ? undefined : entero(p, 'compraId'),
+      proyectoId: p.proyectoId === undefined ? undefined : entero(p, 'proyectoId'),
+      ambitoId: typeof p.ambitoId === 'string' && p.ambitoId ? p.ambitoId : undefined
+    });
+  },
+  'activo:previsualizarDepreciacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return previsualizarDepreciacion(ctx.db, texto(p, 'mes'));
+  },
+  'activo:depreciarMes': (ctx, payload) => {
+    const p = objeto(payload);
+    return depreciarMes(ctx.db, { mes: texto(p, 'mes'), responsable: texto(p, 'responsable') });
+  },
+  'activo:ultimoLote': ctx => ultimoLoteDepreciacion(ctx.db),
+  'activo:anularUltimoLote': (ctx, payload) => {
+    const p = objeto(payload);
+    return anularUltimoLote(ctx.db, { responsable: texto(p, 'responsable'), motivo: texto(p, 'motivo') });
+  },
+  'activo:baja': (ctx, payload) => {
+    const p = objeto(payload);
+    const tipo = texto(p, 'tipo');
+    if (tipo !== 'baja' && tipo !== 'venta') {
+      throw new ErrorValidacion('Tipo de baja inválido');
+    }
+    return darBajaActivoFijo(ctx.db, {
+      activoId: entero(p, 'activoId'),
+      tipo,
+      fechaOperacion: texto(p, 'fechaOperacion'),
+      importeMinor:
+        typeof p.importeMinor === 'string' && p.importeMinor.trim() ? p.importeMinor : '0.00',
+      cuentaCobroId: p.cuentaCobroId === undefined ? undefined : entero(p, 'cuentaCobroId'),
+      responsable: texto(p, 'responsable'),
+      motivo: texto(p, 'motivo')
+    });
+  },
+  'reporte:activosFijosCuadro': (ctx, payload) => {
+    const p = objeto(payload);
+    return cuadroGeneralActivosFijos(ctx.db, texto(p, 'corte'));
+  },
+  'reporte:activosFijosConciliacion': (ctx, payload) => {
+    const p = objeto(payload);
+    return conciliacionActivosFijos(ctx.db, texto(p, 'corte'));
+  },
+  'reporte:activosFijosCsv': (ctx, payload) => {
+    const p = objeto(payload);
+    return csvCuadroGeneralActivosFijos(ctx.db, texto(p, 'corte'));
+  },
   'auxiliar:contrapartes': ctx => auxiliarContrapartes(ctx.db),
   'auxiliar:efectivo': ctx => auxiliarEfectivo(ctx.db),
   'auxiliar:contraparteDetalle': (ctx, payload) => {

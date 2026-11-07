@@ -15,6 +15,12 @@ import Catalogo from './vistas/Catalogo';
 import Reportes from './vistas/Reportes';
 import Ajustes from './vistas/Ajustes';
 import Cierre from './vistas/Cierre';
+import LibroDiario from './vistas/LibroDiario';
+import EstadosFinancieros from './vistas/EstadosFinancieros';
+import ActivosFijos from './vistas/ActivosFijos';
+import Costos from './vistas/Costos';
+import { EstadoCarga, formatoDineroPantalla } from './componentes';
+import logoBlanco from './recursos/arkon-logo-blanco.svg';
 
 interface BalanceResumen {
   totalActivoMinor: string;
@@ -24,28 +30,39 @@ interface BalanceResumen {
   cuadra: boolean;
 }
 
-const SECCIONES = [
-  'Inicio',
-  'Clientes y proveedores',
-  'Catálogo',
-  'Cotizaciones',
-  'Proyectos',
-  'Ventas',
-  'Compras y gastos',
-  'Cobros y pagos',
-  'Caja y bancos',
-  'Contabilidad',
-  'Impuestos',
-  'Ajustes',
-  'Cierre',
-  'Reportes',
-  'Respaldo',
-  'Bitácora'
-] as const;
-type Seccion = (typeof SECCIONES)[number];
+type Seccion =
+  | 'Inicio'
+  | 'Clientes y proveedores'
+  | 'Catálogo'
+  | 'Cotizaciones'
+  | 'Proyectos'
+  | 'Ventas'
+  | 'Compras y gastos'
+  | 'Cobros y pagos'
+  | 'Caja y bancos'
+  | 'Contabilidad'
+  | 'Activos fijos'
+  | 'Libro diario'
+  | 'Estados financieros'
+  | 'Costos'
+  | 'Ajustes'
+  | 'Cierre'
+  | 'Reportes'
+  | 'Impuestos'
+  | 'Respaldo'
+  | 'Bitácora';
+
+const NAVEGACION: Array<{ grupo: string; destinos: Seccion[] }> = [
+  { grupo: 'Inicio', destinos: ['Inicio'] },
+  { grupo: 'Comercial', destinos: ['Clientes y proveedores', 'Catálogo', 'Cotizaciones', 'Proyectos', 'Ventas'] },
+  { grupo: 'Compras y tesorería', destinos: ['Compras y gastos', 'Cobros y pagos', 'Caja y bancos'] },
+  { grupo: 'Contabilidad', destinos: ['Contabilidad', 'Activos fijos', 'Libro diario', 'Estados financieros', 'Costos', 'Ajustes', 'Cierre', 'Reportes'] },
+  { grupo: 'Fiscal', destinos: ['Impuestos'] },
+  { grupo: 'Sistema', destinos: ['Respaldo', 'Bitácora'] }
+];
 
 function formatoDinero(minorTexto: string): string {
-  return `$${minorTexto}`;
+  return formatoDineroPantalla(minorTexto);
 }
 
 function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCargar: () => void }) {
@@ -53,24 +70,36 @@ function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCarga
     alCargar();
   }, [alCargar]);
   if (!balance) {
-    return <p className="menor">Cargando resumen contable…</p>;
+    return <EstadoCarga texto="Cargando resumen contable…" />;
   }
   return (
     <div>
       <h1>Inicio</h1>
       <p className="aviso">
         Ámbito administrativo actual: ARKON no está constituida ni inscrita como contribuyente de IVA.
-        Los registros aquí son control administrativo, no estados financieros legales.
+        Los registros aquí son de control administrativo, no estados financieros legales.
       </p>
-      <table>
-        <tbody>
-          <tr><td>Total activos</td><td className="numero">{formatoDinero(balance.totalActivoMinor)}</td></tr>
-          <tr><td>Total pasivos</td><td className="numero">{formatoDinero(balance.totalPasivoMinor)}</td></tr>
-          <tr><td>Total patrimonio</td><td className="numero">{formatoDinero(balance.totalPatrimonioMinor)}</td></tr>
-          <tr><td>Resultado del período</td><td className="numero">{formatoDinero(balance.totalResultadoMinor)}</td></tr>
-          <tr><td>Partida doble cuadra</td><td className="numero">{balance.cuadra ? 'Sí' : 'No'}</td></tr>
-        </tbody>
-      </table>
+      <div className="resumen-inicio">
+        <div>
+          <h3>Total activos</h3>
+          <p className="resumen-cifra">{formatoDinero(balance.totalActivoMinor)}</p>
+        </div>
+        <div>
+          <h3>Total pasivos</h3>
+          <p className="resumen-cifra">{formatoDinero(balance.totalPasivoMinor)}</p>
+        </div>
+        <div>
+          <h3>Total patrimonio</h3>
+          <p className="resumen-cifra">{formatoDinero(balance.totalPatrimonioMinor)}</p>
+        </div>
+        <div>
+          <h3>Resultado del período</h3>
+          <p className="resumen-cifra">{formatoDinero(balance.totalResultadoMinor)}</p>
+        </div>
+      </div>
+      <p className="menor">
+        Partida doble: {balance.cuadra ? 'cuadra' : 'no cuadra'}. Use Reportes para el detalle por cuenta y auxiliares.
+      </p>
     </div>
   );
 }
@@ -89,16 +118,34 @@ export default function App() {
   return (
     <div className="app">
       <aside className="lateral">
-        <div className="marca">ARKON Contabilidad</div>
-        <nav>
-          {SECCIONES.map(s => (
-            <button key={s} className={s === seccion ? 'activo' : ''} onClick={() => setSeccion(s)}>
-              {s}
-            </button>
+        <div className="marca">
+          <img src={logoBlanco} alt="ARKON Ingeniería Eléctrica" width={148} height={52} />
+        </div>
+        <nav aria-label="Secciones">
+          {NAVEGACION.map(grupo => (
+            <React.Fragment key={grupo.grupo}>
+              {grupo.grupo !== 'Inicio' && <span className="grupo">{grupo.grupo}</span>}
+              {grupo.destinos.map(destino => (
+                <button
+                  key={destino}
+                  onClick={() => setSeccion(destino)}
+                  aria-current={destino === seccion ? 'page' : undefined}
+                >
+                  {destino}
+                </button>
+              ))}
+            </React.Fragment>
           ))}
         </nav>
+        <div className="pie">
+          <p className="lema">Potencia con precisión</p>
+        </div>
       </aside>
       <main className="contenido">
+        <div className="barra-contexto">
+          <span className="seccion-actual">{seccion}</span>
+          <span>Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
+        </div>
         {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Catálogo' && <Catalogo />}
@@ -109,10 +156,14 @@ export default function App() {
         {seccion === 'Cobros y pagos' && <CobrosPagos />}
         {seccion === 'Caja y bancos' && <CajaBancos />}
         {seccion === 'Contabilidad' && <Contabilidad alCambiar={cargarBalance} />}
-        {seccion === 'Impuestos' && <Impuestos />}
+        {seccion === 'Activos fijos' && <ActivosFijos />}
+        {seccion === 'Libro diario' && <LibroDiario />}
+        {seccion === 'Estados financieros' && <EstadosFinancieros />}
+        {seccion === 'Costos' && <Costos />}
         {seccion === 'Ajustes' && <Ajustes />}
         {seccion === 'Cierre' && <Cierre />}
         {seccion === 'Reportes' && <Reportes />}
+        {seccion === 'Impuestos' && <Impuestos />}
         {seccion === 'Respaldo' && <Respaldo />}
         {seccion === 'Bitácora' && <Bitacora />}
       </main>

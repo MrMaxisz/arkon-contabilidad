@@ -1,7 +1,8 @@
 import type BetterSqlite3 from 'better-sqlite3';
 type Database = BetterSqlite3.Database;
 import { validarFechaCalendario } from '../../shared/fechas';
-import { minorATexto } from '../../shared/dinero';
+import { minorATexto, parseMontoMinor } from '../../shared/dinero';
+import { cuotasDepreciacionActivo } from './activosFijos';
 import {
   contabilizarAsiento,
   periodoDeFecha,
@@ -29,38 +30,40 @@ export function registrarApertura(
   if (!entrada.referencia?.trim()) {
     throw new ErrorCierre('La apertura exige referencia de soporte');
   }
-  const previo = db
-    .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
-    .get(`${entrada.claveIdempotencia}:apertura`) as { id: number; folio: string } | undefined;
-  if (previo) {
-    return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
-  }
-  const lineasAsiento = entrada.lineas.map(l => {
-    const cuenta = db
-      .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
-      .get(l.cuentaCodigo) as { id: number } | undefined;
-    if (!cuenta) {
-      throw new ErrorCierre(`Cuenta inválida o inactiva para apertura: ${l.cuentaCodigo}`);
+  return db.transaction(() => {
+    const previo = db
+      .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
+      .get(`${entrada.claveIdempotencia}:apertura`) as { id: number; folio: string } | undefined;
+    if (previo) {
+      return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
     }
-    return { cuentaId: cuenta.id, debeMinor: l.debeMinor || '', haberMinor: l.haberMinor || '' };
-  });
-  const asiento = contabilizarAsiento(db, {
-    fechaOperacion: entrada.fechaOperacion,
-    concepto: entrada.concepto,
-    lineas: lineasAsiento,
-    origenTipo: 'apertura',
-    origenId: entrada.claveIdempotencia,
-    claveIdempotencia: `${entrada.claveIdempotencia}:apertura`,
-    responsable: entrada.responsable,
-    ambitoId: 'administrativo'
-  });
-  db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
-  registroEvento(db, entrada.responsable, 'apertura_registrada', 'asiento', String(asiento.asientoId), {
-    folio: asiento.folio,
-    concepto: entrada.concepto,
-    referencia: entrada.referencia
-  });
-  return { id: asiento.asientoId, folio: asiento.folio, duplicado: false, estado: 'contabilizado' };
+    const lineasAsiento = entrada.lineas.map(l => {
+      const cuenta = db
+        .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+        .get(l.cuentaCodigo) as { id: number } | undefined;
+      if (!cuenta) {
+        throw new ErrorCierre(`Cuenta inválida o inactiva para apertura: ${l.cuentaCodigo}`);
+      }
+      return { cuentaId: cuenta.id, debeMinor: l.debeMinor || '', haberMinor: l.haberMinor || '' };
+    });
+    const asiento = contabilizarAsiento(db, {
+      fechaOperacion: entrada.fechaOperacion,
+      concepto: entrada.concepto,
+      lineas: lineasAsiento,
+      origenTipo: 'apertura',
+      origenId: entrada.claveIdempotencia,
+      claveIdempotencia: `${entrada.claveIdempotencia}:apertura`,
+      responsable: entrada.responsable,
+      ambitoId: 'administrativo'
+    });
+    db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
+    registroEvento(db, entrada.responsable, 'apertura_registrada', 'asiento', String(asiento.asientoId), {
+      folio: asiento.folio,
+      concepto: entrada.concepto,
+      referencia: entrada.referencia
+    });
+    return { id: asiento.asientoId, folio: asiento.folio, duplicado: false, estado: 'contabilizado' };
+  })();
 }
 
 interface SaldoCuentaResultado {
@@ -70,7 +73,7 @@ interface SaldoCuentaResultado {
   saldoMinor: string;
 }
 
-function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: string): Array<{ codigo: string; nombre: string; tipo: string; saldo: number }> {
+function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: string): Array<{ codigo: string; nombre: string; tipo: string; saldo: bigint }> {
   return db
     .prepare(
       `SELECT c.codigo, c.nombre, c.tipo,
@@ -78,13 +81,63 @@ function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: strin
        FROM asiento_linea l
        JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
        JOIN cuenta c ON c.id = l.cuenta_id
-       WHERE c.tipo IN ('ingreso','costo','gasto')
+        WHERE c.tipo IN ('ingreso','costo','gasto')
+          AND a.ambito_id = 'administrativo'
          AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
        GROUP BY c.id
        HAVING saldo <> 0
        ORDER BY c.codigo`
     )
-    .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>;
+    .safeIntegers(true)
+    .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: bigint }>;
+}
+
+export interface AvisoDepreciacionEjercicio {
+  anio: number;
+  hayPendientes: boolean;
+  activos: number;
+  meses: number;
+  importeMinor: string;
+}
+
+// Aviso de Cierre (bloque 3D): cuotas del ejercicio que siguen sin depreciarse en activos
+// vigentes. No bloquea ni ajusta nada; solo informa para que el contador decida.
+export function avisoDepreciacionEjercicio(db: BetterSqlite3.Database, anio: number): AvisoDepreciacionEjercicio {
+  if (!Number.isInteger(anio) || anio < 1900 || anio > 2999) {
+    throw new ErrorCierre(`Año fuera de rango: ${anio}`);
+  }
+  const activos = db
+    .prepare("SELECT id FROM activo_fijo WHERE estado = 'activo' AND ambito_id = 'administrativo' ORDER BY codigo")
+    .all() as Array<{ id: number }>;
+  const anioTexto = String(anio);
+  let meses = 0;
+  let activosConPendiente = 0;
+  let importe = 0n;
+  for (const activo of activos) {
+    const aplicadas = new Set(
+      (db.prepare('SELECT mes FROM depreciacion_detalle WHERE activo_fijo_id = ?').all(activo.id) as Array<{ mes: string }>)
+        .map(fila => fila.mes)
+    );
+    let pendientesDelActivo = 0;
+    for (const cuota of cuotasDepreciacionActivo(db, activo.id).cuotas) {
+      if (cuota.mes.slice(0, 4) !== anioTexto || aplicadas.has(cuota.mes)) {
+        continue;
+      }
+      pendientesDelActivo += 1;
+      meses += 1;
+      importe += parseMontoMinor(cuota.cuotaMinor);
+    }
+    if (pendientesDelActivo > 0) {
+      activosConPendiente += 1;
+    }
+  }
+  return {
+    anio,
+    hayPendientes: meses > 0,
+    activos: activosConPendiente,
+    meses,
+    importeMinor: minorATexto(importe)
+  };
 }
 
 export interface EstadoEjercicio {
@@ -95,6 +148,7 @@ export interface EstadoEjercicio {
   cierreExistente: { id: number; folio: string; fecha: string } | null;
   periodoDiciembreAbierto: boolean;
   ejercicioCerrado: boolean;
+  depreciacionPendiente: AvisoDepreciacionEjercicio;
 }
 
 export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): EstadoEjercicio {
@@ -130,7 +184,8 @@ export function estadoEjercicio(db: BetterSqlite3.Database, anio: number): Estad
     resultadoNetoMinor: minorATexto(neto),
     cierreExistente: cierre ?? null,
     periodoDiciembreAbierto: diciembre?.estado === 'abierto',
-    ejercicioCerrado: bloqueo?.estado === 'cerrado'
+    ejercicioCerrado: bloqueo?.estado === 'cerrado',
+    depreciacionPendiente: avisoDepreciacionEjercicio(db, anio)
   };
 }
 
@@ -194,7 +249,7 @@ export function cerrarEjercicio(
     }
     const codigoResultado = entrada.cuentaResultadoCodigo?.trim() || '3201';
     const cuentaResultado = db
-      .prepare('SELECT id, nombre FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+      .prepare("SELECT id, nombre FROM cuenta WHERE codigo = ? AND tipo = 'patrimonio' AND es_grupo = 0 AND activa = 1")
       .get(codigoResultado) as { id: number; nombre: string } | undefined;
     if (!cuentaResultado) {
       throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${codigoResultado}`);

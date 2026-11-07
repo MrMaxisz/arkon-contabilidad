@@ -592,4 +592,81 @@ ALTER TABLE retencion ADD COLUMN involucra_nomina INTEGER;
 ALTER TABLE retencion ADD COLUMN persona_natural INTEGER;
 `
   },
+  {
+    version: 20,
+    nombre: 'activos_fijos',
+    sql: `
+-- v4 podía crear 1203 sin padre cuando aún no estaba sembrado el grupo 12.
+UPDATE cuenta SET padre_id = (SELECT id FROM cuenta WHERE codigo = '12')
+WHERE codigo = '1203' AND padre_id IS NULL;
+
+-- En bases nuevas el catálogo se siembra después de migrar; en bases v19
+-- estas cuentas se incorporan aquí bajo sus grupos de resultado.
+INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id)
+SELECT '64', 'Otros gastos', 'gasto', 1, id FROM cuenta
+WHERE codigo = '6' AND NOT EXISTS (SELECT 1 FROM cuenta WHERE codigo = '64');
+INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id)
+SELECT '4202', 'Ganancia en venta de activos fijos', 'ingreso', 0, id FROM cuenta
+WHERE codigo = '42' AND NOT EXISTS (SELECT 1 FROM cuenta WHERE codigo = '4202');
+INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id)
+SELECT '6402', 'Pérdida en baja o venta de activos fijos', 'gasto', 0, id FROM cuenta
+WHERE codigo = '64' AND NOT EXISTS (SELECT 1 FROM cuenta WHERE codigo = '6402');
+
+CREATE TABLE activo_fijo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo TEXT NOT NULL UNIQUE,
+  descripcion TEXT NOT NULL,
+  categoria TEXT NOT NULL,
+  ubicacion TEXT NOT NULL,
+  responsable TEXT NOT NULL,
+  fecha_adquisicion TEXT NOT NULL,
+  fecha_inicio_uso TEXT NOT NULL,
+  costo_minor INTEGER NOT NULL CHECK (costo_minor >= 0),
+  residual_minor INTEGER NOT NULL DEFAULT 0 CHECK (residual_minor >= 0),
+  vida_util_meses INTEGER NOT NULL CHECK (vida_util_meses > 0),
+  cuenta_activo_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cuenta_depreciacion_id INTEGER NOT NULL REFERENCES cuenta(id),
+  cuenta_gasto_id INTEGER NOT NULL REFERENCES cuenta(id),
+  compra_id INTEGER REFERENCES compra(id),
+  proyecto_id INTEGER REFERENCES proyecto(id),
+  estado TEXT NOT NULL DEFAULT 'activo' CHECK (estado IN ('activo','dado_de_baja','vendido')),
+  ambito_id TEXT NOT NULL DEFAULT 'administrativo' REFERENCES ambito(id),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE depreciacion_lote (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mes TEXT NOT NULL,
+  asiento_id INTEGER NOT NULL REFERENCES asiento(id),
+  total_minor INTEGER NOT NULL,
+  responsable TEXT NOT NULL,
+  creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE depreciacion_detalle (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lote_id INTEGER NOT NULL REFERENCES depreciacion_lote(id),
+  activo_fijo_id INTEGER NOT NULL REFERENCES activo_fijo(id),
+  mes TEXT NOT NULL,
+  cuota_minor INTEGER NOT NULL,
+  UNIQUE (activo_fijo_id, mes)
+);
+
+CREATE TABLE baja_activo_fijo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  activo_fijo_id INTEGER NOT NULL REFERENCES activo_fijo(id),
+  fecha_operacion TEXT NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('baja','venta')),
+  importe_minor INTEGER NOT NULL CHECK (importe_minor >= 0),
+  acumulada_minor INTEGER NOT NULL CHECK (acumulada_minor >= 0),
+  asiento_id INTEGER NOT NULL UNIQUE REFERENCES asiento(id),
+  estado TEXT NOT NULL DEFAULT 'registrada' CHECK (estado IN ('registrada','anulada')),
+  responsable TEXT NOT NULL,
+  motivo TEXT NOT NULL,
+  reverso_id INTEGER REFERENCES asiento(id)
+);
+CREATE UNIQUE INDEX idx_baja_activo_vigente ON baja_activo_fijo(activo_fijo_id)
+WHERE estado = 'registrada';
+`
+  },
 ];

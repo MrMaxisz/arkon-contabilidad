@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { ContraparteResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonSecundario } from '../componentes';
 
 interface Vigencia {
   id: number;
@@ -74,7 +75,15 @@ function mesActual(): string {
   return fechaLocalElSalvador().slice(0, 7);
 }
 
+const subareas = [
+  { id: 'configuracion', texto: 'Configuración' },
+  { id: 'libros', texto: 'Libros' },
+  { id: 'retenciones', texto: 'Retenciones' },
+  { id: 'anexos', texto: 'Anexos' }
+] as const;
+
 export default function Impuestos() {
+  const [subarea, setSubarea] = useState<typeof subareas[number]['id']>('configuracion');
   const [vigencias, setVigencias] = useState<Vigencia[]>([]);
   const [contrapartes, setContrapartes] = useState<ContraparteResumen[]>([]);
   const [mes, setMes] = useState(mesActual());
@@ -293,8 +302,35 @@ export default function Impuestos() {
   return (
     <div>
       <h1>Impuestos</h1>
+      <div className="fila no-imprimir" role="tablist" aria-label="Subáreas de impuestos">
+        {subareas.map((area, indice) => (
+          <BotonSecundario
+            key={area.id}
+            role="tab"
+            id={`impuestos-tab-${area.id}`}
+            aria-controls={`impuestos-panel-${area.id}`}
+            aria-selected={subarea === area.id}
+            tabIndex={subarea === area.id ? 0 : -1}
+            className={subarea === area.id ? 'activo-pestana' : ''}
+            onClick={() => setSubarea(area.id)}
+            onKeyDown={e => {
+              const destino = e.key === 'ArrowRight' ? (indice + 1) % subareas.length
+                : e.key === 'ArrowLeft' ? (indice + subareas.length - 1) % subareas.length
+                : e.key === 'Home' ? 0 : e.key === 'End' ? subareas.length - 1 : null;
+              if (destino === null) return;
+              e.preventDefault();
+              const siguiente = subareas[destino];
+              if (!siguiente) return;
+              setSubarea(siguiente.id);
+              document.getElementById(`impuestos-tab-${siguiente.id}`)?.focus();
+            }}
+          >{area.texto}</BotonSecundario>
+        ))}
+      </div>
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
 
+      {subarea === 'configuracion' && (
+      <section role="tabpanel" id="impuestos-panel-configuracion" aria-labelledby="impuestos-tab-configuracion">
       <form onSubmit={crearVigencia}>
         <h2>Vigencias del perfil tributario</h2>
         <div className="fila">
@@ -306,7 +342,7 @@ export default function Impuestos() {
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
           <button className="primario" type="submit">Registrar vigencia</button>
         </div>
-        <p className="menor">Una futura inscripción configura una vigencia; no recalcula el historial ni atribuye operaciones anteriores a la nueva entidad.</p>
+        <p className="aviso seguridad">Una futura inscripción configura una vigencia; no recalcula el historial ni atribuye operaciones anteriores a la nueva entidad.</p>
       </form>
       {cerrandoId !== null && (
         <form onSubmit={async e => {
@@ -324,8 +360,8 @@ export default function Impuestos() {
           <div className="fila">
             <label>Hasta<input type="date" value={cierreFecha} onChange={e => setCierreFecha(e.target.value)} required /></label>
             <label style={{ flex: 2 }}>Motivo (obligatorio)<input value={cierreMotivo} onChange={e => setCierreMotivo(e.target.value)} required /></label>
-            <button className="primario" type="submit">Confirmar cierre</button>
-            <button type="button" onClick={() => setCerrandoId(null)}>Cancelar</button>
+            <BotonPrimario type="submit">Confirmar cierre</BotonPrimario>
+            <BotonSecundario type="button" onClick={() => setCerrandoId(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
@@ -344,7 +380,7 @@ export default function Impuestos() {
                 <td>{v.fuente ?? '—'}</td>
                 <td>
                   {v.hasta === null && (
-                    <button onClick={() => { setCerrandoId(v.id); setCierreMotivo(''); }}>Cerrar vigencia</button>
+                    <BotonSecundario onClick={() => { setCerrandoId(v.id); setCierreMotivo(''); }}>Cerrar vigencia</BotonSecundario>
                   )}
                 </td>
               </tr>
@@ -354,11 +390,15 @@ export default function Impuestos() {
       )}
 
       {politicas && (
-        <p className="menor">
+        <p className="aviso seguridad">
           Políticas: hecho generador de anticipos — {politicas.anticipoHechoGenerador === 'pendiente' ? 'PENDIENTE del contador responsable' : politicas.anticipoHechoGenerador};
           IVA de compras a crédito fiscal — {politicas.ivaComprasCreditoFiscal ? 'activo' : 'inactivo'}.
         </p>
       )}
+      </section>
+      )}
+      {subarea === 'libros' && (
+      <section role="tabpanel" id="impuestos-panel-libros" aria-labelledby="impuestos-tab-libros">
       <h2>Libros y conciliación de IVA</h2>
       <div className="fila">
         <label>Mes<input type="month" value={mes} onChange={e => { setMes(e.target.value); exportacionId.current++; consultaResultadosId.current++; setExportacion(null); setEstadoResultados(null); }} /></label>
@@ -376,7 +416,7 @@ export default function Impuestos() {
           </tbody>
         </table>
       )}
-      {conciliacion && <p className="menor">{conciliacion.nota}</p>}
+      {conciliacion && <p className="aviso seguridad">{conciliacion.nota}</p>}
       <h3>Libro de ventas — {libroV?.ivaMinor ?? '0.00'} de IVA</h3>
       {libroV && libroV.filas.length > 0 ? (
         <table>
@@ -395,14 +435,14 @@ export default function Impuestos() {
         <p className="vacio">Sin ventas en el mes.</p>
       )}
       <div className="fila">
-        <button onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</button>
-        <button onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</button>
-        <button onClick={() => void guardarArchivo('venta')}>Guardar libro de ventas en archivo…</button>
-        <button onClick={() => void guardarArchivo('compra')}>Guardar libro de compras en archivo…</button>
+        <BotonSecundario onClick={() => void exportar('venta')}>Exportar libro de ventas (CSV interno)</BotonSecundario>
+        <BotonSecundario onClick={() => void exportar('compra')}>Exportar libro de compras (CSV interno)</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarArchivo('venta')}>Guardar libro de ventas en archivo…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarArchivo('compra')}>Guardar libro de compras en archivo…</BotonSecundario>
       </div>
       {exportacion && (
         <div>
-          <p className="aviso">
+          <p className="aviso seguridad">
             Exportación de {exportacion.mes} · libro de {exportacion.tipo === 'venta' ? 'ventas' : 'compras'} (versión {exportacion.version}).
             {exportacion.advertencia}
           </p>
@@ -452,6 +492,10 @@ export default function Impuestos() {
         </>
       )}
 
+      </section>
+      )}
+      {subarea === 'retenciones' && (
+      <section role="tabpanel" id="impuestos-panel-retenciones" aria-labelledby="impuestos-tab-retenciones">
       <form onSubmit={registrarRetencion}>
         <h2>Retenciones (control)</h2>
         <div className="fila">
@@ -477,7 +521,7 @@ export default function Impuestos() {
           <label style={{ flex: 2 }}>Concepto<input value={retConcepto} onChange={e => setRetConcepto(e.target.value)} required /></label>
           <button className="primario" type="submit">Registrar retención</button>
         </div>
-        <p className="menor">Registro de control con base, regla, contraparte y comprobante; sin efecto contable automático hasta que la política del contador lo determine.</p>
+        <p className="aviso seguridad">Registro de control con base, regla, contraparte y comprobante; sin efecto contable automático hasta que la política del contador lo determine.</p>
       </form>
       {retenciones.length === 0 ? (
         <p className="vacio">Sin retenciones registradas.</p>
@@ -494,8 +538,12 @@ export default function Impuestos() {
           </tbody>
         </table>
       )}
+      </section>
+      )}
+      {subarea === 'anexos' && (
+      <section role="tabpanel" id="impuestos-panel-anexos" aria-labelledby="impuestos-tab-anexos">
       <h2>Anexo 1 F-07 v14 (ventas a contribuyentes)</h2>
-      <p className="aviso error">
+      <p className="aviso seguridad">
         Estructura oficial F-07 v14 (DGII, Enero 2025). El archivo de presentación permanece BLOQUEADO
         mientras falten metadatos fiscales o no exista vigencia con IVA inscrito que cubra el mes;
         ARKON no está constituida ni inscrita. El diagnóstico es interno y no genera archivo.
@@ -504,16 +552,16 @@ export default function Impuestos() {
         <label>Período del anexo (AAAA-MM)
           <input value={anexoMes} onChange={e => setAnexoMes(e.target.value)} placeholder="2026-11" />
         </label>
-        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void diagnosticarAnexo()}>
+        <BotonSecundario type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void diagnosticarAnexo()}>
           Diagnosticar
-        </button>
-        <button type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void guardarAnexo()}>
+        </BotonSecundario>
+        <BotonSecundario type="button" disabled={!/^\d{4}-\d{2}$/.test(anexoMes)} onClick={() => void guardarAnexo()}>
           Guardar anexo de presentación…
-        </button>
+        </BotonSecundario>
       </div>
       {anexoDiagnostico && (
         <div>
-          <p className="menor">
+          <p className={anexoDiagnostico.bloqueado ? 'aviso seguridad' : 'menor'}>
             Folios listos: {anexoDiagnostico.listos.length}. {anexoDiagnostico.bloqueado
               ? `BLOQUEADO: ${anexoDiagnostico.motivo}`
               : 'Sin faltantes para el mes.'}
@@ -521,7 +569,7 @@ export default function Impuestos() {
           {anexoDiagnostico.folios.map(f => (
             <p key={f.folio} className="menor">
               {f.folio}: {f.faltantes.join(' · ')}{' '}
-              <button type="button" onClick={() => void seleccionarDocumento(f.documentoId, anexoDiagnostico.tipoDocumento)}>Completar…</button>
+              <BotonSecundario type="button" onClick={() => void seleccionarDocumento(f.documentoId, anexoDiagnostico.tipoDocumento)}>Completar…</BotonSecundario>
             </p>
           ))}
         </div>
@@ -693,58 +741,58 @@ export default function Impuestos() {
       </form>
       <h2>Anexo 2 F-07 v14 (ventas a consumidor final)</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo2Ventas', 2, 'venta')}
         >
           Diagnosticar Anexo 2
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarAnexoGenerico(2)}
         >
           Guardar Anexo 2…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Anexo 3 F-07 v14 (compras)</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarAnexoGenerico('fiscal:anexo3Compras', 3, 'compra')}
         >
           Diagnosticar Anexo 3
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarAnexoGenerico(3)}
         >
           Guardar Anexo 3…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Anexo de Retenciones F-14 v16</h2>
       <div className="fila">
-        <button
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void diagnosticarF14()}
         >
           Diagnosticar F-14
-        </button>
-        <button
+        </BotonSecundario>
+        <BotonSecundario
           type="button"
           disabled={!/^\d{4}-\d{2}$/.test(anexoMes)}
           onClick={() => void guardarF14()}
         >
           Guardar anexo F-14…
-        </button>
+        </BotonSecundario>
       </div>
       {f14Diagnostico && (
         <div>
-          <p className="menor">
+          <p className={f14Diagnostico.bloqueado ? 'aviso seguridad' : 'menor'}>
             Retenciones listas: {f14Diagnostico.listos.length}. {f14Diagnostico.bloqueado ? `BLOQUEADO: ${f14Diagnostico.motivo}` : 'Sin faltantes para el mes.'}
           </p>
           {f14Diagnostico.folios.map(f => (
@@ -847,11 +895,13 @@ export default function Impuestos() {
           </button>
         </div>
       </form>
-      <p className="aviso error">
+      <p className="aviso seguridad">
         Los anexos 2 y 3 comparten el bloqueo del Anexo 1: requieren metadatos fiscales completos por la vía
         auditada y cobertura de vigencia por fecha de documento; ARKON no está constituida ni inscrita en IVA.
         El anexo F-14 sigue el mismo bloqueo de activación formal.
       </p>
+      </section>
+      )}
     </div>
   );
 

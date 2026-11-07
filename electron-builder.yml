@@ -13,7 +13,10 @@ npmRebuild: false
 win:
   target:
     - nsis
+  icon: build/icon.ico
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

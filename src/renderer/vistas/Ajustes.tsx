@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonSecundario } from '../componentes';
 
 interface Cuenta { id: number; codigo: string; nombre: string; tipo: string; esGrupo: boolean; activa: boolean }
 
@@ -61,7 +62,7 @@ export default function Ajustes() {
       })) as { folio: string; duplicado: boolean };
       setMensaje({
         texto: r.duplicado
-          ? `Operación ya registrada (idempotencia): ${tipoAsiento} ${r.folio}`
+          ? `Operación ya registrada: ${tipoAsiento} ${r.folio}`
           : `${tipoAsiento === 'apertura' ? 'Apertura' : 'Ajuste'} ${r.folio} contabilizado con soporte «${referencia}».`,
         tipo: 'ok'
       });
@@ -129,18 +130,18 @@ export default function Ajustes() {
               }} placeholder="0.00" />
             </label>
             {lineas.length > 2 && (
-              <button type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button>
+              <BotonSecundario type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</BotonSecundario>
             )}
           </div>
         ))}
         <div className="fila">
-          <button type="button" onClick={() => setLineas([...lineas, { cuentaCodigo: '', debe: '', haber: '' }])}>Agregar línea</button>
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Contabilizando…' : 'Contabilizar ajuste'}</button>
+          <BotonSecundario type="button" onClick={() => setLineas([...lineas, { cuentaCodigo: '', debe: '', haber: '' }])}>Agregar línea</BotonSecundario>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Contabilizando…' : 'Contabilizar ajuste'}</BotonPrimario>
         </div>
       </form>
       <p className="menor">
-        El ajuste usa el motor contable central: valida calendario, período abierto, ámbito, cuentas y cuadre.
-        La referencia de soporte es obligatoria. Un reintento con la misma operación devuelve el mismo asiento (idempotencia).
+        El ajuste valida calendario, período abierto, ámbito, cuentas y cuadre.
+        La referencia de soporte es obligatoria. Un reintento con la misma operación devuelve el mismo asiento.
         Los saldos de apertura se registran aquí con su soporte documentado; no se precargan cifras.
       </p>
     </div>

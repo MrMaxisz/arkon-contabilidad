@@ -1,9 +1,22 @@
 :root {
-  --azul: #1a5fa8;
-  --marino: #0d2c54;
-  --fondo: #f4f7fb;
-  --borde: #d7e0ec;
-  --texto: #1c2733;
+  /* Tokens de color ARKON (auditorías 69/70). Ningún color fuera de tokens. */
+  --arkon-azul: #0A4DB3;
+  --arkon-marino: #0B1B33;
+  --arkon-blanco: #FFFFFF;
+  --arkon-azul-suave: #E4EDFB;
+  --arkon-chispa: #19A7E0;
+  --arkon-seguridad: #B45309;
+  --arkon-linea-clara: #C9D8F2;
+  --lateral-borde: rgba(201, 216, 242, 0.25);
+  --lateral-realce: rgba(201, 216, 242, 0.16);
+  --lateral-hover: rgba(201, 216, 242, 0.12);
+  --texto: #0B1B33;
+  --texto-suave: #4A5B75;
+  --borde: #C9D8F2;
+  --funcional-error: #B3261E;
+  --funcional-error-fondo: #FBEAE9;
+  --funcional-exito: #1E6B34;
+  --funcional-exito-fondo: #EAF5EE;
 }
 
 * { box-sizing: border-box; }
@@ -11,75 +24,283 @@
 body {
   margin: 0;
   font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 16px;
   color: var(--texto);
-  background: var(--fondo);
+  background: var(--arkon-blanco);
 }
 
+/* Tipografía: títulos y subtítulos en Barlow Condensed; texto en IBM Plex Sans. */
 h1, h2, h3 {
   font-family: 'Barlow Condensed', sans-serif;
-  color: var(--marino);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--arkon-marino);
   margin: 0 0 12px;
+  letter-spacing: 0.5px;
 }
 
+h1 { font-size: 32px; }
+h2 { font-size: 22px; }
+h3 { font-size: 16px; }
+
+.subtitulo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--arkon-marino);
+}
+
+/* Folios, hashes y datos técnicos en IBM Plex Mono. */
+.mono, .folio, td.folio { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+
+.menor { font-size: 12px; color: var(--texto-suave); }
+
+/* Foco visible claro: azul sobre claro (≥3:1) y blanco sobre marino en el lateral. */
+:focus-visible {
+  outline: 3px solid var(--arkon-azul);
+  outline-offset: 2px;
+}
+
+.lateral :focus-visible {
+  outline: 3px solid var(--arkon-blanco);
+  outline-offset: 2px;
+}
+
+/* Shell: lateral marino + contenido sobre blanco. */
 .app { display: flex; min-height: 100vh; }
 
 .lateral {
-  width: 220px;
-  background: var(--marino);
-  color: #fff;
-  padding: 16px 0;
+  width: 232px;
+  background: var(--arkon-marino);
+  color: var(--arkon-blanco);
+  padding: 20px 0 16px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .lateral .marca {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 22px;
-  letter-spacing: 1px;
-  padding: 0 20px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.2);
+  padding: 0 20px 14px;
+  border-bottom: 1px solid var(--lateral-borde);
 }
 
-.lateral nav { display: flex; flex-direction: column; margin-top: 12px; }
+.lateral .marca img { display: block; width: 148px; height: auto; }
+
+/* El lema va al pie del lateral, fuera del área de protección del logo. */
+.lateral .pie {
+  margin-top: auto;
+  padding: 12px 20px 0;
+  border-top: 1px solid var(--lateral-borde);
+}
+
+.lateral .pie .lema {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--arkon-linea-clara);
+  margin: 0;
+}
+
+.lateral nav { display: flex; flex-direction: column; margin-top: 10px; }
+
+.lateral nav .grupo {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--arkon-linea-clara);
+  padding: 12px 20px 4px;
+}
 
 .lateral button {
   background: none;
   border: none;
-  color: #cfe0f5;
+  border-left: 3px solid transparent;
+  color: var(--arkon-linea-clara);
   text-align: left;
-  padding: 10px 20px;
-  font-size: 15px;
+  padding: 7px 20px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
   cursor: pointer;
-  font-family: inherit;
 }
 
-.lateral button:hover { background: rgba(255,255,255,0.08); color: #fff; }
-.lateral button.activo { background: var(--azul); color: #fff; }
+.lateral button:hover { background: var(--lateral-hover); color: var(--arkon-blanco); }
+.lateral button[aria-current='page'] {
+  background: var(--lateral-realce);
+  border-left-color: var(--arkon-chispa);
+  color: var(--arkon-blanco);
+}
 
-.contenido { flex: 1; padding: 24px 32px; max-width: 1100px; }
+.contenido { flex: 1; padding: 20px 32px 32px; max-width: 1100px; min-width: 0; }
 
-table { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
-th, td { padding: 8px 10px; border-bottom: 1px solid var(--borde); text-align: left; }
-th { background: #eaf1f9; color: var(--marino); font-weight: 600; }
+/* Barra de contexto. */
+.barra-contexto {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--borde);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--texto-suave);
+}
+
+.barra-contexto .seccion-actual {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--arkon-marino);
+}
+
+/* Tablas densas: líneas finas, cabecera fija en azul suave, cifras a la derecha con tabular-nums. */
+table { width: 100%; border-collapse: collapse; background: var(--arkon-blanco); font-size: 14px; }
+thead th { position: sticky; top: 0; background: var(--arkon-azul-suave); }
+th, td { padding: 5px 10px; border-bottom: 1px solid var(--borde); text-align: left; }
+th { color: var(--arkon-marino); font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
 td.numero, th.numero { text-align: right; font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 600; border-top: 2px solid var(--arkon-marino); }
+tfoot td { font-weight: 600; border-top: 2px solid var(--arkon-marino); border-bottom: none; }
 
-form { background: #fff; border: 1px solid var(--borde); padding: 16px; margin-bottom: 20px; }
+/* Formularios separados por línea fina sobre el contenido blanco. */
+form { background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 16px; margin-bottom: 20px; }
 form .fila { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-label { display: flex; flex-direction: column; font-size: 13px; gap: 4px; }
-input, select { padding: 6px 8px; border: 1px solid var(--borde); font-family: inherit; font-size: 14px; }
+label { display: flex; flex-direction: column; font-size: 12px; gap: 4px; color: var(--texto-suave); }
+input, select { padding: 6px 8px; border: 1px solid var(--borde); font-family: inherit; font-size: 14px; background: var(--arkon-blanco); color: var(--texto); border-radius: 2px; }
 
+/* Botones compartidos. */
+button { border-radius: 2px; }
 button.primario {
-  background: var(--azul);
-  color: #fff;
-  border: none;
+  background: var(--arkon-azul);
+  color: var(--arkon-blanco);
+  border: 1px solid var(--arkon-azul);
   padding: 8px 18px;
-  font-size: 15px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
   cursor: pointer;
-  font-family: inherit;
 }
-button.primario:disabled { background: #9db4cf; cursor: default; }
+button.primario:disabled { background: var(--borde); border-color: var(--borde); color: var(--texto-suave); cursor: default; }
+button.secundario {
+  background: var(--arkon-blanco);
+  color: var(--arkon-azul);
+  border: 1px solid var(--arkon-azul);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secundario:disabled { color: var(--texto-suave); border-color: var(--borde); cursor: default; }
+button.peligro {
+  background: var(--arkon-blanco);
+  color: var(--funcional-error);
+  border: 1px solid var(--funcional-error);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde); cursor: default; }
 
-.aviso { background: #fff; border: 1px solid var(--borde); border-left: 4px solid var(--azul); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
-.error { border-left-color: #c0392b; color: #8c2d20; }
-.ok { border-left-color: #1e8449; }
-.vacio { padding: 24px; background: #fff; border: 1px dashed var(--borde); color: #5a6b7d; text-align: center; }
-.menor { font-size: 12px; color: #5a6b7d; }
+/* Estados de carga, error, vacío y sin resultados. */
+.estado-carga { padding: 24px; background: var(--arkon-blanco); border: 1px solid var(--borde); color: var(--texto-suave); text-align: center; font-size: 14px; }
+.estado-error { padding: 14px 16px; background: var(--funcional-error-fondo); border: 1px solid var(--funcional-error); border-left: 4px solid var(--funcional-error); color: var(--funcional-error); font-size: 14px; }
+.estado-vacio { padding: 24px; background: var(--arkon-blanco); border: 1px dashed var(--borde); color: var(--texto-suave); text-align: center; }
+.estado-sin-resultados { padding: 16px; background: var(--arkon-azul-suave); border: 1px solid var(--borde); color: var(--texto-suave); text-align: center; font-size: 14px; }
+
+/* Avisos: seguridad solo para avisos de riesgo. */
+.aviso { background: var(--arkon-blanco); border: 1px solid var(--borde); border-left: 4px solid var(--arkon-azul); padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+.aviso.error { border-left-color: var(--funcional-error); color: var(--funcional-error); background: var(--funcional-error-fondo); }
+.aviso.ok { border-left-color: var(--funcional-exito); color: var(--funcional-exito); background: var(--funcional-exito-fondo); }
+.aviso.seguridad { border-left-color: var(--arkon-seguridad); color: var(--arkon-seguridad); }
+
+.vacio { padding: 24px; background: var(--arkon-blanco); border: 1px dashed var(--borde); color: var(--texto-suave); text-align: center; }
+
+/* Resumen sobrio de Inicio (sin gráficos). Cifras de dinero en Plex Sans con tabular-nums. */
+.resumen-inicio { display: flex; gap: 32px; flex-wrap: wrap; background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 16px 20px; margin-bottom: 16px; }
+.resumen-inicio h3 { margin: 0; font-size: 12px; color: var(--texto-suave); }
+.resumen-cifra { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 22px; margin: 4px 0 0; color: var(--arkon-marino); font-variant-numeric: tabular-nums; }
+
+/* Impresión: sin navegación, controles ni campos; logo azul; filas sin cortar. */
+.logo-impresion { display: none; }
+
+@media print {
+  body { background: var(--arkon-blanco); font-size: 12px; }
+  .lateral, .barra-contexto form, form, button, select, input, .no-imprimir { display: none !important; }
+  .logo-impresion { display: block; width: 120px; height: auto; margin-bottom: 8px; }
+  .contenido { padding: 0; max-width: none; }
+  table { font-size: 12px; }
+  thead th { position: static; background: var(--arkon-blanco); border-bottom: 2px solid var(--arkon-marino); }
+  tr, td, th { page-break-inside: avoid; }
+  @page { margin: 14mm; }
+}
+
+/* Filtros activos como texto en impresión (auditoría 71): visibles en papel, ocultos los controles. */
+.filtros-impresion { margin: 0 0 8px; }
+
+/* Pestañas de estados financieros y fiscal (bloques 2 y 5D): fondo azul aunque el botón sea secundario. */
+button.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco); border-color: var(--arkon-azul); }
+
+/* Acciones de fila agrupadas en una sola barra compacta. */
+.acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+
+/* Menú de fila (bloque 5B): el resto de las acciones va agrupado aquí. */
+.menu-acciones { position: relative; font-size: 14px; }
+.menu-acciones > summary {
+  cursor: pointer; list-style: none; text-align: center;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 14px;
+  color: var(--arkon-azul); background: var(--arkon-blanco);
+  border: 1px solid var(--arkon-azul); padding: 6px 12px; border-radius: 2px;
+}
+.menu-acciones > summary::-webkit-details-marker { display: none; }
+.menu-acciones[open] > summary { background: var(--arkon-azul-suave); }
+.menu-acciones-lista {
+  position: absolute; right: 0; top: 100%; z-index: 30; min-width: 180px;
+  background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  box-shadow: 0 4px 10px var(--lateral-borde);
+}
+.menu-acciones-lista button { display: block; width: 100%; text-align: left; padding: 8px 18px; }
+.menu-acciones-lista .peligro { color: var(--funcional-error); }
+
+/* Etiqueta accesible pero invisible en pantalla (6C): para cuadrículas con cabecera visible. */
+.solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Detalle con líneas largas (6C): rompe el texto y la página no desplaza en horizontal. */
+.romper-texto { overflow-wrap: anywhere; word-break: break-word; }
+
+/* Fila compacta general (auditoría 72): también fuera de formularios. */
+.fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+
+/* Líneas del asiento en cuadrícula (bloque 5D): columnas estables Cuenta / Debe / Haber / acción. */
+.fila-linea { display: grid; grid-template-columns: minmax(220px, 3fr) 140px 140px auto; gap: 10px; align-items: end; margin-bottom: 8px; }
+.cabecera-lineas { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--texto-suave); font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; }
+.fila-linea .numero { text-align: right; font-variant-numeric: tabular-nums; }
+.totales-lineas { border-top: 2px solid var(--arkon-marino); padding-top: 8px; margin-bottom: 12px; font-weight: 600; }
+.totales-diferencia { margin: 0 0 12px; }
+
+/* Controles visibles de búsqueda y paginación (bloque 5D). */
+.controles-pagina { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 16px; }
+.controles-pagina .paginacion { display: flex; gap: 8px; align-items: center; }
+
+/* Secciones plegables (bloque 5D): pestañas largas se dividen en bloques con encabezado clicable. */
+.seccion-plegable { border: 1px solid var(--borde); background: var(--arkon-blanco); margin-bottom: 20px; }
+.seccion-plegable > summary { cursor: pointer; list-style: none; padding: 10px 14px; }
+.seccion-plegable > summary::-webkit-details-marker { display: none; }
+.seccion-plegable > summary:hover { background: var(--arkon-azul-suave); }
+.seccion-plegable > summary h2 { display: inline; margin: 0; }
+.seccion-plegable[open] > summary { border-bottom: 1px solid var(--borde); }
+.seccion-plegable .cuerpo-seccion { padding: 0 14px 8px; }

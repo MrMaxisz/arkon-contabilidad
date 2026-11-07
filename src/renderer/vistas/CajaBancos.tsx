@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { MovimientoTesoreriaResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, BotonPeligro, BotonSecundario, EstadoCarga, EstadoError, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface Cuenta { id: number; codigo: string; nombre: string }
 
@@ -23,11 +24,29 @@ export default function CajaBancos() {
   const [fecha, setFecha] = useState(fechaLocalElSalvador());
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter(c => ['1101', '1102', '1103'].includes(c.codigo))));
-    void api().invocar('tesoreria:listar').then(r => setMovimientos(r as MovimientoTesoreriaResumen[]));
+    setCargando(true);
+    setErrorCarga(null);
+    void Promise.allSettled([
+      api().invocar('cuenta:listar'),
+      api().invocar('tesoreria:listar')
+    ]).then(([cuentasResultado, movimientosResultado]) => {
+      if (cuentasResultado.status === 'fulfilled') {
+        setCuentas((cuentasResultado.value as Cuenta[]).filter(c => ['1101', '1102', '1103'].includes(c.codigo)));
+      } else {
+        setErrorCarga(limpiarMensajeError(cuentasResultado.reason));
+      }
+      if (movimientosResultado.status === 'fulfilled') {
+        setMovimientos(movimientosResultado.value as MovimientoTesoreriaResumen[]);
+      } else {
+        setErrorCarga(limpiarMensajeError(movimientosResultado.reason));
+      }
+      setCargando(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -69,13 +88,30 @@ export default function CajaBancos() {
   const [ocupadoAnular, setOcupadoAnular] = useState(false);
   const [errorAnular, setErrorAnular] = useState<string | null>(null);
   const avisoRef = useRef<HTMLParagraphElement | null>(null);
+  const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
 
-  function abrirAnulacion(m: MovimientoTesoreriaResumen) {
+  function abrirAnulacion(m: MovimientoTesoreriaResumen, origen: HTMLButtonElement) {
+    origenAnulacionRef.current = origen;
     setAnulando(m);
     setMotivoAnular('');
     setResponsableAnular(responsable.trim());
     setErrorAnular(null);
   }
+
+  useEffect(() => {
+    if (!anulando) {
+      return;
+    }
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape' && !ocupadoAnular) {
+        // Con la anulación en curso, Escape no hace nada (auditoría 70).
+        cancelarAnulacion();
+        origenAnulacionRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', alPresionar);
+    return () => document.removeEventListener('keydown', alPresionar);
+  }, [anulando, ocupadoAnular]);
 
   function cancelarAnulacion() {
     setAnulando(null);
@@ -144,26 +180,34 @@ export default function CajaBancos() {
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
         <div className="fila">
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar transferencia'}</button>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar transferencia'}</BotonPrimario>
         </div>
       </form>
       <h2>Movimientos recientes</h2>
-      {movimientos.length === 0 ? (
-        <p className="vacio">Sin movimientos de tesorería.</p>
+      {errorCarga ? (
+        <EstadoError mensaje={errorCarga} />
+      ) : cargando && movimientos.length === 0 ? (
+        <EstadoCarga texto="Cargando movimientos…" />
+      ) : movimientos.length === 0 ? (
+        <EstadoVacio texto="Sin movimientos de tesorería." />
       ) : (
         <table>
           <thead><tr><th>Folio</th><th>Tipo</th><th>Fecha</th><th>Concepto</th><th>Contraparte</th><th className="numero">Monto</th><th>Estado</th><th></th></tr></thead>
           <tbody>
             {movimientos.map(m => (
               <tr key={m.id}>
-                <td>{m.folio}</td>
+                <td className="folio">{m.folio}</td>
                 <td>{m.tipo}</td>
                 <td>{m.fecha}</td>
                 <td>{m.concepto}</td>
                 <td>{m.contraparteNombre ?? '—'}</td>
-                <td className="numero">${m.montoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(m.montoMinor)}</td>
                 <td>{m.estado}</td>
-                <td>{m.estado === 'registrado' && <button onClick={() => abrirAnulacion(m)}>Anular</button>}</td>
+                <td>
+                  <div className="acciones-fila">
+                    {m.estado === 'registrado' && <BotonPeligro onClick={e => abrirAnulacion(m, e.currentTarget)}>Anular</BotonPeligro>}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -188,10 +232,10 @@ export default function CajaBancos() {
               </label>
             </div>
             <div className="fila">
-              <button className="primario" type="submit" disabled={ocupadoAnular}>
+              <BotonPeligro type="submit" disabled={ocupadoAnular}>
                 {ocupadoAnular ? 'Anulando…' : `Sí, anular ${anulando.folio}`}
-              </button>
-              <button type="button" onClick={cancelarAnulacion}>Cancelar</button>
+              </BotonPeligro>
+              <BotonSecundario type="button" onClick={cancelarAnulacion}>Cancelar</BotonSecundario>
             </div>
           </form>
         </div>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonSecundario, EncabezadoReporte, EstadoCarga, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface FilaAuxiliar {
   contraparteId: number;
@@ -224,7 +225,7 @@ export default function Reportes() {
 
   return (
     <div>
-      <h1>Reportes y auxiliares</h1>
+      <EncabezadoReporte titulo="Reportes y auxiliares" moneda="USD" />
       {mensaje && <p className="aviso">{mensaje}</p>}
 
       <h2>Auxiliar de clientes</h2>
@@ -236,15 +237,20 @@ export default function Reportes() {
               {auxiliarContrapartes.clientes.map(c => (
                 <tr key={c.contraparteId}>
                   <td>{c.contraparteNombre}</td>
-                  <td className="numero">${c.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(c.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total clientes</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarContrapartes.totalClientesMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total clientes: ${auxiliarContrapartes.totalClientesMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin saldos pendientes de clientes.</p>
+        <EstadoVacio texto="Sin saldos pendientes de clientes." />
       )}
 
       <h2>Auxiliar de proveedores</h2>
@@ -256,15 +262,20 @@ export default function Reportes() {
               {auxiliarContrapartes.proveedores.map(p => (
                 <tr key={p.contraparteId}>
                   <td>{p.contraparteNombre}</td>
-                  <td className="numero">${p.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(p.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total proveedores</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarContrapartes.totalProveedoresMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total proveedores: ${auxiliarContrapartes.totalProveedoresMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin saldos pendientes de proveedores.</p>
+        <EstadoVacio texto="Sin saldos pendientes de proveedores." />
       )}
 
       {auxiliarContrapartes && (
@@ -284,15 +295,20 @@ export default function Reportes() {
               {auxiliarEfectivo.cuentas.map(c => (
                 <tr key={c.cuentaId}>
                   <td>{c.codigo} · {c.nombre}</td>
-                  <td className="numero">${c.saldoMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(c.saldoMinor)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="total">
+                <td>Total efectivo</td>
+                <td className="numero">{formatoDineroPantalla(auxiliarEfectivo.totalMinor)}</td>
+              </tr>
+            </tfoot>
           </table>
-          <p className="menor">Total efectivo: ${auxiliarEfectivo.totalMinor}</p>
         </>
       ) : (
-        <p className="vacio">Sin movimientos de efectivo.</p>
+        <EstadoVacio texto="Sin movimientos de efectivo." />
       )}
       {auxiliarEfectivo && (
         <p className={`aviso ${auxiliarEfectivo.conciliaMayor ? 'ok' : 'error'}`}>
@@ -302,7 +318,11 @@ export default function Reportes() {
         </p>
       )}
       <h2>Detalle por documentos</h2>
-      <div className="fila">
+      <p className="filtros-impresion menor">
+        Filtros: {tipoDetalle === 'cliente' ? 'Cliente' : 'Proveedor'} ·{' '}
+        {contrapartes.find(c => c.id === contraparteId)?.nombre ?? 'todas'} · Corte: {corte || 'sin corte'}
+      </p>
+      <div className="fila no-imprimir">
         <label>Tipo
           <select value={tipoDetalle} onChange={e => { setTipoDetalle(e.target.value as 'cliente' | 'proveedor'); setContraparteId(0); }}>
             <option value="cliente">Cliente</option>
@@ -324,43 +344,52 @@ export default function Reportes() {
       </div>
       {detalle && (
         <>
-          <p className="menor">Saldo al corte: ${detalle.saldoMinor}</p>
           {detalle.documentos.length === 0 ? (
-            <p className="vacio">Sin documentos al corte seleccionado.</p>
+            <EstadoVacio texto="Sin documentos al corte seleccionado." />
           ) : (
             <table>
               <thead><tr><th>Folio</th><th>Fecha</th><th>Concepto</th><th className="numero">Total</th><th className="numero">Aplicado</th><th className="numero">Saldo</th></tr></thead>
               <tbody>
                 {detalle.documentos.map(d => (
                   <tr key={d.folio}>
-                    <td>{d.folio}</td>
+                    <td className="folio">{d.folio}</td>
                     <td>{d.fecha}</td>
                     <td>{d.concepto}</td>
-                    <td className="numero">${d.totalMinor}</td>
-                    <td className="numero">${d.aplicadoMinor}</td>
-                    <td className="numero">${d.saldoMinor}</td>
+                    <td className="numero">{formatoDineroPantalla(d.totalMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(d.aplicadoMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(d.saldoMinor)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="total">
+                  <td>Saldo al corte</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td className="numero">{formatoDineroPantalla(detalle.saldoMinor)}</td>
+                </tr>
+              </tfoot>
             </table>
           )}
         </>
       )}
 
       <h2>Exportación</h2>
-      <div className="fila">
+      <div className="fila no-imprimir">
         <label>Paquete para el contador desde
           <input type="date" value={paqueteDesde} onChange={e => setPaqueteDesde(e.target.value)} />
         </label>
         <label>hasta
           <input type="date" value={paqueteHasta} onChange={e => setPaqueteHasta(e.target.value)} />
         </label>
-        <button
+        <BotonSecundario
           disabled={!paqueteDesde || !paqueteHasta}
           onClick={() => void guardarPaquete()}
         >
           Guardar paquete para el contador…
-        </button>
+        </BotonSecundario>
       </div>
       <h2>Ejercicio anual (soporte interno F-11)</h2>
       <p className="aviso error">
@@ -381,14 +410,14 @@ export default function Reportes() {
             placeholder="2026"
           />
         </label>
-        <button
+        <BotonSecundario
           disabled={!/^\d{4}$/.test(ejercicioAnio) || ejercicioCargando || ejercicioAnioConfirmado !== ejercicioAnio}
           onClick={() => void guardarEjercicio()}
         >
           Guardar soporte del ejercicio…
-        </button>
+        </BotonSecundario>
       </div>
-      {ejercicioCargando && <p className="menor">Consultando ejercicio {ejercicioAnio}…</p>}
+      {ejercicioCargando && <EstadoCarga texto={`Consultando ejercicio ${ejercicioAnio}…`} />}
       {ejercicio && (
         <div>
           <p className="menor">
@@ -409,7 +438,7 @@ export default function Reportes() {
                   <td>{a.concepto}</td>
                   <td>{a.estado}</td>
                   <td>{a.origen}</td>
-                  <td className="numero">${a.totalMinor}</td>
+                  <td className="numero">{formatoDineroPantalla(a.totalMinor)}</td>
                   <td>{a.familiaCierre ? 'Sí (excluido del ordinario)' : 'No'}</td>
                 </tr>
               ))}
@@ -422,12 +451,12 @@ export default function Reportes() {
         </div>
       )}
       <div className="fila">
-        <button onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</button>
-        <button onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</button>
-        <button onClick={() => void guardarCsv('efectivo')}>Guardar resumen de caja y bancos (actual)…</button>
-        <button disabled={!contraparteId} onClick={() => void guardarCsvDetalle()}>
+        <BotonSecundario onClick={() => void guardarCsv('cliente')}>Guardar resumen de clientes (actual)…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarCsv('proveedor')}>Guardar resumen de proveedores (actual)…</BotonSecundario>
+        <BotonSecundario onClick={() => void guardarCsv('efectivo')}>Guardar resumen de caja y bancos (actual)…</BotonSecundario>
+        <BotonSecundario disabled={!contraparteId} onClick={() => void guardarCsvDetalle()}>
           Guardar detalle al corte seleccionado…
-        </button>
+        </BotonSecundario>
       </div>
       <p className="menor">
         Los auxiliares derivan de asientos y aplicaciones; no almacenan saldos independientes.

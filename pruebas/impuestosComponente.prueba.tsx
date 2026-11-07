@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, getConfig } from '@testing-library/react';
 
 const invocar = vi.hoisted(() => vi.fn());
 
@@ -76,6 +76,67 @@ function textoExportacion(): string | null {
   return el?.textContent ?? null;
 }
 
+describe('5C: subáreas de impuestos', () => {
+  it('amplía la espera asíncrona sin cambiar las aserciones', () => {
+    expect(getConfig().asyncUtilTimeout).toBe(8000);
+  });
+
+  it('separa las cuatro áreas, conserva los borradores y los avisos legales de seguridad', async () => {
+    render(<Impuestos />);
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getByRole('tab', { name: 'Configuración' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('impuestos-tab-configuracion');
+    expect(screen.queryByRole('heading', { name: 'Libros y conciliación de IVA' })).toBeNull();
+    expect(screen.getByText(/Una futura inscripción configura una vigencia/).className).toBe('aviso seguridad');
+    await screen.findByText(/PENDIENTE del contador responsable/);
+    fireEvent.change(screen.getByLabelText('Fuente oficial'), { target: { value: 'Fuente sintética' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Libros y conciliación de IVA' })).toBeTruthy();
+    fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Retenciones' }));
+    expect(screen.getByText(/Registro de control con base, regla/).className).toBe('aviso seguridad');
+    fireEvent.change(screen.getByLabelText('Base'), { target: { value: '100.00' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
+    expect(screen.getByText(/Estructura oficial F-07 v14/).className).toBe('aviso seguridad');
+    expect(screen.getByText(/El anexo F-14 sigue el mismo bloqueo de activación formal/).className).toBe('aviso seguridad');
+    expect((screen.getByRole('button', { name: 'Guardar anexo de presentación…' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Período del anexo (AAAA-MM)'), { target: { value: '2026-11' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Configuración' }));
+    expect((screen.getByLabelText('Fuente oficial') as HTMLInputElement).value).toBe('Fuente sintética');
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
+    expect(selectorMes().value).toBe('2026-09');
+    fireEvent.click(screen.getByRole('tab', { name: 'Retenciones' }));
+    expect((screen.getByLabelText('Base') as HTMLInputElement).value).toBe('100.00');
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
+    expect((screen.getByLabelText('Período del anexo (AAAA-MM)') as HTMLInputElement).value).toBe('2026-11');
+    expect(invocar.mock.calls.some(([comando]) => /crear|registrar|Completar|exportar/.test(comando))).toBe(false);
+  });
+
+  it('permite recorrer las pestañas con flechas, Inicio y Fin', async () => {
+    render(<Impuestos />);
+    const configuracion = screen.getByRole('tab', { name: 'Configuración' });
+    configuracion.focus();
+    fireEvent.keyDown(configuracion, { key: 'ArrowLeft' });
+    const anexos = screen.getByRole('tab', { name: 'Anexos' });
+    expect(document.activeElement).toBe(anexos);
+    expect(anexos.getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(anexos, { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(configuracion);
+    fireEvent.keyDown(configuracion, { key: 'End' });
+    expect(document.activeElement).toBe(anexos);
+    fireEvent.keyDown(anexos, { key: 'Home' });
+    expect(document.activeElement).toBe(configuracion);
+    expect(configuracion.tabIndex).toBe(0);
+    expect(anexos.tabIndex).toBe(-1);
+    await screen.findByText(/PENDIENTE del contador responsable/);
+  });
+});
+
 describe('decimotercera revisión: CSV asociado a mes y tipo', () => {
   it('cambiar de mes limpia el CSV mostrado', async () => {
     invocar.mockImplementation((comando: string, datos?: unknown) => {
@@ -90,6 +151,7 @@ describe('decimotercera revisión: CSV asociado a mes y tipo', () => {
     });
 
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
     fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
     fireEvent.click(botonExportarVentas());
     await waitFor(() => expect(textoExportacion()).toContain('Exportación de 2026-09 · libro de ventas'));
@@ -117,6 +179,7 @@ describe('decimotercera revisión: CSV asociado a mes y tipo', () => {
     });
 
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
     fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
     fireEvent.click(botonExportarVentas());
     await waitFor(() => expect(pendientes).toHaveLength(1));
@@ -153,6 +216,7 @@ describe('decimotercera revisión: CSV asociado a mes y tipo', () => {
     });
 
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
     fireEvent.change(selectorMes(), { target: { value: '2026-10' } });
     fireEvent.click(botonExportarVentas());
     await waitFor(() => expect(pendientes).toHaveLength(1));
@@ -190,6 +254,7 @@ describe('decimoctava revisión: estado de resultados asociado al mes vigente', 
     });
 
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
     fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
     const llamadasSept = invocar.mock.calls.filter(c => c[0] === 'reporte:estadoResultados').length;
     await waitFor(() => expect(pendientes).toHaveLength(llamadasSept));
@@ -227,6 +292,7 @@ describe('decimoctava revisión: estado de resultados asociado al mes vigente', 
     });
 
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Libros' }));
     fireEvent.change(selectorMes(), { target: { value: '2026-09' } });
     await waitFor(() => screen.getByText('Estado de resultados de 2026-09'));
     expect(screen.getAllByText('$50.00').length).toBeGreaterThan(0);

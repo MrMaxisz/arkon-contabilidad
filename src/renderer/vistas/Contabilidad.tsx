@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPeligro, BotonPrimario, BotonSecundario, EstadoVacio, formatoDineroPantalla } from '../componentes';
+import { minorATexto, parseMontoMinor } from '../../shared/dinero';
 
 interface Cuenta {
   id: number;
@@ -64,6 +66,8 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
   const [ocupado, setOcupado] = useState(false);
   const [anulando, setAnulando] = useState<AsientoResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
+  const origenAnulacionRef = useRef<HTMLButtonElement | null>(null);
+  const [anulandoAsiento, setAnulandoAsiento] = useState(false);
   const claveOperacion = useRef<string>(nuevaClave());
 
   const cargar = useCallback(() => {
@@ -90,6 +94,21 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
 
   const movimientos = cuentas.filter(c => !c.esGrupo && c.activa);
 
+  // Totales del asiento en pantalla: solo sumas exactas de montos ya válidos; lo que
+  // aún no se puede leer como monto no se suma (bloque 5D, solo presentación).
+  const montoDeTexto = (texto: string): bigint => {
+    if (!/^\d+(\.\d+)?$/.test(texto.trim())) {
+      return 0n;
+    }
+    try {
+      return parseMontoMinor(texto);
+    } catch {
+      return 0n;
+    }
+  };
+  const totalDebe = lineas.reduce((suma, l) => suma + montoDeTexto(l.debe), 0n);
+  const totalHaber = lineas.reduce((suma, l) => suma + montoDeTexto(l.haber), 0n);
+
   async function contabilizar(e: React.FormEvent) {
     e.preventDefault();
     if (ocupado) {
@@ -108,7 +127,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
       })) as { folio: string; duplicado: boolean };
       setMensaje({
         texto: resultado.duplicado
-          ? `Operación ya registrada (idempotencia): asiento ${resultado.folio}`
+          ? `Operación ya registrada: asiento ${resultado.folio}`
           : `Asiento ${resultado.folio} contabilizado`,
         tipo: 'ok'
       });
@@ -127,19 +146,35 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
     }
   }
 
-  function pedirAnulacion(a: AsientoResumen) {
+  function pedirAnulacion(a: AsientoResumen, origen: HTMLButtonElement) {
+    origenAnulacionRef.current = origen;
     setAnulando(a);
     setMotivoAnular('');
   }
 
-  async function confirmarAnulacion() {
+  useEffect(() => {
     if (!anulando) {
+      return;
+    }
+    const alPresionar = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape' && !anulandoAsiento) {
+        setAnulando(null);
+        origenAnulacionRef.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', alPresionar);
+    return () => document.removeEventListener('keydown', alPresionar);
+  }, [anulando, anulandoAsiento]);
+
+  async function confirmarAnulacion() {
+    if (!anulando || anulandoAsiento) {
       return;
     }
     if (!motivoAnular.trim() || !responsable.trim()) {
       setMensaje({ texto: 'La anulación exige motivo y responsable registrados en el formulario.', tipo: 'error' });
       return;
     }
+    setAnulandoAsiento(true);
     try {
       await api().invocar('asiento:anular', {
         asientoId: anulando.id,
@@ -152,6 +187,8 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
       alCambiar();
     } catch (err) {
       setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
+    } finally {
+      setAnulandoAsiento(false);
     }
   }
 
@@ -166,10 +203,16 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
+        <div className="fila-linea cabecera-lineas">
+          <span>Cuenta</span>
+          <span className="numero">Debe</span>
+          <span className="numero">Haber</span>
+          <span></span>
+        </div>
         {lineas.map((l, i) => (
-          <div className="fila" key={i}>
-            <label style={{ flex: 3 }}>
-              Cuenta
+          <div className="fila-linea" key={i}>
+            <label>
+              <span className="solo-lector">Cuenta</span>
               <select
                 value={l.cuentaId}
                 onChange={e => {
@@ -185,28 +228,35 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
                 ))}
               </select>
             </label>
-            <label>Debe<input value={l.debe} onChange={e => {
+            <label><span className="solo-lector">Debe</span><input value={l.debe} onChange={e => {
               const copia = [...lineas];
               copia[i] = { ...l, debe: e.target.value, haber: '' };
               setLineas(copia);
             }} placeholder="0.00" /></label>
-            <label>Haber<input value={l.haber} onChange={e => {
+            <label><span className="solo-lector">Haber</span><input value={l.haber} onChange={e => {
               const copia = [...lineas];
               copia[i] = { ...l, haber: e.target.value, debe: '' };
               setLineas(copia);
             }} placeholder="0.00" /></label>
             {lineas.length > 2 && (
-              <button type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button>
+              <BotonSecundario onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</BotonSecundario>
             )}
           </div>
         ))}
+        <div className="fila-linea totales-lineas">
+          <span>Totales</span>
+          <span className="numero">{formatoDineroPantalla(minorATexto(totalDebe))}</span>
+          <span className="numero">{formatoDineroPantalla(minorATexto(totalHaber))}</span>
+          <span></span>
+        </div>
+        <p className="menor totales-diferencia">Diferencia: {formatoDineroPantalla(minorATexto(totalDebe - totalHaber))}</p>
         <div className="fila">
-          <button type="button" onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
+          <BotonSecundario onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
             Agregar línea
-          </button>
-          <button className="primario" type="submit" disabled={ocupado}>
+          </BotonSecundario>
+          <BotonPrimario type="submit" disabled={ocupado}>
             {ocupado ? 'Contabilizando…' : 'Contabilizar'}
-          </button>
+          </BotonPrimario>
         </div>
       </form>
 
@@ -226,15 +276,15 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             <label style={{ flex: 2 }}>Motivo (obligatorio)
               <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
             </label>
-            <button className="primario" type="submit">Confirmar anulación</button>
-            <button type="button" onClick={() => setAnulando(null)}>Cancelar</button>
+            <BotonPeligro type="submit" disabled={anulandoAsiento}>{anulandoAsiento ? 'Anulando…' : 'Confirmar anulación'}</BotonPeligro>
+            <BotonSecundario onClick={() => setAnulando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
 
       <h2>Asientos recientes</h2>
       {asientos.length === 0 ? (
-        <p className="vacio">Sin asientos registrados.</p>
+        <EstadoVacio texto="Sin asientos registrados." />
       ) : (
         <table>
           <thead>
@@ -243,12 +293,12 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <tbody>
             {asientos.map(a => (
               <tr key={a.id}>
-                <td>{a.folio}</td>
+                <td className="folio">{a.folio}</td>
                 <td>{a.fechaOperacion}</td>
                 <td>{a.concepto}</td>
                 <td>{a.estado}</td>
-                <td className="numero">${a.totalMinor}</td>
-                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <button onClick={() => pedirAnulacion(a)}>Anular</button>}</td>
+                <td className="numero">{formatoDineroPantalla(a.totalMinor)}</td>
+                <td>{a.estado === 'contabilizado' && !a.reversoDeId && <BotonSecundario onClick={e => pedirAnulacion(a, e.currentTarget)}>Anular</BotonSecundario>}</td>
               </tr>
             ))}
           </tbody>
@@ -266,9 +316,9 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             ))}
           </select>
         </label>
-        {mayor.cuenta && <p className="menor" style={{ alignSelf: 'flex-end' }}>Saldo: ${mayor.saldoMinor}</p>}
+        
       </div>
-      {mayor.cuenta && mayor.movimientos.length === 0 && <p className="vacio">Sin movimientos en esta cuenta.</p>}
+      {mayor.cuenta && mayor.movimientos.length === 0 && <EstadoVacio texto="Sin movimientos en esta cuenta." />}
       {mayor.movimientos.length > 0 && (
         <table>
           <thead>
@@ -278,14 +328,24 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
             {mayor.movimientos.map((m, i) => (
               <tr key={i}>
                 <td>{m.fecha}</td>
-                <td>{m.folio}</td>
+                <td className="folio">{m.folio}</td>
                 <td>{m.concepto}</td>
-                <td className="numero">${m.debeMinor}</td>
-                <td className="numero">${m.haberMinor}</td>
-                <td className="numero">${m.saldoMinor}</td>
+                <td className="numero">{formatoDineroPantalla(m.debeMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(m.haberMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(m.saldoMinor)}</td>
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr className="total">
+              <td>Saldo</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td className="numero">{formatoDineroPantalla(mayor.saldoMinor)}</td>
+            </tr>
+          </tfoot>
         </table>
       )}
     </div>

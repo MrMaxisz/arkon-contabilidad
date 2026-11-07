@@ -3,6 +3,17 @@ import { api } from '../api';
 import type { CotizacionResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import {
+  BotonPeligro,
+  BotonPrimario,
+  BotonSecundario,
+  EstadoCarga,
+  EstadoError,
+  EstadoSinResultados,
+  EstadoVacio,
+  MenuAccionesFila,
+  formatoDineroPantalla
+} from '../componentes';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean }
 
@@ -49,10 +60,22 @@ export default function Cotizaciones() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [anulando, setAnulando] = useState<CotizacionResumen | null>(null);
   const [motivoAnular, setMotivoAnular] = useState('');
+  const [cargandoLista, setCargandoLista] = useState(true);
+  const [errorLista, setErrorLista] = useState<string | null>(null);
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    void api().invocar('cotizacion:listar').then(r => setCotizaciones(r as CotizacionResumen[]));
+    setCargandoLista(true);
+    setErrorLista(null);
+    api().invocar('cotizacion:listar')
+      .then(r => {
+        setCotizaciones(r as CotizacionResumen[]);
+        setCargandoLista(false);
+      })
+      .catch(err => {
+        setErrorLista(limpiarMensajeError(err));
+        setCargandoLista(false);
+      });
     void api().invocar('contraparte:listar').then(r => {
       const lista = r as Contraparte[];
       setContrapartes(lista);
@@ -238,25 +261,29 @@ export default function Cotizaciones() {
               copia[i] = { ...l, tasa: e.target.value };
               setLineas(copia);
             }} /></label>
-            {lineas.length > 1 && <button type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</button>}
+            {lineas.length > 1 && <BotonSecundario type="button" onClick={() => setLineas(lineas.filter((_, j) => j !== i))}>Quitar</BotonSecundario>}
           </div>
         ))}
         <div className="fila">
-          <button type="button" onClick={() => setLineas([...lineas, { tipo: 'material', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }])}>Agregar línea</button>
+          <BotonSecundario type="button" onClick={() => setLineas([...lineas, { tipo: 'material', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }])}>Agregar línea</BotonSecundario>
           {editandoId && (
-            <button type="button" onClick={() => {
+            <BotonSecundario type="button" onClick={() => {
               setEditandoId(null);
               setLineas([{ tipo: 'servicio', descripcion: '', cantidad: '1', precioUnitario: '', precioConIva: true, tasa: '13' }]);
-            }}>Cancelar edición</button>
+            }}>Cancelar edición</BotonSecundario>
           )}
-          <button className="primario" type="submit" disabled={ocupado || cargando}>{ocupado || cargando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear cotización'}</button>
+          <BotonPrimario type="submit" disabled={ocupado || cargando}>{ocupado || cargando ? 'Guardando…' : editandoId ? 'Guardar cambios' : 'Crear cotización'}</BotonPrimario>
         </div>
         <p className="menor">Si el precio incluye IVA, el desglose conserva el total; base + IVA reconcilian sin aumentarlo.</p>
       </form>
 
       <h2>Cotizaciones recientes</h2>
-      {cotizaciones.length === 0 ? (
-        <p className="vacio">Sin cotizaciones.</p>
+      {errorLista ? (
+        <EstadoError mensaje={errorLista} />
+      ) : cargandoLista && cotizaciones.length === 0 ? (
+        <EstadoCarga texto="Cargando cotizaciones…" />
+      ) : cotizaciones.length === 0 ? (
+        <EstadoVacio texto="Sin cotizaciones." />
       ) : (
         <table>
           <thead>
@@ -270,17 +297,21 @@ export default function Cotizaciones() {
                 <td>{c.contraparteNombre}</td>
                 <td>{c.fecha}</td>
                 <td>{c.estado}</td>
-                <td className="numero">${c.baseMinor}</td>
-                <td className="numero">${c.ivaMinor}</td>
-                <td className="numero">${c.totalMinor}</td>
+                <td className="numero">{formatoDineroPantalla(c.baseMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(c.ivaMinor)}</td>
+                <td className="numero">{formatoDineroPantalla(c.totalMinor)}</td>
                 <td>
-                  {c.estado === 'borrador' && <>
-                    <button onClick={() => void editar(c)}>Editar</button>{' '}
-                    <button onClick={() => void accion('cotizacion:aprobar', c.id)}>Aprobar</button>{' '}
-                    <button onClick={() => void accion('cotizacion:revision', c.id)}>Nueva revisión</button>{' '}
-                    <button onClick={() => { setAnulando(c); setMotivoAnular(''); }}>Anular</button>
-                  </>}
-                  {c.estado !== 'anulada' && <button onClick={() => void generarPdf(c)}>Documento…</button>}
+                  <div className="acciones-fila">
+                    {c.estado === 'borrador' && <BotonSecundario onClick={() => void editar(c)}>Editar</BotonSecundario>}
+                    {c.estado !== 'anulada' && <BotonSecundario onClick={() => void generarPdf(c)}>Generar PDF</BotonSecundario>}
+                    {c.estado === 'borrador' && (
+                      <MenuAccionesFila etiqueta="Más acciones">
+                        <BotonPrimario onClick={() => void accion('cotizacion:aprobar', c.id)}>Aprobar</BotonPrimario>
+                        <BotonSecundario onClick={() => void accion('cotizacion:revision', c.id)}>Nueva revisión</BotonSecundario>
+                        <BotonPeligro onClick={() => { setAnulando(c); setMotivoAnular(''); }}>Anular</BotonPeligro>
+                      </MenuAccionesFila>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -298,8 +329,8 @@ export default function Cotizaciones() {
             <label style={{ flex: 2 }}>Motivo (obligatorio)
               <input value={motivoAnular} onChange={e => setMotivoAnular(e.target.value)} required />
             </label>
-            <button className="primario" type="submit">Confirmar</button>
-            <button type="button" onClick={() => setAnulando(null)}>Cancelar</button>
+            <BotonPeligro type="submit">Confirmar</BotonPeligro>
+            <BotonSecundario type="button" onClick={() => setAnulando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}

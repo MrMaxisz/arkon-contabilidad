@@ -1073,3 +1073,99 @@ Guía oficial localizada y descargada (58 páginas): https://www.transparenciafi
 - `npm run typecheck` (4 proyectos) → sin errores.
 - `npx vitest run` → exit 0, 331/331, 0 Errors (59 archivos).
 - `npm run build` → OK.
+
+## Bloque auditoría 69 (sistema visual ARKON y navegación, bloque 1 de la hoja de ruta)
+
+### Implementado (solo renderer; sin cambios de reglas contables, canales, esquema ni migraciones)
+
+- **Color**: tokens exactos en `estilos.css`: azul `#0A4DB3`, marino `#0B1B33`, blanco, azul suave `#E4EDFB`, chispa `#19A7E0` (solo detalles: foco y borde activo, nunca texto sobre blanco), seguridad `#B45309` solo avisos de riesgo; rojo/verde funcionales como tokens separados (`--funcional-error`/`--funcional-exito`). Los 12 colores antiguos desaparecieron (prueba).
+- **Tipografía**: Barlow Condensed 700 mayúsculas en títulos, Barlow SemiBold en subtítulos, IBM Plex Sans 400/600 en texto, IBM Plex Mono para folios/hashes/datos técnicos; escala 32/22/16/12 con 14 px documentado como excepción de tablas densas. Todo vía `@fontsource` empaquetado localmente (barlow e ibm-plex-mono añadidos), sin CDN y sin URLs externas (prueba).
+- **Logo**: SVG real (mejor copia del anexo, sin comparación de hash por corrección del auditor) en `src/renderer/recursos/arkon-logo-azul.svg`; blanca derivada con los cambios de color oficiales (`#0A4DB3`/`#0B1B33`→`#FFFFFF`, `#4A5B75`→`#C9D8F2`). Lateral marino con blanca a 148 px (mínimo 120) y «Potencia con precisión» una sola vez; azul en impresión vía `EncabezadoReporte`. Importadas como assets de Vite (presentes en `dist/renderer/assets`).
+- **Navegación agrupada** con `aria-current="page"`: Inicio; Comercial (Clientes y proveedores, Catálogo, Cotizaciones, Proyectos, Ventas); Compras y tesorería (Compras y gastos, Cobros y pagos, Caja y bancos); Contabilidad (Contabilidad, Ajustes, Cierre, Reportes); Fiscal (Impuestos); Sistema (Respaldo, Bitácora).
+- **Barra de contexto** con sección actual y ámbito administrativo, conservando el aviso de registros de control administrativo, no estados financieros legales.
+- **Componentes compartidos** (`componentes.tsx`): BotonPrimario/Secundario/Peligro, Campo, Tabla, EncabezadoReporte, EstadoCarga/Error/Vacio/SinResultados; aplicados al shell, Inicio, Reportes y Contabilidad. «Confirmar anulación» usa peligro en Contabilidad, Ventas, Compras y CajaBancos.
+- **Tablas**: filas densas, líneas finas, cabecera fija (sticky), cifras a la derecha con `tabular-nums`, estilo de totales bajo su columna.
+- **Inicio**: resumen sobrio sin tabla ni gráficos.
+- **Foco y teclado**: `:focus-visible` con chispa; Escape cancela la confirmación de anulación en Ventas/Compras/CajaBancos y el foco vuelve al botón Anular de origen (prueba).
+- **Impresión**: `@media print` sin lateral/formularios/botones, logo azul, filas sin cortar (`page-break-inside: avoid`). Límite documentado: Chromium no soporta numeración de página por CSS (`@page` margin boxes), queda pendiente de mecanismo alternativo si el auditor lo exige.
+- **Redacción**: «idempotencia», «motor contable central» y «sin valores inventados» eliminados de las vistas.
+- **Pruebas nuevas** (`pruebas/visualSistema.prueba.tsx`, 13 + 1 de Escape en `anulacionComponente.prueba.tsx`): tokens exactos, ausencia de colores antiguos, fuentes locales sin URLs externas, escala tipográfica, logos con colores oficiales y render, grupos/aria-current/barra de contexto, resumen de Inicio, impresión y foco, contraste AA (≥4.5) de 9 pares texto/fondo.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npx vitest run` → exit 0, 345/345, 0 Errors (60 archivos).
+- `npm run build` → OK; ambos SVG presentes en `dist/renderer/assets`.
+
+## Bloque auditoría 70 (correcciones al sistema visual, bloque 1)
+
+### Corregido (hallazgos P1-70-1 a P2-70-10)
+
+- **P1-70-1**: Escape no hace nada con la anulación en curso (guarda con `ocupadoAnular` en Ventas, Compras y CajaBancos): el diálogo sigue abierto y no se puede reenviar. Prueba con promesa pendiente.
+- **P2-70-2**: Contabilidad maneja Escape con retorno de foco al botón Anular de origen, con la misma guarda de ocupado.
+- **P2-70-3**: `@fontsource/barlow` desinstalado; subtítulos en Barlow Condensed 600, cabeceras de tabla y botones en IBM Plex Sans 600; ninguna referencia a `'Barlow'` queda en el CSS.
+- **P2-70-4**: folios (Ventas, Contabilidad) y hashes (Respaldo) en IBM Plex Mono; cifras de dinero en tablas e Inicio en IBM Plex Sans con `tabular-nums`.
+- **P2-70-5**: contenido sobre blanco (body `--arkon-blanco`); el azul suave queda para cabeceras de tabla y bloques puntuales; formularios separados por línea fina.
+- **P2-70-6**: lema «Potencia con precisión» al pie del lateral, fuera del área de protección del logo; `#C9D8F2` y los `rgba` del lateral sustituidos por tokens (`--arkon-linea-clara`, `--lateral-borde`, `--lateral-realce`, `--lateral-hover`).
+- **P2-70-7**: totales de clientes/proveedores/efectivo como fila `tfoot` bajo su columna; `formatoDineroPantalla` con separador de miles (`$4,851.25`) en pantalla e impresión (Reportes, detalle e Inicio); CSV y cálculos sin cambios.
+- **P2-70-8**: `@media print` oculta también `select` e `input` (prueba de guarda). Límite documentado: la verificación con `Page.printToPDF` requiere Chromium/Electron, no ejecutable en este Linux (libglib ausente); queda para el auditor en Windows.
+- **P2-70-9**: `:focus-visible` azul sobre claro y blanco sobre marino en el lateral, ambos ≥3:1 (prueba con los valores reales de los tokens).
+- **P2-70-10**: prueba de Escape enfoca OTRO elemento antes (exige el retorno real); contraste calculado con los valores reales de los tokens; prueba inestable de adjuntos espera a que la opción `CMP-000002` exista.
+- Mutaciones confirmadas localmente (restauradas): quitar la guarda de ocupado en Escape → 1 fallo; quitar select/input del print → 2 fallos.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK.
+- `npx vitest run` → exit 0, 350/350, 0 Errors (60 archivos), DOS ejecuciones consecutivas con exit 0.
+
+## Bloque auditoría 71 parte B (bloque 2: partidas y estados financieros)
+
+### Implementado
+
+- **Servicios puros** (`db` por parámetro, sin Electron, reutilizables en Android): `src/main/servicios/libroDiario.ts` (partidas por número, folio A-000001 correlativo sin reutilizar, `normalizarNumeroPartida` para '150'/'A-150'/'A-000150', filtros por rango de números/fechas/concepto/cuenta/origen/estado, paginación con total, `verPartida` con líneas, totales, documento de origen y enlaces a reverso; anuladas visibles y marcadas) y extensión de `estadosFinancieros.ts` (balance de comprobación con saldo inicial/cargos/abonos/saldo final, jerarquía de grupos por `padre_id`, cuadre debe=haber, ocultar sin movimiento; estado de resultados estructurado con ingresos/costos/utilidad bruta/admin/comercialización/utilidad de operación/otros ingresos/financieros/resultado antes de impuestos, SIN ISR, comparativo del período anterior, familia de cierre con `SQL_FAMILIA_CIERRE_EXCLUIDA`; situación financiera a corte con activo/pasivo/patrimonio, corriente/no corriente según tabla documentada de grupos (no corriente: 15), resultado del ejercicio aún no cerrado como línea de patrimonio, Activo = Pasivo + Patrimonio antes y después del cierre, saldos contrarios visibles, comparativo). Importes en `bigint` todo el camino (verificado con 9e13 USD que no caben en `Number`). Sin migración.
+- **Comandos**: `libro:partidas`, `libro:partida`, `balance:comprobacion`, `resultados:estructurado`, `situacion:consultar` (allowlist del preload actualizada).
+- **Navegación**: grupo Contabilidad con Libro diario y Estados financieros (pestañas: Balance de comprobación, Estado de resultados, Estado de situación financiera).
+- **PDF**: canal `arkon:reportePdf` con `webContents.printToPDF`, `displayHeaderFooter` y `footerTemplate` con numeración «N de M»; encabezado con logo azul (assets del build), título, período, moneda USD, ámbito administrativo y leyenda de control interno; firmas Elaboró/Revisó/Autorizó. Impresión de partida individual y del libro por rango.
+- **Pruebas** (`pruebas/libroEstados.prueba.ts`, 11, importes calculados a mano): tres formas de búsqueda; ver partida con reverso; filtros y paginación; comprobación con jerarquía y cuadre; estructura completa (bruta 60/operación 45/antes de impuestos 46) e igualdad con `reporte:estadoResultados`; mes sin movimientos y reverso en mes distinto (siembra sintética documentada: el motor fecha el reverso con la fecha original); cierre sin duplicar resultado; situación cuadrada antes/después del cierre con resultado como línea; saldos contrarios visibles; grupo sin movimiento directo; importes altos fuera de `Number`.
+
+### Límites documentados
+
+- El motor fecha el reverso de una anulación con la `fecha_operacion` del original; el escenario «reverso en mes distinto» se siembra por SQL con las invariantes del motor (borrador → líneas → contabilizado, `reverso_de_id`, original anulado).
+- La clasificación corriente/no corriente y la agrupación del estado de resultados son tablas documentadas por código de grupo del catálogo, explícitamente para revisión del contador.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK.
+- `npx vitest run` → exit 0, 367/367, 0 Errors (62 archivos), DOS ejecuciones consecutivas con exit 0.
+
+## Bloque auditoría 72 (correcciones al bloque 2)
+
+### Corregido (P1-72-1 a P2-72-18)
+
+- **P1-72-1**: logo y fuentes del PDF desde rutas ESTABLES: `publicDir: 'recursos'` de Vite publica `arkon-logo-azul.svg` y `fuentes/*.woff2` sin hash en `dist/renderer/`; el IPC lee esas rutas. Prueba comprueba la existencia en `dist` tras el build y las rutas del IPC.
+- **P1-72-2**: el estado de resultados clasifica por TIPO; lo que no está en grupo conocido va a líneas visibles (`otrosCostos`, `otrosGastos`, `otrosIngresos`). Prueba: ingreso 7.00 de grupo 43 y gasto 6401 de 9.00 → -2.00, y el acumulado iguala el resultado de la situación financiera.
+- **P1-72-3**: `rangoAnterior` pura: mes completo → mes calendario anterior; año → año anterior; N meses completos → N anteriores; rango libre → igual número de días. Prueba con los cuatro casos (calculados a mano) más el comparativo del servicio.
+- **P1-72-4**: ocultar sin movimiento exige saldo inicial, cargos Y abonos en cero (aplica a grupos). Prueba con 6101 saldo inicial 35.00 sin movimientos: visible.
+- **P1-72-5**: filas y totales de situación en la misma presentación por naturaleza (proveedores +100.00); un contrario sale negativo y en la lista.
+- **P1-72-6**: imprimir libro recorre TODAS las páginas del rango filtrado, con total y conteo. Prueba con 21 partidas y página de 20: el PDF recibe 21.
+- **P1-72-7**: tokens de consulta en LibroDiario y EstadosFinancieros: toda respuesta que no sea la última se descarta. Pruebas con promesas resueltas en desorden.
+- **P1-72-8**: PDF con datos ESTRUCTURADOS (`reportesPdf.ts` puro): el renderer nunca envía HTML; todo escapado (título, período, celdas). Prueba con cuenta `Caja<style>td.numero{display:none}</style>`: sin inyección.
+- **P2-72-9**: `safeIntegers` en todas las consultas de sumas; prueba con 9007199254740993 centavos (> Number.MAX_SAFE_INTEGER) exacto.
+- **P2-72-10**: el PDF del estado de resultados incluye TODAS las secciones (ingresos, costos, otros costos, admin, comercialización, otros gastos, otros ingresos, financieros) con totales.
+- **P2-72-11**: clasificación corriente/no corriente subiendo por `padre_id` al primer ancestro en la tabla única; cuenta sin clasificar queda MARCADA `sinClasificar`, nunca dada por corriente; pasivo no corriente previsto (24-29).
+- **P2-72-12**: tabla de cuentas reguladoras: 1502 no se reporta como contrario.
+- **P2-72-13**: filtro de `ambito_id` en libro diario, comprobación, resultados y situación (dentro del CASE para que las líneas de otros ámbitos no cuenten).
+- **P2-72-14**: LIKE con `ESCAPE` para `%` y `_`.
+- **P2-72-15**: forma numérica inválida (`A-0`) NO cae en búsqueda de texto: cero resultados.
+- **P2-72-16**: fuentes de la marca incrustadas como data URI en el PDF (sin red).
+- **P2-72-17**: `.fila` compacta también fuera de formularios.
+- **P2-72-18**: `filtrosComponente.prueba.tsx` con `testTimeout: 20000`.
+- Mutaciones confirmadas localmente (restauradas): P1-72-2 (otros a prefijos fijos) → 1 fallo; P1-72-3 (mes a conteo de días) → 1; P1-72-4 (omitir saldo inicial) → 1; P1-72-5 (signo crudo) → 1; P1-72-6 (solo página visible) → 1.
+
+### Comprobación
+
+- `npm run typecheck` (4 proyectos) → sin errores.
+- `npm run build` → OK; `dist/renderer/arkon-logo-azul.svg` y `dist/renderer/fuentes/*.woff2` presentes.
+- `npx vitest run` → exit 0, 381/381, 0 Errors (63 archivos), DOS ejecuciones consecutivas con exit 0.

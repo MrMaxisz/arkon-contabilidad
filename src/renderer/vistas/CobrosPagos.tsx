@@ -4,6 +4,7 @@ import type { VentaResumen, CompraResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { minorATexto } from '../../shared/dinero';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, EstadoCarga, EstadoError, EstadoSinResultados } from '../componentes';
 
 interface Contraparte { id: number; nombre: string; esCliente: boolean; esProveedor: boolean }
 interface Cuenta { id: number; nombre: string; codigo: string }
@@ -39,15 +40,38 @@ export default function CobrosPagos() {
   const [responsable, setResponsable] = useState('');
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+  const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
   const clave = useRef(nuevaClave());
 
   const cargar = useCallback(() => {
-    const conError = (err: unknown) =>
-      setMensaje({ texto: limpiarMensajeError(err), tipo: 'error' });
-    api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[])).catch(conError);
-    api().invocar('cuenta:listar').then(r => setCuentas((r as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo)))).catch(conError);
-    api().invocar('venta:listar').then(r => setVentas((r as VentaResumen[]).filter(v => v.estado === 'registrada'))).catch(conError);
-    api().invocar('compra:listar').then(r => setCompras((r as CompraResumen[]).filter(c => c.estado === 'registrada'))).catch(conError);
+    setCargandoCatalogo(true);
+    setErrorCatalogo(null);
+    void Promise.allSettled([
+      api().invocar('contraparte:listar'),
+      api().invocar('cuenta:listar'),
+      api().invocar('venta:listar'),
+      api().invocar('compra:listar')
+    ]).then(([contrapartesResultado, cuentasResultado, ventasResultado, comprasResultado]) => {
+      const resultados = [contrapartesResultado, cuentasResultado, ventasResultado, comprasResultado];
+      const rechazado = resultados.find(r => r.status === 'rejected');
+      if (rechazado && rechazado.status === 'rejected') {
+        setErrorCatalogo(limpiarMensajeError(rechazado.reason));
+      }
+      if (contrapartesResultado.status === 'fulfilled') {
+        setContrapartes(contrapartesResultado.value as Contraparte[]);
+      }
+      if (cuentasResultado.status === 'fulfilled') {
+        setCuentas((cuentasResultado.value as Cuenta[]).filter((c) => ['1101', '1102', '1103'].includes(c.codigo)));
+      }
+      if (ventasResultado.status === 'fulfilled') {
+        setVentas((ventasResultado.value as VentaResumen[]).filter(v => v.estado === 'registrada'));
+      }
+      if (comprasResultado.status === 'fulfilled') {
+        setCompras((comprasResultado.value as CompraResumen[]).filter(c => c.estado === 'registrada'));
+      }
+      setCargandoCatalogo(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -189,6 +213,8 @@ export default function CobrosPagos() {
   return (
     <div>
       <h1>Cobros y pagos</h1>
+      {cargandoCatalogo && <EstadoCarga texto="Cargando catálogos…" />}
+      {errorCatalogo && <EstadoError mensaje={errorCatalogo} />}
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={registrar}>
         <h2>
@@ -231,7 +257,7 @@ export default function CobrosPagos() {
             <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>
           </div>
         )}
-        {esAnticipo && saldoAnticipoCargando && <p className="menor">Consultando saldo de anticipo…</p>}
+        {esAnticipo && saldoAnticipoCargando && <EstadoCarga texto="Consultando saldo de anticipo…" />}
         {esAnticipo && !saldoAnticipoCargando && saldoAnticipo !== null && (
           <p className="menor">Saldo de anticipo disponible: ${minorATexto(BigInt(saldoAnticipo))}.</p>
         )}
@@ -251,7 +277,7 @@ export default function CobrosPagos() {
           <>
             <h3>Aplicación a documentos (opcional; el excedente queda como anticipo)</h3>
             {documentosFiltrados.length === 0 ? (
-              <p className="menor">Sin documentos pendientes para la contraparte seleccionada.</p>
+              <EstadoSinResultados texto="Sin documentos pendientes para la contraparte seleccionada." />
             ) : (
               documentosFiltrados.map(d => (
                 <div className="fila" key={d.id}>
@@ -275,7 +301,7 @@ export default function CobrosPagos() {
           </>
         )}
         <div className="fila">
-          <button className="primario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar'}</button>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar'}</BotonPrimario>
         </div>
       </form>
     </div>

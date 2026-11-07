@@ -87,9 +87,16 @@ describe('auditoría 26: panel de adjuntos en Respaldo', () => {
     render(<Respaldo />);
 
     await waitFor(() => screen.getByText('Adjuntos'));
-    const selectorDocumento = screen
-      .getAllByRole('combobox')
-      .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === 'CMP-000002')) as HTMLSelectElement;
+    // Esperar a que la opción CMP-000002 exista de verdad (prueba antes inestable, auditoría 70).
+    const selectorDocumento = await waitFor(() => {
+      const encontrado = screen
+        .getAllByRole('combobox')
+        .find(c => Array.from((c as HTMLSelectElement).options).some(o => o.value === 'CMP-000002')) as HTMLSelectElement | undefined;
+      if (!encontrado) {
+        throw new Error('la opción CMP-000002 aún no carga');
+      }
+      return encontrado;
+    });
     expect(selectorDocumento.value).toBe('');
     fireEvent.change(selectorDocumento, { target: { value: 'CMP-000002' } });
     const inputs = screen.getAllByRole('textbox');

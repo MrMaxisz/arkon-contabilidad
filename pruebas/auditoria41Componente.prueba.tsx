@@ -102,6 +102,7 @@ afterEach(() => {
 describe('auditoría 41: formulario F-14 sin contaminación de identidad entre retenciones', () => {
   it('alternar retención carga los metadatos del sujeto correspondiente y el guardado usa el NIT visible', async () => {
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
     await waitFor(() => screen.getByText(/Anexo de Retenciones F-14 v16/));
 
     const formF14 = screen.getByText('Registrar metadatos F-14').closest('form') as HTMLFormElement;
@@ -150,6 +151,7 @@ describe('auditoría 41: formulario F-14 sin contaminación de identidad entre r
   it('el guardado F-14 por diálogo nativo invoca guardarAnexoF14 con el mes', async () => {
     guardarAnexoF14Mock.mockResolvedValue({ guardado: true, ruta: 'C:\\sintetico\\f14.csv', filas: 2 });
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
     await waitFor(() => screen.getByText(/Anexo de Retenciones F-14 v16/));
     fireEvent.change(screen.getByPlaceholderText('2026-11'), { target: { value: '2026-11' } });
     fireEvent.click(screen.getByText('Guardar anexo F-14…'));

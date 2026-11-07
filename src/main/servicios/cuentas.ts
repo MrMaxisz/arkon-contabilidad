@@ -48,6 +48,7 @@ export const catalogoBasePropuesto: DefinicionCuenta[] = [
   { codigo: '4102', nombre: 'Ingresos por operación y mantenimiento', tipo: 'ingreso', esGrupo: false, padre: '41' },
   { codigo: '42', nombre: 'Otros ingresos', tipo: 'ingreso', esGrupo: true, padre: '4' },
   { codigo: '4201', nombre: 'Otros ingresos', tipo: 'ingreso', esGrupo: false, padre: '42' },
+  { codigo: '4202', nombre: 'Ganancia en venta de activos fijos', tipo: 'ingreso', esGrupo: false, padre: '42' },
   { codigo: '5', nombre: 'Costos', tipo: 'costo', esGrupo: true },
   { codigo: '51', nombre: 'Costos de proyectos y servicios', tipo: 'costo', esGrupo: true, padre: '5' },
   { codigo: '5101', nombre: 'Costo de materiales', tipo: 'costo', esGrupo: false, padre: '51' },
@@ -60,7 +61,9 @@ export const catalogoBasePropuesto: DefinicionCuenta[] = [
   { codigo: '62', nombre: 'Gastos de comercialización', tipo: 'gasto', esGrupo: true, padre: '6' },
   { codigo: '6201', nombre: 'Gastos de comercialización', tipo: 'gasto', esGrupo: false, padre: '62' },
   { codigo: '63', nombre: 'Gastos financieros', tipo: 'gasto', esGrupo: true, padre: '6' },
-  { codigo: '6301', nombre: 'Gastos financieros', tipo: 'gasto', esGrupo: false, padre: '63' }
+  { codigo: '6301', nombre: 'Gastos financieros', tipo: 'gasto', esGrupo: false, padre: '63' },
+  { codigo: '64', nombre: 'Otros gastos', tipo: 'gasto', esGrupo: true, padre: '6' },
+  { codigo: '6402', nombre: 'Pérdida en baja o venta de activos fijos', tipo: 'gasto', esGrupo: false, padre: '64' }
 ];
 
 export function sembrarCatalogoBase(db: Database.Database, actor = 'sistema'): void {

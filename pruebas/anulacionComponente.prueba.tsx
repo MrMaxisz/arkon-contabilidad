@@ -155,3 +155,56 @@ describe('auditoría 51: diálogo de anulación en Ventas', () => {
     expect(screen.queryByText(/anulada con reverso/)).toBeNull();
   });
 });
+
+describe('auditoría 69: Escape cancela la confirmación y devuelve el foco a su origen', () => {
+  it('Escape cierra el diálogo sin invocar el comando y el foco vuelve al botón Anular', async () => {
+    const btn = await abrirDialogo();
+    await waitFor(() => screen.getByText('V-000002'));
+    fireEvent.click(btn);
+    await waitFor(() => screen.getByRole('dialog'));
+    // El foco NO está en el botón de origen: la prueba exige el retorno real del foco.
+    const motivo = screen.getByLabelText(/Motivo de la anulación\n?/);
+    motivo.focus();
+    expect(document.activeElement).toBe(motivo);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(invocar.mock.calls.some(c => c[0] === 'documento:anular')).toBe(false);
+    expect(document.activeElement).toBe(btn);
+  });
+});
+
+describe('auditoría 70: Escape durante una anulación en curso', () => {
+  it('con la anulación en curso, Escape no hace nada: el diálogo sigue abierto y no se puede reenviar', async () => {
+    let resolver: ((valor: unknown) => void) | null = null;
+    invocar.mockImplementation((comando: string) => {
+      if (comando === 'documento:anular') {
+        return new Promise<unknown>(resolverPendiente => {
+          resolver = resolverPendiente;
+        });
+      }
+      if (comando === 'venta:listar') {
+        return Promise.resolve([VENTA]);
+      }
+      return Promise.resolve([]);
+    });
+    fireEvent.click(await abrirDialogo());
+    await waitFor(() => screen.getByRole('dialog'));
+    const form = screen.getByText(/Sí, anular V-000002/).closest('form')!;
+    const dentro = within(form);
+    fireEvent.change(dentro.getByLabelText(/Motivo de la anulación\n?/), { target: { value: 'motivo sintético de anulación en curso' } });
+    fireEvent.change(dentro.getByLabelText(/Responsable\n?/), { target: { value: 'qa' } });
+    fireEvent.submit(form);
+    await waitFor(() => expect(screen.getByText(/Anulando…/)).toBeTruthy());
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    // El diálogo sigue abierto tras Escape con la anulación en curso.
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByText(/Anulando…/)).toBeTruthy();
+    // No se puede volver a enviar: el botón queda deshabilitado y no hay segunda invocación.
+    expect((screen.getByText(/Anulando…/) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(form);
+    expect(invocar.mock.calls.filter(c => c[0] === 'documento:anular').length).toBe(1);
+
+    resolver?.({ ok: true });
+  });
+});

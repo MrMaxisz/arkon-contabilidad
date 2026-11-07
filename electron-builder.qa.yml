@@ -20,7 +20,10 @@ win:
     - nsis
   # winCodeSign no puede extraerse en Windows sin privilegio de symlink: QA local sin firma.
   signAndEditExecutable: false
+  icon: build/icon.ico
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   runAfterFinish: false

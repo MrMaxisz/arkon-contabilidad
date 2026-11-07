@@ -678,79 +678,98 @@ export interface RentabilidadProyecto {
   margenMinor: string;
   totalDocumentalVentaMinor: string;
   totalDocumentalCompraMinor: string;
+  cuentas: Array<{ codigo: string; nombre: string; tipo: string; importeMinor: string }>;
 }
 
 export function rentabilidadProyectos(
-  db: Database.Database
+  db: Database.Database,
+  entrada: { desde?: string; hasta?: string; ambitoId?: string; incluirGastos?: boolean } = {}
 ): {
   proyectos: RentabilidadProyecto[];
+  sinProyecto: Omit<RentabilidadProyecto, 'id'> & { id: null };
   provisional: boolean;
   nota: string;
   criterio: string;
 } {
+  const desde = entrada.desde ?? '1900-01-01';
+  const hasta = entrada.hasta ?? '2999-12-31';
+  validarFechaCalendario(desde);
+  validarFechaCalendario(hasta);
+  if (desde > hasta) throw new ErrorFiscal('Rango inválido: desde es posterior a hasta');
+  const ambito = entrada.ambitoId ?? 'administrativo';
   const proyectos = db
     .prepare('SELECT id, codigo, nombre FROM proyecto ORDER BY codigo')
     .all() as Array<{ id: number; codigo: string; nombre: string }>;
-  const lista = proyectos.map(p => {
-    const ingresoMayor = (
-      db
-        .prepare(
-          `SELECT COALESCE(SUM(l.haber_minor - l.debe_minor), 0) AS t
-           FROM asiento_linea l
-           JOIN asiento a ON a.id = l.asiento_id
-           JOIN cuenta c ON c.id = l.cuenta_id
-           WHERE c.tipo = 'ingreso'
-             AND a.origen_tipo = 'venta'
-             AND a.origen_id IN (SELECT folio FROM venta WHERE proyecto_id = ? AND estado = 'registrada')`
-        )
-        .get(p.id) as { t: number }
-    ).t;
-    const costoMayor = (
-      db
-        .prepare(
-          `SELECT COALESCE(SUM(l.debe_minor - l.haber_minor), 0) AS t
-           FROM asiento_linea l
-           JOIN asiento a ON a.id = l.asiento_id
-           JOIN cuenta c ON c.id = l.cuenta_id
-           WHERE c.tipo IN ('costo','gasto')
-             AND a.origen_tipo = 'compra'
-             AND a.origen_id IN (SELECT folio FROM compra WHERE proyecto_id = ? AND estado = 'registrada')`
-        )
-        .get(p.id) as { t: number }
-    ).t;
-    const totalVenta = (
-      db
-        .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM venta WHERE proyecto_id = ? AND estado = 'registrada'")
-        .get(p.id) as { t: number }
-    ).t;
-    const totalCompra = (
-      db
-        .prepare("SELECT COALESCE(SUM(total_minor), 0) AS t FROM compra WHERE proyecto_id = ? AND estado = 'registrada'")
-        .get(p.id) as { t: number }
-    ).t;
+  // Criterio compartido con Costos: el proyecto procede del documento del asiento
+  // original, también para su reverso. No se descarta el original anulado: netea
+  // con su reverso según la fecha contable. Un asiento sin vínculo queda visible.
+  // Un único vínculo por asiento: documentos repetidos no multiplican líneas.
+  // Si discrepan en proyecto, el importe queda sin proyecto (sin asignarlo al azar).
+  const cuentas = db.prepare(
+     `SELECT vinculo.proyecto_id AS proyectoId,
+            c.codigo, c.nombre, c.tipo,
+            SUM(CASE WHEN c.tipo = 'ingreso' THEN l.haber_minor - l.debe_minor
+                     ELSE l.debe_minor - l.haber_minor END) AS importe
+     FROM asiento_linea l
+     JOIN asiento a ON a.id = l.asiento_id
+     JOIN cuenta c ON c.id = l.cuenta_id
+      LEFT JOIN (
+        SELECT asiento_id,
+               CASE WHEN COUNT(DISTINCT COALESCE(proyecto_id, -1)) = 1
+                    THEN MIN(proyecto_id) ELSE NULL END AS proyecto_id
+        FROM (SELECT asiento_id, proyecto_id FROM venta
+              UNION ALL SELECT asiento_id, proyecto_id FROM compra)
+        GROUP BY asiento_id
+      ) vinculo ON vinculo.asiento_id = COALESCE(a.reverso_de_id, a.id)
+     WHERE a.estado IN ('contabilizado','anulado') AND a.ambito_id = ?
+       AND a.fecha_operacion BETWEEN ? AND ? AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
+       AND c.es_grupo = 0 AND (c.tipo IN ('ingreso','costo') OR (? = 1 AND c.tipo = 'gasto'))
+      GROUP BY vinculo.proyecto_id, c.id
+     ORDER BY c.codigo`
+  ).safeIntegers(true).all(ambito, desde, hasta, entrada.incluirGastos === false ? 0 : 1) as Array<{
+    proyectoId: bigint | null; codigo: string; nombre: string; tipo: string; importe: bigint;
+  }>;
+  const documentos = db.prepare(
+    `SELECT d.proyecto_id AS proyectoId, d.tipo, SUM(d.total_minor) AS total, COUNT(*) AS n
+     FROM (SELECT proyecto_id, asiento_id, total_minor, estado, 'venta' AS tipo FROM venta
+           UNION ALL
+           SELECT proyecto_id, asiento_id, total_minor, estado, 'compra' AS tipo FROM compra) d
+     JOIN asiento a ON a.id = d.asiento_id
+     WHERE d.estado = 'registrada' AND a.estado = 'contabilizado' AND a.ambito_id = ?
+       AND a.fecha_operacion BETWEEN ? AND ? AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
+     GROUP BY d.proyecto_id, d.tipo`
+  ).safeIntegers(true).all(ambito, desde, hasta) as Array<{
+    proyectoId: bigint | null; tipo: string; total: bigint; n: bigint;
+  }>;
+  const calcular = (id: number | null) => {
+    const propias = cuentas.filter(c => c.proyectoId === (id === null ? null : BigInt(id)));
+    const docs = documentos.filter(d => d.proyectoId === (id === null ? null : BigInt(id)));
+    const ingreso = propias.filter(c => c.tipo === 'ingreso').reduce((s, c) => s + c.importe, 0n);
+    const costo = propias.filter(c => c.tipo !== 'ingreso').reduce((s, c) => s + c.importe, 0n);
     return {
-      id: p.id,
-      codigo: p.codigo,
-      nombre: p.nombre,
-      ingresoMinor: minorATexto(BigInt(ingresoMayor)),
-      costoMinor: minorATexto(BigInt(costoMayor)),
-      margenMinor: minorATexto(BigInt(ingresoMayor) - BigInt(costoMayor)),
-      totalDocumentalVentaMinor: minorATexto(BigInt(totalVenta)),
-      totalDocumentalCompraMinor: minorATexto(BigInt(totalCompra))
+      ingresoMinor: minorATexto(ingreso),
+      costoMinor: minorATexto(costo),
+      margenMinor: minorATexto(ingreso - costo),
+      totalDocumentalVentaMinor: minorATexto(docs.find(d => d.tipo === 'venta')?.total ?? 0n),
+      totalDocumentalCompraMinor: minorATexto(docs.find(d => d.tipo === 'compra')?.total ?? 0n),
+      cuentas: propias.filter(c => c.importe !== 0n).map(c => ({
+        codigo: c.codigo, nombre: c.nombre, tipo: c.tipo, importeMinor: minorATexto(c.importe)
+      }))
     };
-  });
-  const comprasSinProyecto = (
-    db
-      .prepare("SELECT COUNT(*) AS n FROM compra WHERE proyecto_id IS NULL AND estado = 'registrada'")
-      .get() as { n: number }
-  ).n;
+  };
+  const lista = proyectos.map(p => ({ ...p, ...calcular(p.id) }));
+  const sinProyecto = { id: null, codigo: '', nombre: 'Sin proyecto', ...calcular(null) };
+  // El aviso depende de compras registradas sin proyecto, no de costos huérfanos
+  // de asientos manuales o de documentos anulados: esos ya se ven en `sinProyecto`.
+  const provisional = documentos.some(d => d.proyectoId === null && d.tipo === 'compra' && d.n > 0n);
   return {
     proyectos: lista,
-    provisional: comprasSinProyecto > 0,
+    sinProyecto,
+    provisional,
     nota:
-      comprasSinProyecto > 0
-        ? 'Hay compras registradas sin proyecto asignado: ningún costo se inventa como cero, por lo que la rentabilidad mostrada es provisional.'
-        : 'Todas las compras registradas están asignadas a un proyecto.',
+      provisional
+        ? 'Hay compras registradas sin proyecto asignado; la rentabilidad es provisional.'
+        : 'Todas las compras registradas del rango y ámbito están asignadas a un proyecto.',
     criterio:
       'La rentabilidad se calcula con los ingresos y costos/gastos reconocidos en asientos vinculados a los documentos del proyecto (coherente con el mayor): el IVA acreditable (1203) no es costo, el IVA al costo sí lo es, y las compras de activo no se convierten en gasto. Los totales documentales se muestran aparte, como métrica informativa.'
   };

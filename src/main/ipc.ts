@@ -14,6 +14,7 @@ import {
   exportarAnexo3ComprasPresentacion
 } from './servicios/anexosFiscales';
 import { registroEvento } from './servicios/bitacora';
+import { construirHtmlReporte, type DatosReporte, type TablaReporte } from './servicios/reportesPdf';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
@@ -337,6 +338,64 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       const opcionesPdf = {
         title: 'Guardar documento de cotización',
         defaultPath: `cotizacion-${numero}.pdf`,
+        filters: [{ name: 'PDF', extensions: ['pdf'] }]
+      };
+      const destino = ventanaPrincipal
+        ? await dialog.showSaveDialog(ventanaPrincipal, opcionesPdf)
+        : await dialog.showSaveDialog(opcionesPdf);
+      if (destino.canceled || !destino.filePath) {
+        return { guardado: false };
+      }
+      const rutaFinal = destino.filePath.toLowerCase().endsWith('.pdf') ? destino.filePath : `${destino.filePath}.pdf`;
+      fs.writeFileSync(rutaFinal, pdf);
+      return { guardado: true, ruta: rutaFinal };
+    } finally {
+      ventanaPdf.destroy();
+    }
+  });
+
+  // PDF de reportes del bloque 2 (auditorías 71/72): datos ESTRUCTURADOS (nunca HTML del
+  // renderer), todo escapado, logo desde ruta estable recuros/ (publicDir de Vite, sin hash)
+  // y fuentes de la marca incrustadas como data URI. Numeración de página N de M.
+  ipcMain.handle('arkon:reportePdf', async (evento, solicitud) => {
+    if (evento.sender.id !== ventanaWebContentsId) {
+      throw new Error('Remitente no autorizado');
+    }
+    const p = objetoSolicitud(solicitud);
+    const titulo = String(p.titulo ?? 'Reporte');
+    const periodo = typeof p.periodo === 'string' ? p.periodo : '';
+    const ambito = typeof p.ambito === 'string' && p.ambito ? p.ambito : undefined;
+    const tablas = Array.isArray(p.tablas) ? (p.tablas as TablaReporte[]) : [];
+    if (!titulo || tablas.length === 0) {
+      throw new Error('El reporte requiere título y tablas');
+    }
+    const datos: DatosReporte = { titulo, periodo, ambito, tablas };
+    const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/arkon-logo-azul.svg'), 'utf8');
+    const fuente = (nombre: string, familia: string, peso: string): string => {
+      const base64 = fs.readFileSync(path.join(__dirname, '../renderer/fuentes', nombre)).toString('base64');
+      return `@font-face { font-family: '${familia}'; font-style: normal; font-weight: ${peso}; src: url(data:font/woff2;base64,${base64}) format('woff2'); }`;
+    };
+    const fuentesCss = [
+      fuente('barlow-condensed-latin-700-normal.woff2', 'Barlow Condensed', '700'),
+      fuente('ibm-plex-sans-latin-400-normal.woff2', 'IBM Plex Sans', '400'),
+      fuente('ibm-plex-sans-latin-600-normal.woff2', 'IBM Plex Sans', '600'),
+      fuente('ibm-plex-mono-latin-400-normal.woff2', 'IBM Plex Mono', '400')
+    ].join('\n');
+    const html = construirHtmlReporte(datos, logoSvg, fuentesCss);
+    const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
+    const ventanaPdf = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    try {
+      await ventanaPdf.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      const pdf = await ventanaPdf.webContents.printToPDF({
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: '<div></div>',
+        footerTemplate: '<div style="font-size:9px; width:100%; text-align:center;"><span class="pageNumber"></span> de <span class="totalPages"></span></div>'
+      });
+      const nombreArchivo = titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-');
+      const opcionesPdf = {
+        title: 'Guardar reporte',
+        defaultPath: `${nombreArchivo || 'reporte'}.pdf`,
         filters: [{ name: 'PDF', extensions: ['pdf'] }]
       };
       const destino = ventanaPrincipal
