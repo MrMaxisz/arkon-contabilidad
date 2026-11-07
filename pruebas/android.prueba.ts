@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import electron from 'electron';
 
-it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y anchuras 360/800', async () => {
+it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y anchuras 360/800 en todas las secciones', async () => {
   const temporal = fs.mkdtempSync(path.resolve('dist/and3-'));
   const www = path.join(temporal, 'www');
   let proceso: ReturnType<typeof spawn> | undefined;
@@ -45,15 +45,39 @@ it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y 
     expect(resultado.persistencia.persistido).toEqual(balance);
     expect(resultado.persistencia.trasCorte).toEqual(balance);
     expect(resultado.persistencia.contrapartes).toEqual([]);
-    expect(resultado.persistencia.rechazos).toHaveLength(4);
+    // Mensaje exacto de cada rechazo: si se quita «respaldo:» del filtro de motorAndroid.ts, esta línea falla.
+    expect(resultado.persistencia.rechazos).toEqual([
+      'Android solo admite el ámbito administrativo',
+      'Esta función no está disponible aún en Android (solo ámbito administrativo)',
+      'Comando desconocido: toString',
+      'PDF, archivos y diálogos de Electron no disponibles aún en Android'
+    ]);
     expect(resultado.persistencia.aislado).toBe(false);
     expect(resultado.pantallas).toEqual([
       { ancho: 360, plegable: true, abierto: true, cerrado: true, pagina: true, scrollTabla: true },
       { ancho: 800, plegable: false, abierto: true, cerrado: false, pagina: true, scrollTabla: true }
     ]);
+    // Todas las secciones a 360 y 800 px: sin desbordamiento de página, sin elementos fuera de pantalla (salvo dentro de tablas) ni controles <44 px.
+    expect(resultado.secciones.length).toBeGreaterThan(0);
+    const anchos = [...new Set(resultado.secciones.map((s: { ancho: number }) => s.ancho))].sort((a: number, b: number) => a - b);
+    expect(anchos).toEqual([360, 800]);
+    for (const entrada of resultado.secciones as Array<{ ancho: number; seccion: string; pagina: boolean; sinFuera: boolean; controles44: boolean; fuera: string[]; controlesBajos: string[] }>) {
+      expect(entrada.pagina, `${entrada.ancho}px ${entrada.seccion}`).toBe(true);
+      expect(entrada.sinFuera, `${entrada.ancho}px ${entrada.seccion}: ${entrada.fuera.join(' | ')}`).toBe(true);
+      expect(entrada.controles44, `${entrada.ancho}px ${entrada.seccion}: controles bajos ${entrada.controlesBajos.join(' | ')}`).toBe(true);
+    }
+    // Cabecera de teléfono (360 px): logo visible, botón con aria-label, velo que cierra y Debe/Haber en la misma fila.
+    expect(resultado.cabecera.logoVisible).toBe(true);
+    expect(['Abrir menú', 'Cerrar menú']).toContain(resultado.cabecera.ariaLabel);
+    expect(resultado.cabecera.veloCierra).toBe(true);
+    expect(resultado.cabecera.mismaFila).toBe(true);
+    // Privacidad del APK: sin copia automática de Google y sin permiso de red.
+    const manifiesto = fs.readFileSync(path.resolve('movil/android/app/src/main/AndroidManifest.xml'), 'utf8');
+    expect(manifiesto).toContain('android:allowBackup="false"');
+    expect(manifiesto).not.toContain('android.permission.INTERNET');
   } finally {
     proceso?.kill();
     await new Promise<void>(resolve => servidor.close(() => resolve()));
     fs.rmSync(temporal, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
-}, 90000);
+}, 180000);

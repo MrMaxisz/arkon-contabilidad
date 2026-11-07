@@ -122,9 +122,15 @@ export default function App() {
 
   return (
     <div className={`app${menuAbierto ? ' menu-abierto' : ''}`}>
-      <button className="menu-movil" aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto(!menuAbierto)}>
-        {menuAbierto ? 'Cerrar menú' : 'Abrir menú'}
-      </button>
+      {esAndroid && (
+        <header className="cabecera-movil">
+          <button className="menu-movil" aria-expanded={menuAbierto} aria-controls="menu-principal" aria-label={menuAbierto ? 'Cerrar menú' : 'Abrir menú'} onClick={() => setMenuAbierto(!menuAbierto)}>
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" /></svg>
+          </button>
+          <img src={logoBlanco} alt="ARKON Ingeniería Eléctrica" width={80} height={28} />
+          <span className="seccion-movil">{seccion}</span>
+        </header>
+      )}
       <aside className="lateral" id="menu-principal">
         <div className="marca">
           <img src={logoBlanco} alt="ARKON Ingeniería Eléctrica" width={148} height={52} />
@@ -149,12 +155,13 @@ export default function App() {
           <p className="lema">Potencia con precisión</p>
         </div>
       </aside>
+      {esAndroid && menuAbierto && <div className="velo-menu" onClick={() => setMenuAbierto(false)} aria-hidden="true" />}
       <main className="contenido">
         <div className="barra-contexto">
           <span className="seccion-actual">{seccion}</span>
-          <span>Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
+          <span className="barra-contexto-detalle">Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
         </div>
-        {esAndroid && <p className="aviso">Android: una base administrativa. PDF, archivos, adjuntos, respaldos y diálogos de escritorio no disponibles aún. No borre los datos de la app.</p>}
+        {esAndroid && seccion === 'Inicio' && <p className="aviso">Android: una base administrativa. PDF, archivos, adjuntos, respaldos y diálogos de escritorio no disponibles aún. No borre los datos de la app.</p>}
         {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Catálogo' && <Catalogo />}

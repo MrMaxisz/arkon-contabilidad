@@ -8,12 +8,74 @@ html[data-plataforma='android'] { overflow-wrap: anywhere; }
 [data-plataforma='android'] th, [data-plataforma='android'] td { overflow-wrap: normal; }
 [data-plataforma='android'] input, [data-plataforma='android'] select,
 [data-plataforma='android'] textarea, [data-plataforma='android'] label { min-width: 0 !important; max-width: 100%; }
-[data-plataforma='android'] .barra-contexto { flex-wrap: wrap; }
-[data-plataforma='android'] .fila-linea { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+/* Cabecera móvil: solo existe en Android (App.tsx la renderiza con esAndroid). */
+[data-plataforma='android'] .cabecera-movil { display: none; }
+[data-plataforma='android'] .velo-menu { display: none; }
+
+/* Tamaño táctil mínimo en Android (salvo casillas de verificación). */
+[data-plataforma='android'] button,
+[data-plataforma='android'] input:not([type='checkbox']):not([type='radio']),
+[data-plataforma='android'] select,
+[data-plataforma='android'] textarea { min-height: 44px; }
+/* Botones sin clase (p. ej. «Ver» en tablas) con el estilo de la marca, no el nativo. */
+[data-plataforma='android'] .contenido button:not([class]) {
+  background: var(--arkon-blanco);
+  color: var(--arkon-azul);
+  border: 1px solid var(--arkon-azul);
+  border-radius: 2px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (max-width: 600px) {
   [data-plataforma='android'] .app { display: block; padding-top: 56px; }
   [data-plataforma='android'] .contenido { width: 100%; padding: 12px; }
-  [data-plataforma='android'] .menu-movil { display: block; position: fixed; top: 8px; left: 12px; z-index: 41; }
-  [data-plataforma='android'] .lateral { display: none; position: fixed; top: 56px; bottom: 0; left: 0; z-index: 40; overflow-y: auto; }
-  [data-plataforma='android'] .menu-abierto .lateral { display: flex; }
+  [data-plataforma='android'] .cabecera-movil {
+    display: flex; position: fixed; top: 0; left: 0; right: 0; height: 56px;
+    align-items: center; gap: 12px; padding: 0 12px; z-index: 50;
+    background: var(--arkon-marino); color: var(--arkon-blanco);
+  }
+  [data-plataforma='android'] .cabecera-movil .menu-movil {
+    display: flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0;
+    background: none; border: 1px solid var(--lateral-borde); border-radius: 2px;
+    color: var(--arkon-blanco); cursor: pointer; flex: none;
+  }
+  [data-plataforma='android'] .cabecera-movil img { display: block; width: 80px; height: 28px; object-fit: contain; flex: none; }
+  [data-plataforma='android'] .cabecera-movil .seccion-movil {
+    font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 18px;
+    text-transform: uppercase; letter-spacing: 0.5px; color: var(--arkon-blanco);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;
+  }
+  [data-plataforma='android'] .lateral {
+    display: flex; position: fixed; top: 56px; bottom: 0; left: 0; width: 232px;
+    z-index: 40; overflow-y: auto;
+    transform: translateX(-105%); transition: transform 0.25s ease;
+  }
+  [data-plataforma='android'] .menu-abierto .lateral { transform: translateX(0); }
+  [data-plataforma='android'] .velo-menu {
+    display: block; position: fixed; top: 56px; bottom: 0; left: 0; right: 0;
+    z-index: 30; background: rgba(11, 27, 51, 0.55);
+  }
+  [data-plataforma='android'] .barra-contexto-detalle { display: none; }
+
+  /* Líneas de asiento como bloque: Cuenta a todo el ancho, Debe y Haber lado a lado. */
+  [data-plataforma='android'] .fila-linea { grid-template-columns: 1fr 1fr; }
+  [data-plataforma='android'] .fila-linea > :first-child { grid-column: 1 / -1; }
+  [data-plataforma='android'] .fila-linea .solo-lector {
+    position: static; width: auto; height: auto; padding: 0; margin: 0;
+    overflow: visible; clip: auto; white-space: normal; border: 0;
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--texto-suave);
+  }
+  [data-plataforma='android'] .cabecera-lineas { display: none; }
+  [data-plataforma='android'] .totales-lineas > :last-child { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-plataforma='android'] .lateral { transition: none; }
 }
