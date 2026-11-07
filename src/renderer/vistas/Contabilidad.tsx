@@ -203,7 +203,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <label style={{ flex: 2 }}>Concepto<input value={concepto} onChange={e => setConcepto(e.target.value)} required /></label>
           <label>Responsable<input value={responsable} onChange={e => setResponsable(e.target.value)} required /></label>
         </div>
-        <div className="fila-linea cabecera-lineas" aria-hidden="true">
+        <div className="fila-linea cabecera-lineas">
           <span>Cuenta</span>
           <span className="numero">Debe</span>
           <span className="numero">Haber</span>
@@ -212,7 +212,7 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
         {lineas.map((l, i) => (
           <div className="fila-linea" key={i}>
             <label>
-              Cuenta
+              <span className="solo-lector">Cuenta</span>
               <select
                 value={l.cuentaId}
                 onChange={e => {
@@ -228,12 +228,12 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
                 ))}
               </select>
             </label>
-            <label>Debe<input value={l.debe} onChange={e => {
+            <label><span className="solo-lector">Debe</span><input value={l.debe} onChange={e => {
               const copia = [...lineas];
               copia[i] = { ...l, debe: e.target.value, haber: '' };
               setLineas(copia);
             }} placeholder="0.00" /></label>
-            <label>Haber<input value={l.haber} onChange={e => {
+            <label><span className="solo-lector">Haber</span><input value={l.haber} onChange={e => {
               const copia = [...lineas];
               copia[i] = { ...l, haber: e.target.value, debe: '' };
               setLineas(copia);
@@ -247,8 +247,9 @@ export default function Contabilidad({ alCambiar }: { alCambiar: () => void }) {
           <span>Totales</span>
           <span className="numero">{formatoDineroPantalla(minorATexto(totalDebe))}</span>
           <span className="numero">{formatoDineroPantalla(minorATexto(totalHaber))}</span>
-          <span className="numero">Diferencia: {formatoDineroPantalla(minorATexto(totalDebe - totalHaber))}</span>
+          <span></span>
         </div>
+        <p className="menor totales-diferencia">Diferencia: {formatoDineroPantalla(minorATexto(totalDebe - totalHaber))}</p>
         <div className="fila">
           <BotonSecundario onClick={() => setLineas([...lineas, { cuentaId: 0, debe: '', haber: '' }])}>
             Agregar línea

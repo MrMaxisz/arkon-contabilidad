@@ -65,7 +65,7 @@ export default function Bitacora() {
                   <td>{e.actor}</td>
                   <td>{e.tipo}</td>
                   <td>{e.entidad}{e.entidadId ? ` #${e.entidadId}` : ''}</td>
-                  <td className="menor">{e.detalle}</td>
+                  <td className="menor romper-texto">{e.detalle}</td>
                 </tr>
               ))}
             </tbody>

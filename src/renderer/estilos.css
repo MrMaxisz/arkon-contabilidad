@@ -266,6 +266,22 @@ button.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco
 .menu-acciones-lista button { display: block; width: 100%; text-align: left; padding: 8px 18px; }
 .menu-acciones-lista .peligro { color: var(--funcional-error); }
 
+/* Etiqueta accesible pero invisible en pantalla (6C): para cuadrículas con cabecera visible. */
+.solo-lector {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Detalle con líneas largas (6C): rompe el texto y la página no desplaza en horizontal. */
+.romper-texto { overflow-wrap: anywhere; word-break: break-word; }
+
 /* Fila compacta general (auditoría 72): también fuera de formularios. */
 .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
 
@@ -274,6 +290,7 @@ button.activo-pestana { background: var(--arkon-azul); color: var(--arkon-blanco
 .cabecera-lineas { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; color: var(--texto-suave); font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; }
 .fila-linea .numero { text-align: right; font-variant-numeric: tabular-nums; }
 .totales-lineas { border-top: 2px solid var(--arkon-marino); padding-top: 8px; margin-bottom: 12px; font-weight: 600; }
+.totales-diferencia { margin: 0 0 12px; }
 
 /* Controles visibles de búsqueda y paginación (bloque 5D). */
 .controles-pagina { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 16px; }
