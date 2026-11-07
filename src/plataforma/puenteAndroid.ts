@@ -1,5 +1,6 @@
 import type { ArkonApi } from '../renderer/api';
 import { abrirArchivo, guardarArchivo, pluginArchivos, type ArkonArchivos } from './archivosAndroid';
+import { formatearFechaHoraElSalvador } from '../shared/fechas';
 import { construirHtmlReporte, vestirHtmlCotizacion } from '../main/servicios/reportesPdf';
 import { recursosPdfAndroid } from './recursosPdfAndroid';
 
@@ -60,7 +61,7 @@ export function crearPuenteAndroid(worker: Worker, opciones: {
         if (!bytes) return { estado: 'cancelado', detalle: 'Importación cancelada.' };
         const info = await invocar('traspaso:inspeccionar', { bytes }) as { fecha: string; saldos: string };
         const aceptar = opciones.confirmar ?? (mensaje => window.confirm(mensaje));
-        if (!aceptar(`La base del teléfono será reemplazada por la del paquete. Se conservará una copia previa.\nFecha: ${info.fecha}\n${info.saldos}\n¿Reemplazar la base del teléfono?`)) return { estado: 'cancelado', detalle: 'Importación cancelada.' };
+        if (!aceptar(`La base del teléfono será reemplazada por la del paquete. Se conservará una copia previa.\nFecha: ${formatearFechaHoraElSalvador(info.fecha)}\n${info.saldos}\n¿Reemplazar la base del teléfono?`)) return { estado: 'cancelado', detalle: 'Importación cancelada.' };
         return invocar(comando, { bytes });
       });
       return invocar(comando, datos);

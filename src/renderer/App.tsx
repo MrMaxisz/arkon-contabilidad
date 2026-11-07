@@ -20,7 +20,8 @@ import LibroDiario from './vistas/LibroDiario';
 import EstadosFinancieros from './vistas/EstadosFinancieros';
 import ActivosFijos from './vistas/ActivosFijos';
 import Costos from './vistas/Costos';
-import { EstadoCarga, formatoDineroPantalla } from './componentes';
+import { BotonSecundario, EstadoCarga, formatoDineroPantalla } from './componentes';
+import { debeMostrarRecordatorioRespaldo } from '../shared/recordatorioRespaldo';
 import logoBlanco from './recursos/arkon-logo-blanco.svg';
 
 interface BalanceResumen {
@@ -66,10 +67,26 @@ function formatoDinero(minorTexto: string): string {
   return formatoDineroPantalla(minorTexto);
 }
 
-function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCargar: () => void }) {
+function Inicio({ balance, alCargar, alIrRespaldo }: { balance: BalanceResumen | null; alCargar: () => void; alIrRespaldo?: () => void }) {
+  const esAndroid = api().plataforma === 'android';
+  const [recordatorio, setRecordatorio] = useState(false);
   useEffect(() => {
     alCargar();
   }, [alCargar]);
+  useEffect(() => {
+    if (!esAndroid) return;
+    let activo = true;
+    void Promise.all([
+      api().invocar('libro:partidas', { limite: 1 }).catch(() => null),
+      api().invocar('traspaso:ultimaExportacion').catch(() => null)
+    ]).then(([partidas, ultima]) => {
+      if (!activo) return;
+      const total = (partidas as { total?: number } | null)?.total ?? 0;
+      const fecha = (ultima as { fecha?: string } | null)?.fecha ?? null;
+      setRecordatorio(debeMostrarRecordatorioRespaldo(total, fecha));
+    });
+    return () => { activo = false; };
+  }, [esAndroid]);
   if (!balance) {
     return <EstadoCarga texto="Cargando resumen contable…" />;
   }
@@ -80,6 +97,11 @@ function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCarga
         Ámbito administrativo actual: ARKON no está constituida ni inscrita como contribuyente de IVA.
         Los registros aquí son de control administrativo, no estados financieros legales.
       </p>
+      {esAndroid && recordatorio && (
+        <p className="aviso seguridad">
+          El teléfono es la única copia de tus datos: perder el teléfono o desinstalar la app pierde los datos. Exporta un respaldo. <BotonSecundario onClick={alIrRespaldo}>Ir a Respaldo</BotonSecundario>
+        </p>
+      )}
       <div className="resumen-inicio">
         <div>
           <h3>Total activos</h3>
@@ -163,7 +185,7 @@ export default function App() {
           <span className="barra-contexto-detalle">Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
         </div>
         {esAndroid && seccion === 'Inicio' && <p className="aviso">Android: una base administrativa. Apertura y registro de adjuntos y funciones fiscales no disponibles aún. Exporte un respaldo antes de borrar los datos de la app.</p>}
-        {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
+        {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} alIrRespaldo={() => setSeccion('Respaldo')} />}
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Catálogo' && <Catalogo />}
         {seccion === 'Cotizaciones' && <Cotizaciones />}

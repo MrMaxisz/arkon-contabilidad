@@ -126,7 +126,7 @@ export async function abrirMotorAndroid(antesInstalar?: () => Promise<void>) {
       if (anterior.previo && anterior.previo !== anterior.activo) {
         try { await adjuntos.descartar(anterior.previo); } catch { /* no invalidar una importación ya confirmada */ }
       }
-      return { ok: true, detalle: 'Base importada; copia previa en /arkon-anterior.db' };
+      return { ok: true, detalle: 'Base importada. La base anterior quedó guardada en este dispositivo.' };
     } finally { if (copia.db.open) copia.db.close(); }
   }
   return {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api';
 import { BotonPrimario, BotonSecundario } from '../componentes';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { formatearFechaHoraElSalvador } from '../../shared/fechas';
 
 export default function RespaldoAndroid() {
   const [ultima, setUltima] = useState<{ fecha: string; nombre: string } | null>(null);
@@ -25,7 +26,7 @@ export default function RespaldoAndroid() {
     <p>Un solo dispositivo activo. Importar reemplaza la base del teléfono; no combina datos.</p>
     <p><BotonPrimario disabled={ocupado} onClick={() => void ejecutar('traspaso:exportar')}>Exportar del dispositivo</BotonPrimario>{' '}
       <BotonSecundario disabled={ocupado} onClick={() => void ejecutar('traspaso:importar')}>Importar al dispositivo</BotonSecundario></p>
-    <p>{ultima ? `Última exportación: ${ultima.fecha} · ${ultima.nombre}` : 'Sin exportaciones completadas.'}</p>
+    <p>{ultima ? `Última exportación: ${formatearFechaHoraElSalvador(ultima.fecha)} · ${ultima.nombre}` : 'Sin exportaciones completadas.'}</p>
     {mensaje && <p className={`aviso ${error ? 'error' : 'ok'}`}>{mensaje}</p>}
   </div>;
 }

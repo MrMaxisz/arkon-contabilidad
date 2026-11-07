@@ -116,3 +116,15 @@ Plugin simulado: guardar, abrir, cancelaciones, múltiples trozos y múltiplo ex
 No se ha validado el selector, PrintManager ni el proveedor Drive en un teléfono físico. La simulación y Chromium no sustituyen estos pasos.
 
 Resultado local AND5: dos verificaciones completas consecutivas con **534 pruebas (85 archivos), `SUITE_EXIT=0`**; una ejecución de `.arkon\apk.cmd`, **`APK_EXIT=0`**, APK de depuración generado. Hubo un intento preliminar de verificación interrumpido por el límite de 120 s y un fallo de mocks del ayudante de mensajes PDF, corregido antes de ambas verificaciones completas. Sin clave de firma de distribución, commit ni push.
+
+## AND5C: correcciones de la auditoría de AND5
+
+Sin dependencias nuevas, sin migraciones y sin cambiar reglas contables.
+
+- **Fecha local.** `nombreTraspaso` usa `fechaLocalElSalvador` de `src/shared/fechas` (UTC-6), igual en escritorio y Android. Ambos dispositivos sugieren `ARKON-AAAA-MM-DD.arkon` con la fecha local de El Salvador; de noche en El Salvador el nombre ya no sale con la fecha UTC del día siguiente.
+- **Fechas legibles.** `RespaldoAndroid.tsx` (última exportación) y la confirmación de importación del puente Android muestran fecha y hora como `07/11/2026 14:30` en hora de El Salvador (`formatearFechaHoraElSalvador`), no ISO.
+- **Mensajes.** El resultado de importar ya no muestra rutas internas como `/arkon-anterior.db`: devuelve «Base importada. La base anterior quedó guardada en este dispositivo.»
+- **Recordatorio de respaldo.** El teléfono es la única copia y `allowBackup` está desactivado: perder o desinstalar la app pierde los datos. En Inicio, solo Android, si hay al menos una partida y nunca se exportó o la última exportación tiene más de 7 días, se muestra un aviso breve con botón «Ir a Respaldo». Si se exportó hace 7 días o menos, o si no hay partidas, no se muestra. Lógica pura y comprobable en `src/shared/recordatorioRespaldo.ts`.
+- **Archivo incompleto.** Si falla la escritura, `cerrar` recibe `descartar: true` y el plugin nativo intenta borrar el documento con `DocumentsContract.deleteDocument` sobre el `Uri` guardado al abrir la salida, sin ocultar el error original de escritura (el cierre que falla al descartar se ignora en JavaScript).
+- **Pruebas que faltan.** El plugin simulado de `pruebas/android/archivos.prueba.ts` falla si `escribirTrozo` recibe más de 1 MiB decodificado, de modo que subir `TAMANO_TROZO` a 4 MiB hace fallar la prueba de trozos. La prueba nueva de CSV de libro con `90071992547409.93` (`9007199254740993` centavos, por encima de `Number.MAX_SAFE_INTEGER`) exige el importe exacto, de modo que quitar `.safeIntegers(true)` de `generarCsvLibro` en `src/main/servicios/fiscal.ts` hace fallar esa prueba.
+- **Formato.** Se corrige la sangría irregular de la consulta de `generarCsvLibro` en `src/main/servicios/fiscal.ts`.

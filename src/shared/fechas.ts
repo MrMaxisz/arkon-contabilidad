@@ -35,3 +35,15 @@ export function fechaLocalElSalvador(ahora: Date = new Date()): string {
   const sv = new Date(ahora.getTime() + ZONA_EL_SALVADOR_OFFSET_MS);
   return sv.toISOString().slice(0, 10);
 }
+
+export function formatearFechaHoraElSalvador(fecha: string | Date): string {
+  const base = typeof fecha === 'string' ? new Date(fecha) : fecha;
+  if (Number.isNaN(base.getTime())) return String(fecha);
+  const sv = new Date(base.getTime() + ZONA_EL_SALVADOR_OFFSET_MS);
+  const dia = String(sv.getUTCDate()).padStart(2, '0');
+  const mes = String(sv.getUTCMonth() + 1).padStart(2, '0');
+  const anio = sv.getUTCFullYear();
+  const hora = String(sv.getUTCHours()).padStart(2, '0');
+  const minuto = String(sv.getUTCMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${anio} ${hora}:${minuto}`;
+}

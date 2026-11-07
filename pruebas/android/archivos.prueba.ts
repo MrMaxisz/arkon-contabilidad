@@ -5,8 +5,13 @@ import { crearPuenteAndroid } from '../../src/plataforma/puenteAndroid';
 import { aBase64, TAMANO_TROZO, type ArkonArchivos } from '../../src/plataforma/archivosAndroid';
 import { construirHtmlReporte } from '../../src/main/servicios/reportesPdf';
 import { nombreTraspaso } from '../../src/shared/nombreTraspaso';
+import { formatearFechaHoraElSalvador } from '../../src/shared/fechas';
+import { debeMostrarRecordatorioRespaldo } from '../../src/shared/recordatorioRespaldo';
 import Database from 'better-sqlite3';
 import { aplicarMigraciones } from '../../src/main/db/aplicarMigraciones';
+import { sembrarCatalogoBase } from '../../src/main/servicios/cuentas';
+import { crearContraparte, registrarVenta } from '../../src/main/servicios/operacion';
+import { generarCsvLibro } from '../../src/main/servicios/fiscal';
 import { crearCotizacion, generarHtmlCotizacion, listarCotizaciones } from '../../src/main/servicios/cotizaciones';
 import { vestirHtmlCotizacion } from '../../src/main/servicios/reportesPdf';
 
@@ -21,7 +26,7 @@ function preparar(bytes = new Uint8Array([1, 2, 3])) {
       queueMicrotask(() => {
         let resultado: unknown;
         if (p.comando === 'traspaso:exportar') resultado = { bytes, nombre: 'ARKON-2026-11-07.arkon' };
-        if (p.comando === 'traspaso:inspeccionar') resultado = { fecha: '2026-11-07', saldos: 'Activo: 200.00; Pasivo: 0.00; Patrimonio: 200.00; Resultado: 0.00 USD' };
+        if (p.comando === 'traspaso:inspeccionar') resultado = { fecha: '2026-11-07T20:30:00.000Z', saldos: 'Activo: 200.00; Pasivo: 0.00; Patrimonio: 200.00; Resultado: 0.00 USD' };
         if (p.comando === 'traspaso:registrarExportacion') base.exportacion = p.datos.nombre;
         if (p.comando === 'traspaso:importar') { base.saldo = 'reemplazado'; resultado = { detalle: 'Importado' }; }
         if (p.comando === 'android:csvAuxiliar' || p.comando === 'android:csvLibro') resultado = { csv: 'saldo\n200.00', version: 'prueba' };
@@ -31,7 +36,9 @@ function preparar(bytes = new Uint8Array([1, 2, 3])) {
   };
   const plugin: ArkonArchivos = {
     guardar: vi.fn(async () => ({ estado: 'listo' })), abrir: vi.fn(async () => ({ estado: 'listo' })),
-    escribirTrozo: vi.fn(async () => undefined),
+    escribirTrozo: vi.fn(async (datos: { base64: string }) => {
+      if (Buffer.from(datos.base64, 'base64').length > 1024 * 1024) throw new Error('Trozo mayor que 1 MB');
+    }),
     leerTrozo: vi.fn(async () => {
       const trozo = bytes.subarray(offset, offset + TAMANO_TROZO); offset += trozo.length;
       return { base64: aBase64(trozo), fin: trozo.length < TAMANO_TROZO };
@@ -54,6 +61,10 @@ it('AND5: guarda por trozos de 1 MB y registra fecha/nombre solo después del ci
   expect(p.plugin.guardar).toHaveBeenCalledWith({ nombre: 'ARKON-2026-11-07.arkon', mime: 'application/octet-stream' });
   expect(p.base).toEqual({ saldo: '200.00', exportacion: 'ARKON-2026-11-07.arkon' });
   expect(nombreTraspaso(new Date('2026-11-07T12:00:00Z'))).toBe('ARKON-2026-11-07.arkon');
+  // AND5C: de noche en El Salvador (UTC-6) el nombre usa la fecha local, no la UTC.
+  expect(nombreTraspaso(new Date('2026-11-07T03:00:00Z'))).toBe('ARKON-2026-11-06.arkon');
+  expect(nombreTraspaso(new Date('2026-11-07T05:59:00Z'))).toBe('ARKON-2026-11-06.arkon');
+  expect(nombreTraspaso(new Date('2026-11-07T06:00:00Z'))).toBe('ARKON-2026-11-07.arkon');
 });
 
 it('AND5: abre por trozos, inspecciona y confirma fecha y saldos antes de importar', async () => {
@@ -64,8 +75,28 @@ it('AND5: abre por trozos, inspecciona y confirma fecha y saldos antes de import
   expect(p.comandos.map(c => c.comando)).toEqual(['traspaso:inspeccionar', 'traspaso:importar']);
   expect(Buffer.compare(Buffer.from(p.comandos[1]!.datos.bytes), Buffer.from(bytes))).toBe(0);
   expect(p.confirmar).toHaveBeenCalledWith(expect.stringContaining('La base del teléfono será reemplazada'));
-  expect(p.confirmar.mock.calls[0]![0]).toContain('2026-11-07');
+  expect(p.confirmar.mock.calls[0]![0]).toContain('07/11/2026 14:30');
+  expect(p.confirmar.mock.calls[0]![0]).not.toContain('2026-11-07');
   expect(p.confirmar.mock.calls[0]![0]).toContain('Activo: 200.00; Pasivo: 0.00; Patrimonio: 200.00; Resultado: 0.00 USD');
+});
+
+it('AND5C: fecha legible en hora de El Salvador, no ISO', () => {
+  expect(formatearFechaHoraElSalvador('2026-11-07T20:30:00.000Z')).toBe('07/11/2026 14:30');
+  expect(formatearFechaHoraElSalvador(new Date('2026-11-07T03:00:00Z'))).toBe('06/11/2026 21:00');
+});
+
+it('AND5C: recordatorio solo con partidas y sin exportación reciente', () => {
+  const ahora = new Date('2026-11-14T12:00:00Z');
+  expect(debeMostrarRecordatorioRespaldo(0, null, ahora)).toBe(false);
+  expect(debeMostrarRecordatorioRespaldo(1, null, ahora)).toBe(true);
+  expect(debeMostrarRecordatorioRespaldo(0, '2026-11-01T12:00:00Z', ahora)).toBe(false);
+  // 13 días: muestra.
+  expect(debeMostrarRecordatorioRespaldo(1, '2026-11-01T12:00:00Z', ahora)).toBe(true);
+  // 7 días exactos y 6 días: no muestra.
+  expect(debeMostrarRecordatorioRespaldo(1, '2026-11-07T12:00:00Z', ahora)).toBe(false);
+  expect(debeMostrarRecordatorioRespaldo(1, '2026-11-08T12:00:00Z', ahora)).toBe(false);
+  // Poco más de 7 días: muestra.
+  expect(debeMostrarRecordatorioRespaldo(1, '2026-11-07T11:59:59Z', ahora)).toBe(true);
 });
 
 it('AND5: cancelar guardar/abrir no es error y no toca la base', async () => {
@@ -102,6 +133,8 @@ it.each(['escritura', 'cierre'])('AND5: error de %s no registra exportación ni 
   await expect(p.api.invocar('traspaso:exportar')).rejects.toThrow(fallo);
   expect(p.base).toEqual({ saldo: '200.00', exportacion: '' });
   expect(p.comandos.map(c => c.comando)).toEqual(['traspaso:exportar']);
+  // AND5C: al fallar la escritura el archivo incompleto se descarta.
+  if (fallo === 'escritura') expect(p.plugin.cerrar).toHaveBeenCalledWith({ descartar: true });
 });
 
 it('AND5: PDF usa exactamente el HTML de escritorio, con importes de pantalla y recursos embebidos', async () => {
@@ -153,5 +186,31 @@ it('AND5: cotización usa el mismo generador de escritorio y conserva menores gr
     expect(listarCotizaciones(db)[0]!.totalMinor).toBe('90071992547409.93');
     expect(html).toContain('90071992547409.93');
     expect(html).not.toContain('90071992547409.92');
+  } finally { db.close(); }
+});
+
+it('AND5C: CSV de libro conserva exacto 90071992547409.93', () => {
+  const db = new Database(':memory:');
+  try {
+    aplicarMigraciones(db);
+    db.prepare("INSERT INTO ambito (id, nombre, tipo) VALUES ('administrativo', 'Prueba AND5C', 'administrativo')").run();
+    sembrarCatalogoBase(db, 'prueba');
+    const cliente = crearContraparte(db, { nombre: 'Cliente sintético AND5C', esCliente: true, esProveedor: false, responsable: 'prueba' });
+    registrarVenta(db, {
+      contraparteId: cliente,
+      fechaOperacion: '2026-11-07',
+      concepto: 'Venta sintética AND5C',
+      tipoIngreso: 'instalaciones',
+      base: '90071992547409.93',
+      tasa: '0',
+      clasificacionDocumento: 'contribuyente',
+      tipoDocumento: 'factura',
+      claveIdempotencia: 'AND5C-grande',
+      responsable: 'prueba'
+    });
+    // 90071992547409.93 = 9007199254740993 centavos > Number.MAX_SAFE_INTEGER: sin safeIntegers saldría ...92.
+    const csv = generarCsvLibro(db, 'venta', '2026-11');
+    expect(csv.csv).toContain('V-000001,2026-11-07,contribuyente,factura,90071992547409.93,0.00,90071992547409.93');
+    expect(csv.csv).not.toContain('90071992547409.92');
   } finally { db.close(); }
 });

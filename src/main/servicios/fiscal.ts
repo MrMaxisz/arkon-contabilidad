@@ -556,9 +556,9 @@ export function generarCsvLibro(
       `SELECT folio, fecha_operacion, clasificacion_documento, tipo_documento, base_minor, iva_minor, total_minor
        FROM ${tabla} WHERE fecha_operacion BETWEEN ? AND ? AND estado = 'registrada'
        ORDER BY fecha_operacion, id`
-     )
+    )
     .safeIntegers(true)
-     .all(inicio, fin) as Array<{
+    .all(inicio, fin) as Array<{
     folio: string;
     fecha_operacion: string;
     clasificacion_documento: string | null;

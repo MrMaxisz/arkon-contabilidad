@@ -2,10 +2,12 @@ package sv.arkon.contabilidad;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.print.PrintAttributes;
 import android.print.PrintDocumentAdapter;
 import android.print.PrintManager;
+import android.provider.DocumentsContract;
 import android.util.Base64;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -25,6 +27,7 @@ public class ArkonArchivos extends Plugin {
     private static final int TROZO = 1024 * 1024;
     private InputStream entrada;
     private OutputStream salida;
+    private Uri salidaUri;
     private boolean ocupado;
     private WebView impresion;
 
@@ -35,7 +38,7 @@ public class ArkonArchivos extends Plugin {
     }
     private synchronized void limpiar() throws Exception {
         try { if (entrada != null) entrada.close(); }
-        finally { entrada = null; try { if (salida != null) salida.close(); } finally { salida = null; ocupado = false; } }
+        finally { entrada = null; try { if (salida != null) salida.close(); } finally { salida = null; salidaUri = null; ocupado = false; } }
     }
     @PluginMethod public void guardar(PluginCall call) {
         if (!reservar(call)) return;
@@ -63,10 +66,12 @@ public class ArkonArchivos extends Plugin {
         if (call == null) return;
         if (cancelado(call, result)) return;
         try {
-            salida = getContext().getContentResolver().openOutputStream(result.getData().getData(), "wt");
+            Uri uri = result.getData().getData();
+            salidaUri = uri;
+            salida = getContext().getContentResolver().openOutputStream(uri, "wt");
             if (salida == null) throw new Exception("Proveedor sin salida");
             call.resolve(estado("listo"));
-        } catch (Exception e) { ocupado = false; call.reject("No se pudo guardar el archivo", e); }
+        } catch (Exception e) { salidaUri = null; ocupado = false; call.reject("No se pudo guardar el archivo", e); }
     }
     @ActivityCallback private void seleccionAbrir(PluginCall call, ActivityResult result) {
         if (call == null) return;
@@ -96,8 +101,15 @@ public class ArkonArchivos extends Plugin {
         } catch (Exception e) { call.reject("Error de lectura", e); }
     }
     @PluginMethod public synchronized void cerrar(PluginCall call) {
-        try { limpiar(); call.resolve(estado("completo")); }
-        catch (Exception e) { call.reject("No se pudo cerrar el archivo", e); }
+        boolean descartar = call.getBoolean("descartar", false);
+        Uri uri = salidaUri;
+        try { limpiar(); }
+        catch (Exception e) { call.reject("No se pudo cerrar el archivo", e); return; }
+        if (descartar && uri != null) {
+            try { DocumentsContract.deleteDocument(getContext().getContentResolver(), uri); }
+            catch (Exception ignored) { /* el fallo al descartar no oculta el error original de escritura */ }
+        }
+        call.resolve(estado("completo"));
     }
     @PluginMethod public void imprimir(PluginCall call) {
         getActivity().runOnUiThread(() -> {

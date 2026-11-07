@@ -4,7 +4,7 @@ export interface ArkonArchivos {
   abrir(): Promise<{ estado: string }>;
   escribirTrozo(datos: { base64: string }): Promise<unknown>;
   leerTrozo(): Promise<{ base64: string; fin: boolean }>;
-  cerrar(): Promise<unknown>;
+  cerrar(datos?: { descartar?: boolean }): Promise<unknown>;
   imprimir(datos: { nombre: string; html: string }): Promise<unknown>;
 }
 export function pluginArchivos(): ArkonArchivos {
@@ -25,12 +25,13 @@ export function deBase64(texto: string): Uint8Array {
 }
 export async function guardarArchivo(plugin: ArkonArchivos, nombre: string, mime: string, bytes: Uint8Array) {
   if ((await plugin.guardar({ nombre, mime })).estado === 'cancelado') return { estado: 'cancelado', guardado: false, detalle: 'Exportación cancelada.' };
-  let cerrado = false;
+  let cerrado = false; let fallo = false;
   try {
     for (let i = 0; i < bytes.length; i += TAMANO_TROZO) await plugin.escribirTrozo({ base64: aBase64(bytes.subarray(i, i + TAMANO_TROZO)) });
     await plugin.cerrar(); cerrado = true;
     return { estado: 'guardado', guardado: true, nombre, ruta: nombre, detalle: `Exportado: ${nombre}` };
-  } finally { if (!cerrado) await plugin.cerrar().catch(() => undefined); }
+  } catch (error) { fallo = true; throw error; }
+  finally { if (!cerrado) await plugin.cerrar({ descartar: fallo }).catch(() => undefined); }
 }
 export async function abrirArchivo(plugin: ArkonArchivos): Promise<Uint8Array | null> {
   if ((await plugin.abrir()).estado === 'cancelado') return null;
