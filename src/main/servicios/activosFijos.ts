@@ -175,6 +175,9 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
     throw new ErrorActivoFijo('La vida útil en meses debe ser un entero mayor que cero');
   }
   const ambitoId = entrada.ambitoId ?? 'administrativo';
+  if (ambitoId !== 'administrativo') {
+    throw new ErrorActivoFijo('El alta de activos fijos solo admite el ámbito administrativo');
+  }
   const ambito = db.prepare('SELECT id FROM ambito WHERE id = ? AND activo = 1').get(ambitoId);
   if (!ambito) {
     throw new ErrorActivoFijo(`Ámbito inexistente o inactivo: ${ambitoId}`);
@@ -252,16 +255,16 @@ export function darAltaActivoFijo(db: Database.Database, entrada: EntradaAltaAct
     ).total;
     const yaAsignado = (
       db
-        .prepare('SELECT COALESCE(SUM(costo_minor), 0) AS total FROM activo_fijo WHERE compra_id = ?')
+        .prepare('SELECT COALESCE(SUM(costo_minor), 0) AS total FROM activo_fijo WHERE compra_id = ? AND cuenta_activo_id = ?')
         .safeIntegers(true)
-        .get(entrada.compraId) as { total: bigint }
+        .get(entrada.compraId, entrada.cuentaActivoId) as { total: bigint }
     ).total;
     if (yaAsignado + costoMinor > contabilizado) {
       throw new ErrorActivoFijo(
         `El costo supera lo disponible de la compra en esa cuenta (disponible: ${minorATexto(contabilizado - yaAsignado)})`
       );
     }
-  } else {
+  } else if (costoMinor > 0n) {
     if (!entrada.cuentaContrapartidaId) {
       throw new ErrorActivoFijo('Sin compra de origen se requiere la cuenta de contrapartida');
     }
@@ -366,11 +369,13 @@ export function previsualizarDepreciacion(db: Database.Database, mes: string): P
   for (const activo of activos) {
     const cuadro = cuotasDepreciacionActivo(db, activo.id);
     const aplicadas = new Set(
-      (db.prepare('SELECT mes FROM depreciacion_detalle WHERE activo_fijo_id = ?').all(activo.id) as Array<{ mes: string }>)
+      (db.prepare(`SELECT d.mes FROM depreciacion_detalle d
+        JOIN depreciacion_lote l ON l.id = d.lote_id JOIN asiento a ON a.id = l.asiento_id
+        WHERE d.activo_fijo_id = ? AND a.estado = 'contabilizado'`).all(activo.id) as Array<{ mes: string }>)
         .map(c => c.mes)
     );
     for (const cuota of cuadro.cuotas) {
-      if (cuota.mes > mes || aplicadas.has(cuota.mes)) {
+      if (cuota.mes > mes || aplicadas.has(cuota.mes) || parseMontoMinor(cuota.cuotaMinor) === 0n) {
         continue;
       }
       filas.push({
@@ -509,7 +514,7 @@ export function anularUltimoLote(
     if (afectaBaja) {
       throw new ErrorActivoFijo('El lote afecta una baja o venta vigente; anule primero la baja');
     }
-    const reverso = anularAsiento(db, lote.asiento_id, entrada.responsable.trim(), entrada.motivo.trim());
+    const reverso = anularAsiento(db, lote.asiento_id, entrada.responsable.trim(), entrada.motivo.trim(), true);
     db.prepare('DELETE FROM depreciacion_detalle WHERE lote_id = ?').run(lote.id);
     db.prepare('DELETE FROM depreciacion_lote WHERE id = ?').run(lote.id);
     registroEvento(db, entrada.responsable.trim(), 'depreciacion_lote_anulado', 'depreciacion_lote', String(lote.id), {

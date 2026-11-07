@@ -438,6 +438,9 @@ export function anularDocumento(
     throw new ErrorOperacion(`El documento ${doc.folio} tiene cobros o pagos aplicados; anúlelos primero`);
   }
   const tx = db.transaction(() => {
+    if (tipo === 'compra' && db.prepare("SELECT 1 FROM activo_fijo WHERE compra_id = ? AND estado = 'activo' LIMIT 1").get(documentoId)) {
+      throw new ErrorOperacion(`La compra ${doc.folio} tiene un activo fijo vigente; no se puede anular mientras el activo siga vigente`);
+    }
     anularAsiento(db, doc.asiento_id, responsable, `Anulación de ${doc.folio}: ${motivo}`, true);
     db.prepare(`UPDATE ${tabla} SET estado = 'anulada' WHERE id = ?`).run(documentoId);
     registroEvento(db, responsable, `${tipo}_anulada`, tipo, String(documentoId), { folio: doc.folio, motivo });

@@ -6,8 +6,8 @@ import { abrirBase, prepararRutasDatos } from '../src/main/db/conexion';
 import { aplicarMigraciones, versionEsquemaActual } from '../src/main/db/aplicarMigraciones';
 import { migraciones } from '../src/main/db/migraciones';
 import { sembrarCatalogoBase } from '../src/main/servicios/cuentas';
-import { contabilizarAsiento, cerrarPeriodo, periodoDeFecha } from '../src/main/servicios/motorAsientos';
-import { registrarCompra, crearContraparte } from '../src/main/servicios/operacion';
+import { contabilizarAsiento, anularAsiento, cerrarPeriodo, periodoDeFecha } from '../src/main/servicios/motorAsientos';
+import { registrarCompra, crearContraparte, anularDocumento } from '../src/main/servicios/operacion';
 import { estadoSituacionFinanciera } from '../src/main/servicios/estadosFinancieros';
 import {
   calcularCuotas,
@@ -17,6 +17,7 @@ import {
   previsualizarDepreciacion,
   depreciarMes,
   anularUltimoLote,
+  listarActivosFijos,
   ErrorActivoFijo
 } from '../src/main/servicios/activosFijos';
 import type BetterSqlite3 from 'better-sqlite3';
@@ -78,6 +79,100 @@ afterEach(() => {
     }
   }
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+describe('6B: correcciones de activos fijos (cifras a mano)', () => {
+  function compra(lineas = [{ cuentaCodigo: '1501', precioUnitario: '1200.00' }]) {
+    const proveedor = crearContraparte(db, { nombre: 'Proveedor sintético 6B', esCliente: false, esProveedor: true, responsable: 'qa' });
+    return registrarCompra(db, {
+      contraparteId: proveedor, fechaOperacion: '2026-01-10', concepto: 'Compra sintética 6B',
+      condicion: 'credito', responsable: 'qa', claveIdempotencia: `compra-6b-${proveedor}`,
+      lineas: lineas.map(l => ({ ...l, descripcion: 'Equipo sintético', cantidad: '1', tasa: '0', tratamiento: 'exento' }))
+    });
+  }
+
+  it('solo la ruta del último lote libera las cuotas: 100 + 100, reverso de 100 y reposición de 100', () => {
+    alta(); // 1200 / 12 = 100 por mes.
+    const febrero = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    const marzo = depreciarMes(db, { mes: '2026-03', responsable: 'qa' });
+    for (const lote of [febrero, marzo]) {
+      const asiento = db.prepare('SELECT id FROM asiento WHERE folio = ?').get(lote.asientoFolio) as { id: number };
+      expect(() => anularAsiento(db, asiento.id, 'qa', 'Intento directo')).toThrow(/depreciacion/);
+    }
+    expect(gastoDepreciacionMinor()).toBe(20000n);
+    expect(previsualizarDepreciacion(db, '2026-03').filas).toHaveLength(0);
+    expect(anularUltimoLote(db, { responsable: 'qa', motivo: 'Rehacer marzo' }).loteId).toBe(marzo.loteId);
+    expect(gastoDepreciacionMinor()).toBe(10000n);
+    expect(previsualizarDepreciacion(db, '2026-03').filas.map(f => [f.mes, f.cuotaMinor])).toEqual([['2026-03', '100.00']]);
+    expect(depreciarMes(db, { mes: '2026-03', responsable: 'qa' }).totalMinor).toBe('100.00');
+    expect(gastoDepreciacionMinor()).toBe(20000n);
+  });
+
+  it('compra de 1200 con activo vigente no se anula ni revierte sus 1200', () => {
+    const c = compra();
+    alta({ compraId: c.id });
+    expect(() => anularDocumento(db, 'compra', c.id, 'qa', 'Prueba')).toThrow(/activo fijo vigente/);
+    expect(db.prepare('SELECT estado FROM compra WHERE id = ?').get(c.id)).toEqual({ estado: 'registrada' });
+    const total = db.prepare(`SELECT SUM(l.debe_minor - l.haber_minor) AS total FROM asiento_linea l
+      JOIN asiento a ON a.id = l.asiento_id WHERE l.cuenta_id = ?`).safeIntegers(true).get(idCuenta('1501'));
+    expect(total).toEqual({ total: 120000n });
+    expect(listarActivosFijos(db)[0]!.costoMinor).toBe('1200.00');
+  });
+
+  it('una compra anulada de 1200 no permite un alta posterior', () => {
+    const c = compra();
+    anularDocumento(db, 'compra', c.id, 'qa', 'Compra errónea');
+    expect(() => alta({ compraId: c.id })).toThrow(/debe estar registrada/);
+    expect(listarActivosFijos(db)).toHaveLength(0);
+    expect(db.prepare('SELECT SUM(debe_minor - haber_minor) AS total FROM asiento_linea WHERE cuenta_id = ?')
+      .safeIntegers(true).get(idCuenta('1501'))).toEqual({ total: 0n });
+  });
+
+  it('cuotas cero no bloquean otro grupo: 500 - 500 = 0; 1200 / 12 = 100', () => {
+    alta({ costoMinor: '500.00', residualMinor: '500.00', cuentaGastoId: idCuenta('6201') });
+    alta();
+    expect(previsualizarDepreciacion(db, '2026-02').totalMinor).toBe('100.00');
+    const lote = depreciarMes(db, { mes: '2026-02', responsable: 'qa' });
+    expect(lote.totalMinor).toBe('100.00');
+    const lineas = db.prepare(`SELECT l.debe_minor AS debe, l.haber_minor AS haber FROM asiento_linea l
+      JOIN asiento a ON a.id = l.asiento_id WHERE a.folio = ? ORDER BY l.id`).safeIntegers(true).all(lote.asientoFolio);
+    expect(lineas).toEqual([{ debe: 10000n, haber: 0n }, { debe: 0n, haber: 10000n }]);
+    expect(gastoDepreciacionMinor()).toBe(10000n);
+  });
+
+  it('costo cero sin contrapartida: cero asientos; 0.01 / 3 solo contabiliza 0.01 al final', () => {
+    const cero = alta({ costoMinor: '0', cuentaContrapartidaId: undefined });
+    expect(cero.asientoAltaId).toBeNull();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM asiento').get()).toEqual({ n: 0 });
+    alta({ costoMinor: '0.01', vidaUtilMeses: 3 });
+    expect(previsualizarDepreciacion(db, '2026-03').filas).toEqual([]);
+    expect(() => depreciarMes(db, { mes: '2026-03', responsable: 'qa' })).toThrow(/Nada que depreciar/);
+    expect(depreciarMes(db, { mes: '2026-04', responsable: 'qa' }).totalMinor).toBe('0.01');
+    expect(gastoDepreciacionMinor()).toBe(1n);
+  });
+
+  it('disponibilidad por compra Y cuenta: 1200 en 1501 y 300 en 1503, sin cruzar asignaciones', () => {
+    db.prepare("INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id) VALUES ('1503', 'Equipo sintético', 'activo', 0, ?)").run(idCuenta('15'));
+    const c = compra([{ cuentaCodigo: '1501', precioUnitario: '1200.00' }, { cuentaCodigo: '1503', precioUnitario: '300.00' }]);
+    alta({ compraId: c.id, costoMinor: '1000.00' }); // Quedan 200 en 1501 y 300 en 1503.
+    alta({ compraId: c.id, cuentaActivoId: idCuenta('1503'), costoMinor: '300.00' });
+    expect(() => alta({ compraId: c.id, costoMinor: '200.01' })).toThrow(/disponible: 200.00/);
+    alta({ compraId: c.id, costoMinor: '200.00' });
+    expect(() => alta({ compraId: c.id, cuentaActivoId: idCuenta('1503'), costoMinor: '0.01' })).toThrow(/disponible: 0.00/);
+    expect(listarActivosFijos(db).map(a => a.costoMinor)).toEqual(['1000.00', '300.00', '200.00']);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM asiento').get()).toEqual({ n: 1 });
+  });
+
+  it('rechaza alta jurídica de 1200 sin efectos y conserva alta/listado/depreciación administrativos de 100', () => {
+    db.prepare("INSERT INTO ambito (id, nombre, tipo) VALUES ('juridico', 'Sintético', 'juridico')").run();
+    expect(() => alta({ ambitoId: 'juridico' })).toThrow(/solo admite el ámbito administrativo/);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM asiento').get()).toEqual({ n: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM activo_fijo').get()).toEqual({ n: 0 });
+    alta(); // 1200 / 12 = 100, visible y depreciable en el mismo ámbito.
+    expect(listarActivosFijos(db).map(a => a.costoMinor)).toEqual(['1200.00']);
+    expect(depreciarMes(db, { mes: '2026-02', responsable: 'qa' }).totalMinor).toBe('100.00');
+    expect(gastoDepreciacionMinor()).toBe(10000n);
+  });
 });
 
 describe('bloque 3A: migración de activos fijos', () => {
