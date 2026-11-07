@@ -1,0 +1,11 @@
+{
+  "name": "arkon-movil",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ARKON Contabilidad para Android",
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0"
+  }
+}
