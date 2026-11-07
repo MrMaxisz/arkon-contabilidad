@@ -1,5 +1,8 @@
 import { crearPuenteAndroid } from '../../src/plataforma/puenteAndroid';
 import { probarTraspaso } from './traspaso';
+import { recursosPdfAndroid } from '../../src/plataforma/recursosPdfAndroid';
+import { construirHtmlReporte } from '../../src/main/servicios/reportesPdf';
+import { sha256 } from '../../src/shared/sha256';
 
 const esperar = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 function abrir() {
@@ -40,5 +43,7 @@ function abrir() {
   await motor.api.invocar('$cerrar');
   motor.worker.terminate();
   const traspaso = await probarTraspaso();
-  return { persistido, trasCorte, contrapartes, rechazos, traspaso, aislado: crossOriginIsolated };
+  const { logoSvg, fuentesCss } = await recursosPdfAndroid();
+  const pdfHtmlHash = sha256(new TextEncoder().encode(construirHtmlReporte({ titulo: 'AND5', tablas: [{ encabezados: ['Saldo'], filas: [['$200.00']] }] }, logoSvg, fuentesCss)));
+  return { persistido, trasCorte, contrapartes, rechazos, traspaso, pdfHtmlHash, aislado: crossOriginIsolated };
 })();

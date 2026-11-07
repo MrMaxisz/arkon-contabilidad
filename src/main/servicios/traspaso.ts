@@ -2,6 +2,7 @@ import { crearPaqueteTraspaso, leerPaqueteTraspaso, type EntradaTraspaso } from 
 import { plataformaEscritorioPorDefecto, type Plataforma } from '../../plataforma/plataforma';
 import { crearRespaldo } from './respaldo';
 import { manejarRestauracion, type ContextoApp } from './restauracion';
+import { nombreTraspaso } from '../../shared/nombreTraspaso';
 
 let secuenciaImportacion = 0;
 
@@ -16,7 +17,7 @@ export async function exportarTraspaso(ctx: ContextoApp): Promise<{ bytes: Uint8
     ruta: `${info.nombre}-adjuntos/${adjunto.rutaRelativa}`,
     datos: p.archivos.readFileSync(p.rutas.join(`${ruta}-adjuntos`, adjunto.rutaRelativa))
   });
-  return { bytes: crearPaqueteTraspaso(entradas), nombre: info.nombre.replace(/\.db$/, '.arkon') };
+  return { bytes: crearPaqueteTraspaso(entradas), nombre: nombreTraspaso() };
 }
 
 export function extraerTraspaso(bytes: Uint8Array, directorio: string, p: Plataforma): string {

@@ -14,15 +14,31 @@ import {
   exportarAnexo3ComprasPresentacion
 } from './servicios/anexosFiscales';
 import { registroEvento } from './servicios/bitacora';
-import { construirHtmlReporte, type DatosReporte, type TablaReporte } from './servicios/reportesPdf';
+import { construirHtmlReporte, vestirHtmlCotizacion, type DatosReporte, type TablaReporte } from './servicios/reportesPdf';
 import { exportarCsvAuxiliar, exportarCsvAuxiliarDetalle } from './servicios/fiscal';
 import { exportarTraspaso, importarTraspaso } from './servicios/traspaso';
+import { nombreTraspaso } from '../shared/nombreTraspaso';
 
 function objetoSolicitud(payload: unknown): Record<string, unknown> {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new Error('Solicitud inválida');
   }
   return payload as Record<string, unknown>;
+}
+
+function recursosPdf() {
+  const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/arkon-logo-azul.svg'), 'utf8');
+  const fuente = (nombre: string, familia: string, peso: string): string => {
+    const base64 = fs.readFileSync(path.join(__dirname, '../renderer/fuentes', nombre)).toString('base64');
+    return `@font-face { font-family: '${familia}'; font-style: normal; font-weight: ${peso}; src: url(data:font/woff2;base64,${base64}) format('woff2'); }`;
+  };
+  const fuentesCss = [
+    fuente('barlow-condensed-latin-700-normal.woff2', 'Barlow Condensed', '700'),
+    fuente('ibm-plex-sans-latin-400-normal.woff2', 'IBM Plex Sans', '400'),
+    fuente('ibm-plex-sans-latin-600-normal.woff2', 'IBM Plex Sans', '600'),
+    fuente('ibm-plex-mono-latin-400-normal.woff2', 'IBM Plex Mono', '400')
+  ].join('\n');
+  return { logoSvg, fuentesCss };
 }
 
 export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): void {
@@ -33,7 +49,7 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     const p = objetoSolicitud(solicitud);
     const nombre = typeof p.comando === 'string' ? p.comando : '';
     if (nombre === 'traspaso:exportar') {
-      const destino = await dialog.showSaveDialog({ title: 'Exportar para otro dispositivo', defaultPath: 'arkon.arkon', filters: [{ name: 'Traspaso ARKON', extensions: ['arkon'] }] });
+      const destino = await dialog.showSaveDialog({ title: 'Exportar para otro dispositivo', defaultPath: nombreTraspaso(), filters: [{ name: 'Traspaso ARKON', extensions: ['arkon'] }] });
       if (destino.canceled || !destino.filePath) return { detalle: 'Exportación cancelada.' };
       const paquete = await exportarTraspaso(ctx);
       fs.writeFileSync(destino.filePath, paquete.bytes);
@@ -343,7 +359,8 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
     if (!Number.isInteger(cotizacionId) || cotizacionId <= 0) {
       throw new Error('Cotización inválida');
     }
-    const html = generarHtmlCotizacion(ctx.db, cotizacionId);
+    const { logoSvg, fuentesCss } = recursosPdf();
+    const html = vestirHtmlCotizacion(generarHtmlCotizacion(ctx.db, cotizacionId), logoSvg, fuentesCss);
     const numero = (ctx.db.prepare('SELECT numero FROM cotizacion WHERE id = ?').get(cotizacionId) as { numero: string }).numero;
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const ventanaPdf = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -385,17 +402,7 @@ export function registrarIpc(ctx: ContextoApp, ventanaWebContentsId: number): vo
       throw new Error('El reporte requiere título y tablas');
     }
     const datos: DatosReporte = { titulo, periodo, ambito, tablas };
-    const logoSvg = fs.readFileSync(path.join(__dirname, '../renderer/arkon-logo-azul.svg'), 'utf8');
-    const fuente = (nombre: string, familia: string, peso: string): string => {
-      const base64 = fs.readFileSync(path.join(__dirname, '../renderer/fuentes', nombre)).toString('base64');
-      return `@font-face { font-family: '${familia}'; font-style: normal; font-weight: ${peso}; src: url(data:font/woff2;base64,${base64}) format('woff2'); }`;
-    };
-    const fuentesCss = [
-      fuente('barlow-condensed-latin-700-normal.woff2', 'Barlow Condensed', '700'),
-      fuente('ibm-plex-sans-latin-400-normal.woff2', 'IBM Plex Sans', '400'),
-      fuente('ibm-plex-sans-latin-600-normal.woff2', 'IBM Plex Sans', '600'),
-      fuente('ibm-plex-mono-latin-400-normal.woff2', 'IBM Plex Mono', '400')
-    ].join('\n');
+    const { logoSvg, fuentesCss } = recursosPdf();
     const html = construirHtmlReporte(datos, logoSvg, fuentesCss);
     const ventanaPrincipal = BrowserWindow.fromWebContents(evento.sender);
     const ventanaPdf = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });

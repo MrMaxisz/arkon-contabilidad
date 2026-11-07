@@ -9,6 +9,9 @@ import { exportarTraspaso, importarTraspaso } from '../main/servicios/traspaso';
 import { crearContextoBase } from '../main/servicios/restauracion';
 import { abrirAdjuntosOpfs } from './adjuntosOpfs';
 import { migraciones } from '../main/db/migraciones';
+import { leerPaqueteTraspaso } from '../shared/paqueteTraspaso';
+import { balanceResumen } from '../main/servicios/estadosFinancieros';
+import { exportarCsvAuxiliarDetalle } from '../main/servicios/fiscal';
 
 export async function abrirMotorAndroid(antesInstalar?: () => Promise<void>) {
   // El paquete usa new URL('sqlite3.wasm', import.meta.url): Vite incluye el WASM con su URL final.
@@ -130,6 +133,38 @@ export async function abrirMotorAndroid(antesInstalar?: () => Promise<void>) {
     get db() { return db; },
     async invocar(comando: string, datos?: unknown) {
       if (recuperacionBloqueada) throw new Error('Recuperación pendiente. Vuelve a abrir la app; no se permiten escrituras.');
+      if (comando === 'traspaso:ultimaExportacion') {
+        const r = db.prepare("SELECT valor FROM configuracion WHERE clave = 'android_ultima_exportacion'").get();
+        return r ? JSON.parse(String(r.valor)) : null;
+      }
+      if (comando === 'traspaso:registrarExportacion') {
+        const nombre = (datos as { nombre: string })?.nombre;
+        if (!/^ARKON-\d{4}-\d{2}-\d{2}\.arkon$/.test(nombre)) throw new Error('Nombre de exportación inválido');
+        db.prepare("INSERT INTO configuracion (clave, valor, fuente, vigencia) VALUES ('android_ultima_exportacion', ?, 'selector Android', ?) ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, fuente = excluded.fuente, vigencia = excluded.vigencia")
+          .run(JSON.stringify({ nombre, fecha: new Date().toISOString() }), new Date().toISOString().slice(0, 10));
+        return { ok: true };
+      }
+      if (comando === 'traspaso:inspeccionar') {
+        const bytes = (datos as { bytes: Uint8Array })?.bytes;
+        const copia = await contextoVirtual();
+        try {
+          await importarTraspaso(copia, bytes);
+          const manifest = leerPaqueteTraspaso(bytes).find(e => e.ruta.endsWith('.manifest.json'))!;
+          const fecha = String(JSON.parse(new TextDecoder().decode(manifest.datos)).creadoEn);
+          const b = balanceResumen(copia.db);
+          return { fecha, saldos: `Activo: ${b.totalActivoMinor}; Pasivo: ${b.totalPasivoMinor}; Patrimonio: ${b.totalPatrimonioMinor}; Resultado: ${b.totalResultadoMinor} USD` };
+        } finally { if (copia.db.open) copia.db.close(); }
+      }
+      if (comando === 'android:csvLibro') return despachar(ctx, 'fiscal:exportarCsv', datos);
+      if (comando === 'android:csvAuxiliar') {
+        const p = datos as { tipo: string; alcance?: string; contraparteId?: number; hastaFecha?: string };
+        if (p.alcance === 'detalle') {
+          if (!['cliente', 'proveedor'].includes(p.tipo) || !Number.isInteger(p.contraparteId) || p.contraparteId! <= 0) throw new Error('El detalle requiere cliente o proveedor y contraparte válida');
+          return exportarCsvAuxiliarDetalle(ctx.db, p.tipo as 'cliente' | 'proveedor', p.contraparteId!, p.hastaFecha);
+        }
+        if (p.alcance !== undefined && p.alcance !== 'resumen') throw new Error('Alcance inválido');
+        return despachar(ctx, 'auxiliar:exportarCsv', datos);
+      }
       if (comando === 'traspaso:importar') return importar((datos as { bytes: Uint8Array })?.bytes);
       if (comando === 'traspaso:exportar') {
         const copia = await contextoVirtual();

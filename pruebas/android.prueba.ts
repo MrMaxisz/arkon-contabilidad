@@ -10,6 +10,8 @@ import { crearContextoBase, type ContextoApp } from '../src/main/servicios/resta
 import { exportarTraspaso, importarTraspaso } from '../src/main/servicios/traspaso';
 import { versionEsquemaActual } from '../src/main/db/aplicarMigraciones';
 import { sembrarTraspaso, estadoTraspaso } from './traspasoSintetico';
+import { construirHtmlReporte } from '../src/main/servicios/reportesPdf';
+import { sha256 } from '../src/shared/sha256';
 
 it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y anchuras 360/800 en todas las secciones', async () => {
   const temporal = fs.mkdtempSync(path.resolve('dist/and3-'));
@@ -67,6 +69,19 @@ it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y 
     const balance = { totalActivoMinor: '123.45', totalPasivoMinor: '0.00', totalPatrimonioMinor: '123.45', totalResultadoMinor: '0.00', cuadra: true };
     expect(resultado.persistencia.persistido).toEqual(balance);
     expect(resultado.persistencia.trasCorte).toEqual(balance);
+    expect(resultado.persistencia.traspaso.antesInspeccion).toEqual(balance);
+    expect(resultado.persistencia.traspaso.despuesInspeccion).toEqual(balance);
+    expect(resultado.persistencia.traspaso.inspeccion.saldos).toBe('Activo: 200.00; Pasivo: 0.00; Patrimonio: 200.00; Resultado: 0.00 USD');
+    expect(resultado.persistencia.traspaso.inspeccion.fecha).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(resultado.persistencia.traspaso.ultimaExportacion).toEqual({ nombre: 'ARKON-2026-11-07.arkon', fecha: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) });
+    const fuentesCss = [
+      ['barlow-condensed-latin-700-normal.woff2', 'Barlow Condensed', '700'],
+      ['ibm-plex-sans-latin-400-normal.woff2', 'IBM Plex Sans', '400'],
+      ['ibm-plex-sans-latin-600-normal.woff2', 'IBM Plex Sans', '600'],
+      ['ibm-plex-mono-latin-400-normal.woff2', 'IBM Plex Mono', '400']
+    ].map(([archivo, familia, peso]) => `@font-face { font-family: '${familia}'; font-style: normal; font-weight: ${peso}; src: url(data:font/woff2;base64,${fs.readFileSync(path.resolve('src/renderer/recursos/fuentes', archivo!)).toString('base64')}) format('woff2'); }`).join('\n');
+    const logoSvg = fs.readFileSync('src/renderer/recursos/arkon-logo-azul.svg', 'utf8');
+    expect(resultado.persistencia.pdfHtmlHash).toBe(sha256(new TextEncoder().encode(construirHtmlReporte({ titulo: 'AND5', tablas: [{ encabezados: ['Saldo'], filas: [['$200.00']] }] }, logoSvg, fuentesCss))));
     const balanceAnd4 = { ...balance, totalActivoMinor: '200.00', totalPatrimonioMinor: '200.00' };
     for (const clave of ['persistido','trasAlterado','trasFuturo','trasCorte','trasFallo','trasMigracion']) expect(resultado.persistencia.traspaso[clave]).toEqual(balanceAnd4);
     expect(resultado.persistencia.traspaso.fallo.balance).toEqual(balanceAnd4);
@@ -89,7 +104,7 @@ it('AND3: build sin Node/Electron, OPFS real sin aislamiento, reinicio, corte y 
       'Android solo admite el ámbito administrativo',
       'Esta función no está disponible aún en Android (solo ámbito administrativo)',
       'Comando desconocido: toString',
-      'PDF, archivos y diálogos de Electron no disponibles aún en Android'
+      'El plugin ArkonArchivos no está disponible. Instale el APK actualizado.'
     ]);
     expect(resultado.persistencia.aislado).toBe(false);
     expect(resultado.pantallas).toEqual([

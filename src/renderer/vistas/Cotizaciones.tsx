@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { mensajeImpresionAndroid } from '../mensajeImpresionAndroid';
 import type { CotizacionResumen } from '../../shared/contratos';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
@@ -165,7 +166,7 @@ export default function Cotizaciones() {
     try {
       const r = (await api().pdfCotizacion(c.id)) as { guardado: boolean; ruta?: string };
       setMensaje({
-        texto: r.guardado && r.ruta ? `Documento guardado en ${r.ruta}.` : 'Generación cancelada.',
+        texto: mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `Documento guardado en ${r.ruta}.` : 'Generación cancelada.'),
         tipo: 'ok'
       });
     } catch (err) {

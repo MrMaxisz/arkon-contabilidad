@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { mensajeImpresionAndroid } from '../mensajeImpresionAndroid';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import { BotonSecundario, BotonPrimario, EstadoCarga, EstadoVacio, EstadoError, formatoDineroPantalla } from '../componentes';
 
@@ -117,7 +118,7 @@ export default function LibroDiario() {
           }
         ]
       })) as { guardado: boolean; ruta?: string };
-      setMensaje(r.guardado && r.ruta ? `Partida guardada en ${r.ruta}.` : 'Impresión cancelada.');
+      setMensaje(mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `Partida guardada en ${r.ruta}.` : 'Impresión cancelada.'));
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }
@@ -157,7 +158,7 @@ export default function LibroDiario() {
           }
         ]
       })) as { guardado: boolean; ruta?: string };
-      setMensaje(r.guardado && r.ruta ? `Libro guardado en ${r.ruta} (${totalAcumulado} partidas).` : 'Impresión cancelada.');
+      setMensaje(mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `Libro guardado en ${r.ruta} (${totalAcumulado} partidas).` : 'Impresión cancelada.'));
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }

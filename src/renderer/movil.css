@@ -61,7 +61,7 @@ html[data-plataforma='android'] { overflow-wrap: anywhere; }
     display: block; position: fixed; top: 56px; bottom: 0; left: 0; right: 0;
     z-index: 30; background: rgba(11, 27, 51, 0.55);
   }
-  [data-plataforma='android'] .barra-contexto-detalle { display: none; }
+  [data-plataforma='android'] .barra-contexto { display: none; }
 
   /* Líneas de asiento como bloque: Cuenta a todo el ancho, Debe y Haber lado a lado. */
   [data-plataforma='android'] .fila-linea { grid-template-columns: 1fr 1fr; }

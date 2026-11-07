@@ -1,9 +1,17 @@
-import { crearPuenteAndroid } from '../../src/plataforma/puenteAndroid';
-
 const esperar = () => new Promise(resolve => setTimeout(resolve,250));
 function abrir() {
   const worker = new Worker(new URL('../../src/plataforma/android.worker.ts', import.meta.url), { type: 'module' });
-  return { worker, api: crearPuenteAndroid(worker) };
+  // Este fixture prueba el protocolo Worker, no el selector nativo del puente AND5.
+  let secuencia = 0;
+  const api = { invocar(comando: string, datos?: unknown): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const id = ++secuencia;
+      worker.onmessage = ({ data }) => data.error ? reject(new Error(data.error)) : resolve(data.resultado);
+      worker.onerror = () => reject(new Error('Falló Worker AND4'));
+      worker.postMessage({ id, comando, datos });
+    });
+  } };
+  return { worker, api };
 }
 async function fixture(worker: Worker, datos: unknown): Promise<any> {
   try {
@@ -24,9 +32,14 @@ export async function probarTraspaso() {
   const balance = () => motor.api.invocar('balance:resumen');
   let fase = 'importar';
   try {
+    const antesInspeccion = await balance();
+    const inspeccion = await motor.api.invocar('traspaso:inspeccionar', { bytes });
+    const despuesInspeccion = await balance();
     await importar(bytes);
+    await motor.api.invocar('traspaso:registrarExportacion', { nombre: 'ARKON-2026-11-07.arkon' });
     fase = 'reinicio tras importar';
     motor.worker.terminate(); await esperar(); motor = abrir();
+    const ultimaExportacion = await motor.api.invocar('traspaso:ultimaExportacion');
     const persistido = await balance();
     const alterado = bytes.slice(); alterado[alterado.length-1] ^= 1;
     try { await importar(alterado); } catch (error) { errores.push((error as Error).message); }
@@ -68,7 +81,7 @@ export async function probarTraspaso() {
     motor = abrir();
     const trasMigracion = await balance();
     await importar(original.bytes);
-    return { persistido, trasAlterado, trasFuturo, trasCorte, trasFallo, fallo, trasMigracion, errorMigracion, migracion, huellaPrevia: previo.huella, errores, nombre: retorno.nombre };
+    return { persistido, trasAlterado, trasFuturo, trasCorte, trasFallo, fallo, trasMigracion, errorMigracion, migracion, huellaPrevia: previo.huella, errores, nombre: retorno.nombre, antesInspeccion, despuesInspeccion, inspeccion, ultimaExportacion };
   } catch (error) { throw new Error(`AND4 ${fase}: ${String(error)}`); }
   finally {
     try { await motor.api.invocar('$cerrar'); } catch { /* conservar error original */ }

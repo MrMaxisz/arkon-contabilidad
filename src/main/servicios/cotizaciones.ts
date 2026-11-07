@@ -63,14 +63,14 @@ interface FilaCotizacion {
 
 function mapear(f: FilaCotizacion): CotizacionResumen {
   return {
-    id: f.id,
+    id: Number(f.id),
     numero: f.numero,
-    revision: f.revision,
-    contraparteId: f.contraparte_id,
+    revision: Number(f.revision),
+    contraparteId: Number(f.contraparte_id),
     contraparteNombre: f.contraparte_nombre,
     fecha: f.fecha,
     estado: f.estado,
-    congelada: f.congelada === 1,
+    congelada: Number(f.congelada) === 1,
     condiciones: f.condiciones,
     baseMinor: minorATexto(BigInt(f.base ?? 0)),
     ivaMinor: minorATexto(BigInt(f.iva ?? 0)),
@@ -278,6 +278,7 @@ export type CotizacionResumen = CotizacionResumenContrato;
 export function listarCotizaciones(db: Database.Database): CotizacionResumen[] {
   return (db
     .prepare(`${SELECT_COTIZACION} GROUP BY c.id ORDER BY c.id DESC LIMIT 100`)
+    .safeIntegers(true)
     .all() as FilaCotizacion[]).map(mapear);
 }
 
@@ -296,6 +297,7 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
 }> {
   const filas = db
     .prepare('SELECT * FROM cotizacion_linea WHERE cotizacion_id = ? ORDER BY orden')
+    .safeIntegers(true)
     .all(cotizacionId) as Array<{
     id: number;
     tipo: string;
@@ -310,17 +312,17 @@ export function lineasDeCotizacion(db: Database.Database, cotizacionId: number):
     item_id: number | null;
   }>;
   return filas.map(f => ({
-    id: f.id,
+    id: Number(f.id),
     tipo: f.tipo,
     descripcion: f.descripcion,
     cantidad: f.cantidad,
     precioUnitarioMinor: minorATexto(BigInt(f.precio_unitario_minor)),
-    precioConIva: f.precio_con_iva === 1,
-    tasaPuntosBase: f.tasa_puntos_base,
+    precioConIva: Number(f.precio_con_iva) === 1,
+    tasaPuntosBase: Number(f.tasa_puntos_base),
     baseMinor: minorATexto(BigInt(f.base_minor)),
     ivaMinor: minorATexto(BigInt(f.iva_minor)),
     totalMinor: minorATexto(BigInt(f.total_minor)),
-    itemId: f.item_id
+    itemId: f.item_id === null ? null : Number(f.item_id)
   }));
 }
 

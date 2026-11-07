@@ -18,6 +18,11 @@ export interface DatosReporte {
   tablas: TablaReporte[];
 }
 
+export function vestirHtmlCotizacion(html: string, logoSvg: string, fuentesCss: string): string {
+  return html.replace('<style>', `<style>\n${fuentesCss}\n.logo svg { width: 110px; height: auto; }`)
+    .replace('<body>', `<body>\n<div class="logo">${logoSvg}</div>`);
+}
+
 export function escaparHtml(texto: string): string {
   return texto
     .replace(/&/g, '&amp;')

@@ -85,3 +85,34 @@ Resultado local AND4: dos verificaciones completas consecutivas con **519 prueba
 - Los importes deben seguir dentro del rango entero de 64 bits de SQLite y consultarse con `safeIntegers`; en WASM los enteros grandes llegan como `bigint`.
 - Rendimiento y tamaño del módulo WASM en dispositivos de gama baja: no medido en esta prueba (solo Node, base en memoria).
 - Capacitor 8.6 e interfaz compartida incorporados en AND3; quedan pendientes mediciones en teléfono y validación del APK de depuración.
+
+## AND5: selector nativo, CSV y PDF
+
+Sustituye las limitaciones de selector/PDF de AND3/AND4. Sin dependencias nuevas, OAuth, permiso INTERNET ni firma de distribución.
+
+- `ArkonArchivos`, registrado antes de cargar el puente en `MainActivity`, usa SAF (`ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`). Drive aparece si el dispositivo tiene instalado/configurado su proveedor; la red la administra ese proveedor, no ARKON. Cancelar devuelve `estado: 'cancelado'`, no una excepción.
+- Cada llamada de lectura/escritura cruza como máximo **1 MiB (1.048.576 bytes)** en base64. Los streams se cierran también al fallar. El paquete completo se reconstruye en memoria JavaScript/Worker, nunca en una única llamada al puente nativo. No es una solución de memoria constante: falta medir bases grandes en teléfono. Un error de escritura puede dejar un archivo externo incompleto; eliminarlo y repetir, no importarlo.
+- PDF de reportes y cotizaciones: WebView oculta, sin JavaScript ni cargas de red, `createPrintDocumentAdapter` y `PrintManager`. El usuario elige **Guardar como PDF**. Se retiene la WebView hasta `onFinish`; no se anuncia como guardado un documento que solo se entregó al sistema de impresión. Generadores HTML compartidos con escritorio; logo SVG y las cuatro fuentes locales incrustados. Las consultas monetarias de cotización usan `safeIntegers`, sin perder menores grandes. CSV usa los servicios existentes de libros/auxiliares, incluidos sus rechazos de validación.
+- Respaldo Android muestra solamente Exportar/Importar y última exportación completada (fecha y nombre en `configuracion`, tras cerrar correctamente el destino). Ambos dispositivos sugieren `ARKON-AAAA-MM-DD.arkon` (fecha UTC). No hay fusión ni sincronización.
+- Antes de confirmar una importación se restaura y valida el paquete en una copia virtual, mostrando fecha del manifiesto y activo/pasivo/patrimonio/resultado; la confirmación advierte que **la base del teléfono será reemplazada** y que se conserva copia previa. Cancelación, error de lectura o validación no instalan nada. Se mantienen la sustitución recuperable y adjuntos de AND4.
+- Registro/apertura de adjuntos, expedientes y funciones fiscales aún no implementados conservan errores explícitos. `.barra-contexto` se oculta entera en teléfono (≤600 px).
+
+### Pruebas automatizadas AND5
+
+`.arkon\prueba.cmd pruebas/android/archivos.prueba.ts pruebas/traspaso.prueba.ts pruebas/android.prueba.ts`
+
+Plugin simulado: guardar, abrir, cancelaciones, múltiples trozos y múltiplo exacto de 1 MiB, lectura/base64/tamaño/progreso/cierre/escritura fallidos, confirmación rechazada y validación fallida sin importar ni registrar exportaciones. HTML idéntico al generador de escritorio, CSV y cotización con **90071992547409.93** exactos. Chromium/OPFS real verifica que la inspección no cambia el saldo, que última exportación persiste al reiniciar y que el HTML con los recursos del bundle coincide byte a byte (SHA-256) con escritorio. La prueba de traspaso rechaza una entrada ajena incluso junto a base, manifiesto y adjuntos válidos.
+
+### Pasos manuales pendientes en dispositivo real
+
+1. Instalar el APK de depuración `movil/android/app/build/outputs/apk/debug/app-debug.apk` en un teléfono con WebView actual. Usar exclusivamente datos sintéticos. No desinstalar ni borrar almacenamiento entre pruebas.
+2. En Respaldo, exportar a almacenamiento local: debe sugerir `ARKON-AAAA-MM-DD.arkon`. Comprobar fecha/nombre de última exportación, forzar cierre y reabrir: deben persistir. Repetir cancelando el selector: la fecha/nombre anterior debe permanecer.
+3. Con Drive instalado y cuenta configurada, repetir exportación eligiendo Drive en el selector del sistema. Importar desde ese proveedor. Comprobar que ARKON no solicita OAuth, permisos de red ni acceso general al almacenamiento. La conexión de Drive puede requerir red; el destino local y el PDF deben funcionar en modo avión.
+4. Preparar en PC un paquete sintético con saldo 200.00 y adjunto. En el teléfono con otro saldo, abrirlo y comprobar fecha y cuatro saldos antes de aceptar. Cancelar: todo permanece igual. Repetir aceptando: cambia a 200.00, conserva copia previa; cerrar/reabrir y reexportar a PC para verificar adjuntos y cifras. Repetir con archivo alterado, esquema futuro y proveedor que falle durante lectura: deben fallar sin cambiar la base.
+5. Repetir ida/vuelta con paquete de varios MiB (y adjunto grande), incluyendo tamaño múltiplo de 1 MiB. Probar cancelación y fallo del proveedor al guardar; nunca debe actualizarse la última exportación con un guardado incompleto. Tras un fallo, debe poder abrirse otra operación.
+6. Abrir PDF de Estados financieros, partida/libro y cotización; elegir **Guardar como PDF**, primero local y después Drive si el sistema lo ofrece. Comparar importes con pantalla y PDF de escritorio, acentos, logo y fuentes, también en modo avión. Cancelar y volver a imprimir; no debe quedar bloqueada la WebView.
+7. Exportar CSV de auxiliares (resumen/detalle) y libros donde corresponda, abrir en PC y comparar contenido. A 360 px confirmar ausencia completa de barra de contexto, navegación a Respaldo y controles accesibles. Las funciones no implementadas deben mostrar su error, nunca simular éxito.
+
+No se ha validado el selector, PrintManager ni el proveedor Drive en un teléfono físico. La simulación y Chromium no sustituyen estos pasos.
+
+Resultado local AND5: dos verificaciones completas consecutivas con **534 pruebas (85 archivos), `SUITE_EXIT=0`**; una ejecución de `.arkon\apk.cmd`, **`APK_EXIT=0`**, APK de depuración generado. Hubo un intento preliminar de verificación interrumpido por el límite de 120 s y un fallo de mocks del ayudante de mensajes PDF, corregido antes de ambas verificaciones completas. Sin clave de firma de distribución, commit ni push.

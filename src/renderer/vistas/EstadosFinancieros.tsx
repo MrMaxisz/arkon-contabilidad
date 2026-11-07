@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { mensajeImpresionAndroid } from '../mensajeImpresionAndroid';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import { BotonSecundario, EstadoCarga, EstadoError, formatoDineroPantalla } from '../componentes';
 
@@ -213,7 +214,7 @@ export default function EstadosFinancieros() {
   ) {
     try {
       const r = (await api().reportePdf({ titulo, periodo, ambito: 'administrativo', tablas })) as { guardado: boolean; ruta?: string };
-      setMensaje(r.guardado && r.ruta ? `Reporte guardado en ${r.ruta}.` : 'Impresión cancelada.');
+      setMensaje(mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `Reporte guardado en ${r.ruta}.` : 'Impresión cancelada.'));
     } catch (err) {
       setMensaje(limpiarMensajeError(err));
     }

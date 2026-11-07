@@ -68,7 +68,8 @@ app.whenReady().then(async () => {
         tabla.remove();
         const pantalla = { ancho: innerWidth, plegable, abierto, cerrado, pagina: document.documentElement.scrollWidth <= innerWidth + 1, scrollTabla };
         let cab = null;
-        if (innerWidth === 360) {
+         if (innerWidth === 360) {
+           if (getComputedStyle(document.querySelector('.barra-contexto')).display !== 'none') throw new Error('Barra de contexto repetida en teléfono');
           boton.click(); await esperar(100);
           const img = document.querySelector('.cabecera-movil img');
           const rImg = img && img.getBoundingClientRect();

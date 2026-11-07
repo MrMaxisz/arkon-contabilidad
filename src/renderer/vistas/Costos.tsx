@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { mensajeImpresionAndroid } from '../mensajeImpresionAndroid';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import { BotonSecundario, EstadoCarga, EstadoError, EstadoVacio, formatoDineroPantalla } from '../componentes';
 import { minorATexto } from '../../shared/dinero';
@@ -229,7 +230,7 @@ export default function Costos() {
         tablas
       })) as { guardado?: boolean; ruta?: string };
       setMensaje({
-        texto: r.guardado && r.ruta ? `PDF de costos guardado en ${r.ruta}.` : 'Guardado del PDF cancelado.',
+        texto: mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `PDF de costos guardado en ${r.ruta}.` : 'Guardado del PDF cancelado.'),
         tipo: r.guardado ? 'ok' : 'error'
       });
     } catch (err) {

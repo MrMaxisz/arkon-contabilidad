@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from './api';
 import Contabilidad from './vistas/Contabilidad';
 import Respaldo from './vistas/Respaldo';
+import RespaldoAndroid from './vistas/RespaldoAndroid';
 import Bitacora from './vistas/Bitacora';
 import Contrapartes from './vistas/Contrapartes';
 import Cotizaciones from './vistas/Cotizaciones';
@@ -107,7 +108,7 @@ function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCarga
 export default function App() {
   const esAndroid = api().plataforma === 'android';
   const navegacion = esAndroid
-    ? NAVEGACION.map(grupo => ({ ...grupo, destinos: grupo.destinos.filter(d => d !== 'Impuestos' && d !== 'Respaldo') })).filter(grupo => grupo.destinos.length > 0)
+    ? NAVEGACION.map(grupo => ({ ...grupo, destinos: grupo.destinos.filter(d => d !== 'Impuestos') })).filter(grupo => grupo.destinos.length > 0)
     : NAVEGACION;
   const [seccion, setSeccion] = useState<Seccion>('Inicio');
   const [balance, setBalance] = useState<BalanceResumen | null>(null);
@@ -161,7 +162,7 @@ export default function App() {
           <span className="seccion-actual">{seccion}</span>
           <span className="barra-contexto-detalle">Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
         </div>
-        {esAndroid && seccion === 'Inicio' && <p className="aviso">Android: una base administrativa. PDF, archivos, adjuntos, respaldos y diálogos de escritorio no disponibles aún. No borre los datos de la app.</p>}
+        {esAndroid && seccion === 'Inicio' && <p className="aviso">Android: una base administrativa. Apertura y registro de adjuntos y funciones fiscales no disponibles aún. Exporte un respaldo antes de borrar los datos de la app.</p>}
         {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Catálogo' && <Catalogo />}
@@ -180,7 +181,7 @@ export default function App() {
         {seccion === 'Cierre' && <Cierre />}
         {seccion === 'Reportes' && <Reportes />}
         {seccion === 'Impuestos' && <Impuestos />}
-        {seccion === 'Respaldo' && <Respaldo />}
+        {seccion === 'Respaldo' && (esAndroid ? <RespaldoAndroid /> : <Respaldo />)}
         {seccion === 'Bitácora' && <Bitacora />}
       </main>
     </div>

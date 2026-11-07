@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { mensajeImpresionAndroid } from '../mensajeImpresionAndroid';
 import { fechaLocalElSalvador } from '../../shared/fechas';
 import { limpiarMensajeError } from '../limpiarMensajeError';
 import {
@@ -780,7 +781,7 @@ export default function ActivosFijos() {
         tablas
       })) as { guardado?: boolean; ruta?: string };
       setMensaje({
-        texto: r.guardado && r.ruta ? `PDF del cuadro guardado en ${r.ruta}.` : 'Guardado del PDF cancelado.',
+        texto: mensajeImpresionAndroid(r) ?? (r.guardado && r.ruta ? `PDF del cuadro guardado en ${r.ruta}.` : 'Guardado del PDF cancelado.'),
         tipo: r.guardado ? 'ok' : 'error'
       });
     } catch (err) {

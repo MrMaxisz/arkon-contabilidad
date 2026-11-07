@@ -29,6 +29,12 @@ it('AND4: PC → WASM → PC, saldos, partidas, numeración, inventario, adjunto
     origen.reabrirBase();
     expect(estadoTraspaso(origen)).toEqual(esperado);
     expect(pc.archivos.existsSync(`${origen.rutaDb}.antes-restauracion`)).toBe(true);
+    // Entrada ajena junto a base, manifiesto y adjuntos válidos: debe fallar antes de restaurar.
+    const ajenas = leerPaqueteTraspaso(vuelta.bytes);
+    expect(ajenas.some(e => e.ruta.includes('-adjuntos/'))).toBe(true);
+    ajenas.push({ ruta: 'fuera-de-la-base.txt', datos: new TextEncoder().encode('sintético') });
+    await expect(importarTraspaso(origen, crearPaqueteTraspaso(ajenas))).rejects.toThrow('Contenido de paquete inválido');
+    expect(estadoTraspaso(origen)).toEqual(esperado);
     // Recalcular el hash del contenedor no permite saltarse el manifiesto existente.
     const entradas = leerPaqueteTraspaso(vuelta.bytes);
     const manifest = entradas.find(e => e.ruta.endsWith('.manifest.json'))!;
