@@ -20,7 +20,7 @@ interface SolicitudReporte {
   titulo: string;
   periodo?: string;
   ambito?: string;
-  tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }>;
+  tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[]; linea?: string[] }>;
 }
 
 let dir: string;
@@ -164,7 +164,7 @@ describe('cierre bloque 2, vistas: Libro diario', () => {
 });
 
 describe('cierre bloque 2, vistas: PDF de resultados', () => {
-  it('P6: el PDF incluye títulos de sección y subtotales, y un costo de -5.00 se imprime "-5.00"', async () => {
+  it('P6: el PDF incluye títulos, subtotales y costos y gastos en positivo', async () => {
     // Cuenta de costo fuera del grupo 51 para la línea de otros costos.
     db.prepare(
       "INSERT INTO cuenta (codigo, nombre, tipo, es_grupo, padre_id) VALUES ('5901', 'Devolución sobre costo sintética', 'costo', 0, NULL)"
@@ -200,21 +200,40 @@ describe('cierre bloque 2, vistas: PDF de resultados', () => {
       'Gastos de administración y comercialización',
       'Otros ingresos y gastos financieros'
     ]);
-    expect(capturada!.tablas[0]!.filas).toEqual([['4101', 'Ingresos por instalaciones', '100.00']]);
-    // Costos como deducción: el positivo sale '-40.00' y el negativo '-5.00', nunca '--5.00'.
+    expect(capturada!.tablas[0]!.filas).toEqual([['4101', 'Ingresos por instalaciones', '$100.00']]);
+    // El título indica la deducción: los importes se presentan en positivo, sin recalcularlos.
     const costos = capturada!.tablas[1]!;
-    expect(costos.filas).toContainEqual(['5101', 'Costo de materiales', '-40.00']);
-    expect(costos.filas).toContainEqual(['5901', 'Devolución sobre costo sintética', '-5.00']);
+    expect(costos.filas).toContainEqual(['5101', 'Costo de materiales', '$40.00']);
+    expect(costos.filas).toContainEqual(['5901', 'Devolución sobre costo sintética', '$5.00']);
     expect(JSON.stringify(costos.filas)).not.toContain('--');
     // Subtotales calculados a mano: bruta = 100 - 40 + 5 = 65; operación = 65 - 10 - 5 = 50;
     // antes de impuestos = 50 + 3 - 2 = 51.
-    expect(costos.total).toEqual(['Utilidad bruta', '', '65.00']);
+    expect(costos.total).toEqual(['Utilidad bruta', '', '$65.00']);
     const gastos = capturada!.tablas[2]!;
-    expect(gastos.filas).toContainEqual(['6101', 'Gastos de administración', '-10.00']);
-    expect(gastos.filas).toContainEqual(['6201', 'Gastos de comercialización', '-5.00']);
-    expect(gastos.total).toEqual(['Utilidad de operación', '', '50.00']);
+    expect(gastos.filas).toContainEqual(['6101', 'Gastos de administración', '$10.00']);
+    expect(gastos.filas).toContainEqual(['6201', 'Gastos de comercialización', '$5.00']);
+    expect(gastos.total).toEqual(['Utilidad de operación', '', '$50.00']);
     const otros = capturada!.tablas[3]!;
-    expect(otros.filas).toEqual([['4201', 'Otros ingresos', '3.00'], ['6301', 'Gastos financieros', '-2.00']]);
-    expect(otros.total).toEqual(['Resultado antes de impuestos', '', '51.00']);
+    expect(otros.filas).toEqual([['4201', 'Otros ingresos', '$3.00'], ['6301', 'Gastos financieros', '$2.00']]);
+    expect(otros.total).toEqual(['Resultado antes de impuestos', '', '$51.00']);
+  });
+
+  it('6E: separa miles, conserva resultados negativos y omite la tabla adicional vacía', async () => {
+    // A mano: ingreso 1,000 - costo 2,000 = pérdida de 1,000; sin otros ingresos ni financieros.
+    partida('2026-03-01', 'Ingreso sintético', [{ codigo: '1101', debe: '1000.00', haber: '' }, { codigo: '4101', debe: '', haber: '1000.00' }], '6e-ingreso');
+    partida('2026-03-02', 'Costo sintético', [{ codigo: '5101', debe: '2000.00', haber: '' }, { codigo: '1101', debe: '', haber: '2000.00' }], '6e-costo');
+    let capturada: SolicitudReporte | null = null;
+    alReportePdf = s => { capturada = s; };
+    render(<EstadosFinancieros />);
+    fireEvent.click(screen.getByText('Estado de resultados'));
+    await screen.findByText('Utilidad bruta');
+    fireEvent.click(screen.getByText('Imprimir…'));
+    await screen.findByText(/Reporte guardado en reporte-sintetico\.pdf/);
+    expect(capturada!.tablas[0]!.filas).toEqual([['4101', 'Ingresos por instalaciones', '$1,000.00']]);
+    expect(capturada!.tablas[1]!.filas).toEqual([['5101', 'Costo de materiales', '$2,000.00']]);
+    expect(capturada!.tablas[1]!.total).toEqual(['Utilidad bruta', '', '-$1,000.00']);
+    expect(capturada!.tablas[2]!.total).toEqual(['Utilidad de operación', '', '-$1,000.00']);
+    expect(capturada!.tablas).toHaveLength(4);
+    expect(capturada!.tablas[3]).toEqual({ encabezados: [], filas: [], linea: ['Resultado antes de impuestos', '-$1,000.00'] });
   });
 });

@@ -2,7 +2,7 @@ export interface ArkonApi {
   invocar(comando: string, datos?: unknown): Promise<unknown>;
   guardarCsv(tipo: 'venta' | 'compra', mes: string): Promise<unknown>;
   pdfCotizacion(cotizacionId: number): Promise<unknown>;
-  reportePdf(solicitud: { titulo: string; periodo?: string; ambito?: string; tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }> }): Promise<unknown>;
+  reportePdf(solicitud: { titulo: string; periodo?: string; ambito?: string; tablas: Array<{ titulo?: string; encabezados: string[]; filas: string[][]; total?: string[]; linea?: string[] }> }): Promise<unknown>;
   registrarAdjunto(entidad: string, entidadId: string, responsable: string): Promise<unknown>;
   guardarCsvAuxiliar(solicitud: {
     tipo: 'cliente' | 'proveedor' | 'efectivo';

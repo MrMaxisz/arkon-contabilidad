@@ -57,14 +57,11 @@ interface EstadoSituacionFinanciera {
 
 type Pestana = 'comprobacion' | 'resultados' | 'situacion';
 
-// Costos y gastos se presentan como deducción: siempre con signo menos, SIN duplicarlo
-// cuando el importe ya viene negativo (un costo de -5.00 se imprime '-5.00', no '--5.00').
-function importeDeduccion(importeMinor: string): string {
-  return importeMinor.startsWith('-') ? importeMinor : `-${importeMinor}`;
-}
-
-function filasSeccion(filas: Seccion[], deduccion: boolean): string[][] {
-  return filas.map(f => [f.codigo, f.nombre, deduccion ? importeDeduccion(f.importeMinor) : f.importeMinor]);
+function filasSeccion(filas: Seccion[], presentarPositivo = false): string[][] {
+  return filas.map(f => {
+    const importe = presentarPositivo && f.importeMinor.startsWith('-') ? f.importeMinor.slice(1) : f.importeMinor;
+    return [f.codigo, f.nombre, formatoDineroPantalla(importe)];
+  });
 }
 
 // El PDF conserva el signo de los saldos contrarios y usa separador de miles.
@@ -212,7 +209,7 @@ export default function EstadosFinancieros() {
   async function imprimir(
     titulo: string,
     periodo: string,
-    tablas: { titulo?: string; encabezados: string[]; filas: string[][]; total?: string[] }[]
+    tablas: { titulo?: string; encabezados: string[]; filas: string[][]; total?: string[]; linea?: string[] }[]
   ) {
     try {
       const r = (await api().reportePdf({ titulo, periodo, ambito: 'administrativo', tablas })) as { guardado: boolean; ruta?: string };
@@ -252,8 +249,8 @@ export default function EstadosFinancieros() {
             <BotonSecundario onClick={() => cargarComprobacion()}>Recalcular</BotonSecundario>
             <BotonSecundario onClick={() => void imprimir('Balance de comprobación', `${desde} a ${hasta}`, [{
               encabezados: ['Cuenta', 'Nombre', 'Saldo inicial', 'Cargos', 'Abonos', 'Saldo final'],
-              filas: comprobacion.filas.map(f => [f.codigo, f.nombre, f.saldoInicialMinor, f.cargosMinor, f.abonosMinor, f.saldoFinalMinor]),
-              total: ['Totales', '', '', comprobacion.totalCargosMinor, comprobacion.totalAbonosMinor, '']
+              filas: comprobacion.filas.map(f => [f.codigo, f.nombre, formatoDineroPantalla(f.saldoInicialMinor), formatoDineroPantalla(f.cargosMinor), formatoDineroPantalla(f.abonosMinor), formatoDineroPantalla(f.saldoFinalMinor)]),
+              total: ['Totales', '', '', formatoDineroPantalla(comprobacion.totalCargosMinor), formatoDineroPantalla(comprobacion.totalAbonosMinor), '']
             }])}>Imprimir…</BotonSecundario>
           </div>
           <table>
@@ -297,29 +294,33 @@ export default function EstadosFinancieros() {
               {
                 titulo: 'Ingresos',
                 encabezados: ['Código', 'Nombre', 'Importe'],
-                filas: filasSeccion(resultados.ingresos, false)
+                filas: filasSeccion(resultados.ingresos)
               },
               {
                 titulo: 'Costos',
                 encabezados: ['Código', 'Nombre', 'Importe'],
                 filas: filasSeccion([...resultados.costos, ...resultados.otrosCostos], true),
-                total: ['Utilidad bruta', '', resultados.utilidadBrutaMinor]
+                total: ['Utilidad bruta', '', formatoDineroPantalla(resultados.utilidadBrutaMinor)]
               },
               {
                 titulo: 'Gastos de administración y comercialización',
                 encabezados: ['Código', 'Nombre', 'Importe'],
                 filas: filasSeccion([...resultados.gastosAdministracion, ...resultados.gastosComercializacion, ...resultados.otrosGastos], true),
-                total: ['Utilidad de operación', '', resultados.utilidadOperacionMinor]
+                total: ['Utilidad de operación', '', formatoDineroPantalla(resultados.utilidadOperacionMinor)]
               },
-              {
+              ...(resultados.otrosIngresos.length > 0 || resultados.gastosFinancieros.length > 0 ? [{
                 titulo: 'Otros ingresos y gastos financieros',
                 encabezados: ['Código', 'Nombre', 'Importe'],
                 filas: [
-                  ...filasSeccion(resultados.otrosIngresos, false),
+                  ...filasSeccion(resultados.otrosIngresos),
                   ...filasSeccion(resultados.gastosFinancieros, true)
                 ],
-                total: ['Resultado antes de impuestos', '', resultados.resultadoAntesImpuestosMinor]
-              }
+                total: ['Resultado antes de impuestos', '', formatoDineroPantalla(resultados.resultadoAntesImpuestosMinor)]
+              }] : [{
+                encabezados: [],
+                filas: [],
+                linea: ['Resultado antes de impuestos', formatoDineroPantalla(resultados.resultadoAntesImpuestosMinor)]
+              }])
             ])}>
               Imprimir…
             </BotonSecundario>

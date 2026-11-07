@@ -112,8 +112,8 @@ export default function LibroDiario() {
         tablas: [
           {
             encabezados: ['Cuenta', 'Nombre', 'Debe', 'Haber'],
-            filas: detalle.lineas.map(l => [l.cuentaCodigo, l.cuentaNombre, l.debeMinor, l.haberMinor]),
-            total: ['Totales', '', detalle.totalDebeMinor, detalle.totalHaberMinor]
+            filas: detalle.lineas.map(l => [l.cuentaCodigo, l.cuentaNombre, formatoDineroPantalla(l.debeMinor), formatoDineroPantalla(l.haberMinor)]),
+            total: ['Totales', '', formatoDineroPantalla(detalle.totalDebeMinor), formatoDineroPantalla(detalle.totalHaberMinor)]
           }
         ]
       })) as { guardado: boolean; ruta?: string };
@@ -153,7 +153,7 @@ export default function LibroDiario() {
         tablas: [
           {
             encabezados: ['Folio', 'Fecha', 'Concepto', 'Estado', 'Total'],
-            filas: todas.map(p => [p.folio, p.fecha, p.concepto, p.estado, p.totalMinor])
+            filas: todas.map(p => [p.folio, p.fecha, p.concepto, p.estado, formatoDineroPantalla(p.totalMinor)])
           }
         ]
       })) as { guardado: boolean; ruta?: string };
