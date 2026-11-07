@@ -152,6 +152,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
   it('diagnóstico muestra faltantes específicos y el bloqueo; guardar rechazado se hace visible', async () => {
     guardarAnexo1VentasMock.mockRejectedValue(new Error('El anexo de presentación está bloqueado. Faltantes: V-000001: NIT o NRC del cliente'));
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
 
     await waitFor(() => screen.getByText(/Anexo 1 F-07 v14/));
     const mesInput = screen.getByPlaceholderText("2026-11") as HTMLInputElement;
@@ -171,6 +172,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
 
   it('una lectura tardía de otra venta no reemplaza la selección vigente y el error limpia el destino', async () => {
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
     await waitFor(() => screen.getByText(/Anexo 1 F-07 v14/));
 
     const selectorVenta = () =>
@@ -225,6 +227,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
   it('secciones Anexo 2 y Anexo 3: diagnóstico, guardado por puente y flujo de compra', async () => {
     guardarAnexo1VentasMock.mockResolvedValue({ guardado: true, ruta: 'C:\\sintetico\\anexo2.csv', filas: 2 });
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
     await waitFor(() => screen.getByText(/Anexo 2 F-07 v14/));
     expect(screen.getByText(/Anexo 3 F-07 v14/)).toBeTruthy();
 
@@ -284,6 +287,7 @@ describe('auditoría 35: componente Impuestos con Anexo 1 F-07', () => {
 
   it('la vía auditada registra metadatos y refresca el diagnóstico', async () => {
     render(<Impuestos />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Anexos' }));
     await waitFor(() => screen.getByText(/Anexo 1 F-07 v14/));
 
     fireEvent.change(screen.getByPlaceholderText("2026-11"), { target: { value: '2026-11' } });
