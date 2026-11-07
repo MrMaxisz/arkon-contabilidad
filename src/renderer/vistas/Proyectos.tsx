@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { ProyectoResumen } from '../../shared/contratos';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPrimario, EstadoCarga, EstadoError, EstadoSinResultados, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface Contraparte { id: number; nombre: string }
 interface Cotizacion { id: number; numero: string; estado: string }
@@ -35,12 +36,37 @@ export default function Proyectos() {
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [rentabilidad, setRentabilidad] = useState<Rentabilidad | null>(null);
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+  const [errorCatalogo, setErrorCatalogo] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
-    void api().invocar('proyecto:listar').then(r => setProyectos(r as ProyectoResumen[]));
-    void api().invocar('contraparte:listar').then(r => setContrapartes(r as Contraparte[]));
-    void api().invocar('cotizacion:listar').then(r => setCotizaciones((r as Cotizacion[]).filter(c => c.estado === 'aprobada')));
-    void api().invocar('reporte:rentabilidadProyectos').then(r => setRentabilidad(r as Rentabilidad));
+    setCargandoCatalogo(true);
+    setErrorCatalogo(null);
+    void Promise.allSettled([
+      api().invocar('proyecto:listar'),
+      api().invocar('contraparte:listar'),
+      api().invocar('cotizacion:listar'),
+      api().invocar('reporte:rentabilidadProyectos')
+    ]).then(([proyectosResultado, contrapartesResultado, cotizacionesResultado, rentabilidadResultado]) => {
+      const resultados = [proyectosResultado, contrapartesResultado, cotizacionesResultado, rentabilidadResultado];
+      const rechazado = resultados.find(r => r.status === 'rejected');
+      if (rechazado && rechazado.status === 'rejected') {
+        setErrorCatalogo(limpiarMensajeError(rechazado.reason));
+      }
+      if (proyectosResultado.status === 'fulfilled') {
+        setProyectos(proyectosResultado.value as ProyectoResumen[]);
+      }
+      if (contrapartesResultado.status === 'fulfilled') {
+        setContrapartes(contrapartesResultado.value as Contraparte[]);
+      }
+      if (cotizacionesResultado.status === 'fulfilled') {
+        setCotizaciones((cotizacionesResultado.value as Cotizacion[]).filter(c => c.estado === 'aprobada'));
+      }
+      if (rentabilidadResultado.status === 'fulfilled') {
+        setRentabilidad(rentabilidadResultado.value as Rentabilidad);
+      }
+      setCargandoCatalogo(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -79,6 +105,8 @@ export default function Proyectos() {
   return (
     <div>
       <h1>Proyectos</h1>
+      {cargandoCatalogo && <EstadoCarga texto="Cargando catálogos…" />}
+      {errorCatalogo && <EstadoError mensaje={errorCatalogo} />}
       {mensaje && <p className={`aviso ${mensaje.tipo === 'error' ? 'error' : 'ok'}`}>{mensaje.texto}</p>}
       <form onSubmit={crear}>
         <h2>Nuevo proyecto</h2>
@@ -101,11 +129,11 @@ export default function Proyectos() {
             </select>
           </label>
           <label style={{ flex: 2 }}>Alcance<input value={alcance} onChange={e => setAlcance(e.target.value)} /></label>
-          <button className="primario" type="submit" disabled={ocupado}>Registrar</button>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar'}</BotonPrimario>
         </div>
       </form>
       {proyectos.length === 0 ? (
-        <p className="vacio">Sin proyectos.</p>
+        <EstadoVacio texto="Sin proyectos." />
       ) : (
         <table>
           <thead><tr><th>Código</th><th>Nombre</th><th>Contraparte</th><th>Estado</th></tr></thead>
@@ -126,7 +154,7 @@ export default function Proyectos() {
         <>
           {rentabilidad.provisional && <p className="aviso">{rentabilidad.nota}</p>}
           {rentabilidad.proyectos.length === 0 ? (
-            <p className="vacio">Sin proyectos que reportar.</p>
+            <EstadoSinResultados texto="Sin proyectos que reportar." />
           ) : (
             <table>
               <thead><tr><th>Código</th><th>Nombre</th><th className="numero">Ingreso reconocido</th><th className="numero">Costo/gasto reconocido</th><th className="numero">Margen</th><th className="numero">Total documental venta</th><th className="numero">Total documental compra</th></tr></thead>
@@ -135,11 +163,11 @@ export default function Proyectos() {
                   <tr key={r.id}>
                     <td>{r.codigo}</td>
                     <td>{r.nombre}</td>
-                    <td className="numero">${r.ingresoMinor}</td>
-                    <td className="numero">${r.costoMinor}</td>
-                    <td className="numero">${r.margenMinor}</td>
-                    <td className="numero">${r.totalDocumentalVentaMinor}</td>
-                    <td className="numero">${r.totalDocumentalCompraMinor}</td>
+                    <td className="numero">{formatoDineroPantalla(r.ingresoMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(r.costoMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(r.margenMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(r.totalDocumentalVentaMinor)}</td>
+                    <td className="numero">{formatoDineroPantalla(r.totalDocumentalCompraMinor)}</td>
                   </tr>
                 ))}
               </tbody>

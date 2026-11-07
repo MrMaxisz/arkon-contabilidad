@@ -247,5 +247,24 @@ button.peligro:disabled { color: var(--texto-suave); border-color: var(--borde);
 /* Acciones de fila agrupadas en una sola barra compacta. */
 .acciones-fila { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 
+/* Menú de fila (bloque 5B): el resto de las acciones va agrupado aquí. */
+.menu-acciones { position: relative; font-size: 14px; }
+.menu-acciones > summary {
+  cursor: pointer; list-style: none; text-align: center;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; font-size: 14px;
+  color: var(--arkon-azul); background: var(--arkon-blanco);
+  border: 1px solid var(--arkon-azul); padding: 6px 12px; border-radius: 2px;
+}
+.menu-acciones > summary::-webkit-details-marker { display: none; }
+.menu-acciones[open] > summary { background: var(--arkon-azul-suave); }
+.menu-acciones-lista {
+  position: absolute; right: 0; top: 100%; z-index: 30; min-width: 180px;
+  background: var(--arkon-blanco); border: 1px solid var(--borde); padding: 8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  box-shadow: 0 4px 10px var(--lateral-borde);
+}
+.menu-acciones-lista button { display: block; width: 100%; text-align: left; padding: 8px 18px; }
+.menu-acciones-lista .peligro { color: var(--funcional-error); }
+
 /* Fila compacta general (auditoría 72): también fuera de formularios. */
 .fila { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }

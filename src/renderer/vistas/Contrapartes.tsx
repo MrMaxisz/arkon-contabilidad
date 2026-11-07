@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { ContraparteResumen } from '../../shared/contratos';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPeligro, BotonPrimario, BotonSecundario, EstadoCarga, EstadoError, EstadoVacio } from '../componentes';
 
 export default function Contrapartes() {
   const [lista, setLista] = useState<ContraparteResumen[]>([]);
@@ -16,9 +17,21 @@ export default function Contrapartes() {
   const [editNrc, setEditNrc] = useState('');
   const [editNit, setEditNit] = useState('');
   const [editNotas, setEditNotas] = useState('');
+  const [cargandoLista, setCargandoLista] = useState(true);
+  const [errorLista, setErrorLista] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
-    void api().invocar('contraparte:listar').then(r => setLista(r as ContraparteResumen[]));
+    setCargandoLista(true);
+    setErrorLista(null);
+    api().invocar('contraparte:listar')
+      .then(r => {
+        setLista(r as ContraparteResumen[]);
+        setCargandoLista(false);
+      })
+      .catch(err => {
+        setErrorLista(limpiarMensajeError(err));
+        setCargandoLista(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -86,8 +99,8 @@ export default function Contrapartes() {
             <label>NRC<input value={editNrc} onChange={e => setEditNrc(e.target.value)} /></label>
             <label>NIT<input value={editNit} onChange={e => setEditNit(e.target.value)} /></label>
             <label style={{ flex: 2 }}>Notas<input value={editNotas} onChange={e => setEditNotas(e.target.value)} /></label>
-            <button className="primario" type="submit">Guardar cambios</button>
-            <button type="button" onClick={() => setEditando(null)}>Cancelar</button>
+            <BotonPrimario type="submit">Guardar cambios</BotonPrimario>
+            <BotonSecundario type="button" onClick={() => setEditando(null)}>Cancelar</BotonSecundario>
           </div>
         </form>
       )}
@@ -101,12 +114,16 @@ export default function Contrapartes() {
         <div className="fila">
           <label><input type="checkbox" checked={cliente} onChange={e => setCliente(e.target.checked)} /> Cliente</label>
           <label><input type="checkbox" checked={proveedor} onChange={e => setProveedor(e.target.checked)} /> Proveedor</label>
-          <button className="primario" type="submit" disabled={ocupado}>Registrar</button>
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar'}</BotonPrimario>
         </div>
         <p className="menor">NRC/NIT y clasificación tributaria se completan cuando existan; no se crean identificaciones ficticias.</p>
       </form>
-      {lista.length === 0 ? (
-        <p className="vacio">Sin contrapartes registradas.</p>
+      {errorLista ? (
+        <EstadoError mensaje={errorLista} />
+      ) : cargandoLista && lista.length === 0 ? (
+        <EstadoCarga texto="Cargando contrapartes…" />
+      ) : lista.length === 0 ? (
+        <EstadoVacio texto="Sin contrapartes registradas." />
       ) : (
         <table>
           <thead>
@@ -122,8 +139,14 @@ export default function Contrapartes() {
                 <td>{c.nit ?? '—'}</td>
                 <td>{c.activa ? 'Activa' : 'Inactiva'}</td>
                 <td>
-                  <button onClick={() => { setEditando(c); setEditNombre(c.nombre); setEditNrc(c.nrc ?? ''); setEditNit(c.nit ?? ''); setEditNotas(''); }}>Editar</button>{' '}
-                  <button onClick={() => void cambiarEstado(c, !c.activa)}>{c.activa ? 'Desactivar' : 'Activar'}</button>
+                  <div className="acciones-fila">
+                    <BotonSecundario onClick={() => { setEditando(c); setEditNombre(c.nombre); setEditNrc(c.nrc ?? ''); setEditNit(c.nit ?? ''); setEditNotas(''); }}>Editar</BotonSecundario>
+                    {c.activa ? (
+                      <BotonPeligro onClick={() => void cambiarEstado(c, false)}>Desactivar</BotonPeligro>
+                    ) : (
+                      <BotonSecundario onClick={() => void cambiarEstado(c, true)}>Activar</BotonSecundario>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

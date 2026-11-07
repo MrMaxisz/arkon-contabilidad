@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { limpiarMensajeError } from '../limpiarMensajeError';
+import { BotonPeligro, BotonPrimario, BotonSecundario, EstadoCarga, EstadoError, EstadoVacio, formatoDineroPantalla } from '../componentes';
 
 interface Item {
   id: number;
@@ -27,9 +28,21 @@ export default function Catalogo() {
   const [editando, setEditando] = useState<Item | null>(null);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [cargandoLista, setCargandoLista] = useState(true);
+  const [errorLista, setErrorLista] = useState<string | null>(null);
 
   const cargar = useCallback(() => {
-    void api().invocar('item:listar', {}).then(r => setItems(r as Item[]));
+    setCargandoLista(true);
+    setErrorLista(null);
+    api().invocar('item:listar', {})
+      .then(r => {
+        setItems(r as Item[]);
+        setCargandoLista(false);
+      })
+      .catch(err => {
+        setErrorLista(limpiarMensajeError(err));
+        setCargandoLista(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -116,12 +129,16 @@ export default function Catalogo() {
           <label style={{ flex: 2 }}>Descripción<input value={descripcion} onChange={e => setDescripcion(e.target.value)} /></label>
           <label>Precio de venta (opcional)<input value={precioVenta} onChange={e => setPrecioVenta(e.target.value)} placeholder="vacío" /></label>
           <label>Precio de costo (opcional)<input value={precioCosto} onChange={e => setPrecioCosto(e.target.value)} placeholder="vacío" /></label>
-          <button className="primario" type="submit" disabled={ocupado}>{editando ? 'Guardar cambios' : 'Registrar ítem'}</button>
-          {editando && <button type="button" onClick={() => { setEditando(null); setCodigo(''); setNombre(''); setUnidad(''); setDescripcion(''); setPrecioVenta(''); setPrecioCosto(''); }}>Cancelar</button>}
+          <BotonPrimario type="submit" disabled={ocupado}>{ocupado ? 'Guardando…' : editando ? 'Guardar cambios' : 'Registrar ítem'}</BotonPrimario>
+          {editando && <BotonSecundario type="button" onClick={() => { setEditando(null); setCodigo(''); setNombre(''); setUnidad(''); setDescripcion(''); setPrecioVenta(''); setPrecioCosto(''); }}>Cancelar</BotonSecundario>}
         </div>
       </form>
-      {items.length === 0 ? (
-        <p className="vacio">Catálogo vacío: registre servicios y materiales según se necesiten.</p>
+      {errorLista ? (
+        <EstadoError mensaje={errorLista} />
+      ) : cargandoLista && items.length === 0 ? (
+        <EstadoCarga texto="Cargando catálogo…" />
+      ) : items.length === 0 ? (
+        <EstadoVacio texto="Catálogo vacío: registre servicios y materiales según se necesiten." />
       ) : (
         <table>
           <thead><tr><th>Código</th><th>Tipo</th><th>Nombre</th><th>Unidad</th><th className="numero">Precio venta</th><th className="numero">Precio costo</th><th>Estado</th><th></th></tr></thead>
@@ -132,23 +149,25 @@ export default function Catalogo() {
                 <td>{i.tipo}</td>
                 <td>{i.nombre}</td>
                 <td>{i.unidad ?? '—'}</td>
-                <td className="numero">{i.precioVentaMinor ? `$${i.precioVentaMinor}` : '—'}</td>
-                <td className="numero">{i.precioCostoMinor ? `$${i.precioCostoMinor}` : '—'}</td>
+                <td className="numero">{i.precioVentaMinor ? formatoDineroPantalla(i.precioVentaMinor) : '—'}</td>
+                <td className="numero">{i.precioCostoMinor ? formatoDineroPantalla(i.precioCostoMinor) : '—'}</td>
                 <td>{i.activo ? 'Activo' : 'Inactivo'}</td>
                 <td>
-                  <button onClick={() => {
-                    setEditando(i);
-                    setNombre(i.nombre);
-                    setUnidad(i.unidad ?? '');
-                    setDescripcion(i.descripcion ?? '');
-                    setPrecioVenta(i.precioVentaMinor ?? '');
-                    setPrecioCosto(i.precioCostoMinor ?? '');
-                  }}>Editar</button>{' '}
-                  {i.activo ? (
-                    <button onClick={() => void cambiarEstado(i, false)}>Desactivar</button>
-                  ) : (
-                    <button onClick={() => void cambiarEstado(i, true)}>Activar</button>
-                  )}
+                  <div className="acciones-fila">
+                    <BotonSecundario onClick={() => {
+                      setEditando(i);
+                      setNombre(i.nombre);
+                      setUnidad(i.unidad ?? '');
+                      setDescripcion(i.descripcion ?? '');
+                      setPrecioVenta(i.precioVentaMinor ?? '');
+                      setPrecioCosto(i.precioCostoMinor ?? '');
+                    }}>Editar</BotonSecundario>
+                    {i.activo ? (
+                      <BotonPeligro onClick={() => void cambiarEstado(i, false)}>Desactivar</BotonPeligro>
+                    ) : (
+                      <BotonSecundario onClick={() => void cambiarEstado(i, true)}>Activar</BotonSecundario>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

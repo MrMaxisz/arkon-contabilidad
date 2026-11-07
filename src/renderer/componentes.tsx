@@ -89,6 +89,27 @@ export function EstadoSinResultados(props: { texto: string }): React.JSX.Element
   return <p className="estado-sin-resultados">{props.texto}</p>;
 }
 
+// Menú de acciones de fila (bloque 5): con las acciones menos frecuentes agrupadas
+// quedan a lo sumo dos acciones visibles por fila. Solo presentación: los ítems
+// que se pasan como children son botones normales con etiquetas claras.
+export function MenuAccionesFila(props: { etiqueta: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <details className="menu-acciones">
+      <summary>{props.etiqueta}</summary>
+      <div
+        className="menu-acciones-lista"
+        onClick={e => {
+          // Cerrar el menú al elegir una acción dentro de él.
+          const abierto = e.currentTarget.closest('details');
+          if (abierto) abierto.open = false;
+        }}
+      >
+        {props.children}
+      </div>
+    </details>
+  );
+}
+
 // Cifras de dinero para pantalla e impresión con separador de miles (auditoría 70).
 // Los CSV y los cálculos NO usan este formato: solo presentación.
 export function formatoDineroPantalla(minorTexto: string): string {
