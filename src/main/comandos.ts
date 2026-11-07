@@ -1,4 +1,3 @@
-import path from 'path';
 import { contabilizarAsiento, anularAsiento, listarAsientos, mayorDeCuenta, cerrarPeriodo, reabrirPeriodo } from './servicios/motorAsientos';
 import { listarCuentas, crearCuenta } from './servicios/cuentas';
 import { balanceResumen, saldosPorCuenta, balanceComprobacion, estadoResultadosEstructurado, estadoSituacionFinanciera } from './servicios/estadosFinancieros';

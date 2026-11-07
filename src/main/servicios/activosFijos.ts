@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { randomUUID } from 'node:crypto';
+const randomUUID = (): string => globalThis.crypto.randomUUID();
 import { minorATexto, parseMontoMinor } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';

@@ -105,8 +105,13 @@ function Inicio({ balance, alCargar }: { balance: BalanceResumen | null; alCarga
 }
 
 export default function App() {
+  const esAndroid = api().plataforma === 'android';
+  const navegacion = esAndroid
+    ? NAVEGACION.map(grupo => ({ ...grupo, destinos: grupo.destinos.filter(d => d !== 'Impuestos' && d !== 'Respaldo') })).filter(grupo => grupo.destinos.length > 0)
+    : NAVEGACION;
   const [seccion, setSeccion] = useState<Seccion>('Inicio');
   const [balance, setBalance] = useState<BalanceResumen | null>(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
 
   const cargarBalance = React.useCallback(() => {
     void api()
@@ -116,19 +121,22 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app">
-      <aside className="lateral">
+    <div className={`app${menuAbierto ? ' menu-abierto' : ''}`}>
+      <button className="menu-movil" aria-expanded={menuAbierto} aria-controls="menu-principal" onClick={() => setMenuAbierto(!menuAbierto)}>
+        {menuAbierto ? 'Cerrar menú' : 'Abrir menú'}
+      </button>
+      <aside className="lateral" id="menu-principal">
         <div className="marca">
           <img src={logoBlanco} alt="ARKON Ingeniería Eléctrica" width={148} height={52} />
         </div>
         <nav aria-label="Secciones">
-          {NAVEGACION.map(grupo => (
+          {navegacion.map(grupo => (
             <React.Fragment key={grupo.grupo}>
               {grupo.grupo !== 'Inicio' && <span className="grupo">{grupo.grupo}</span>}
               {grupo.destinos.map(destino => (
                 <button
                   key={destino}
-                  onClick={() => setSeccion(destino)}
+                  onClick={() => { setSeccion(destino); setMenuAbierto(false); }}
                   aria-current={destino === seccion ? 'page' : undefined}
                 >
                   {destino}
@@ -146,6 +154,7 @@ export default function App() {
           <span className="seccion-actual">{seccion}</span>
           <span>Ámbito administrativo · ARKON sin constituir · registros de control administrativo, no estados financieros legales</span>
         </div>
+        {esAndroid && <p className="aviso">Android: una base administrativa. PDF, archivos, adjuntos, respaldos y diálogos de escritorio no disponibles aún. No borre los datos de la app.</p>}
         {seccion === 'Inicio' && <Inicio balance={balance} alCargar={cargarBalance} />}
         {seccion === 'Clientes y proveedores' && <Contrapartes />}
         {seccion === 'Catálogo' && <Catalogo />}

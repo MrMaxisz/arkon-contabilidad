@@ -1,6 +1,5 @@
 import type Database from 'better-sqlite3';
-import fs from 'fs';
-import path from 'path';
+import { plataformaEscritorioPorDefecto } from '../../plataforma/plataforma';
 import { parseMontoMinor, parseTasa, minorATexto } from '../../shared/dinero';
 import { validarFechaCalendario } from '../../shared/fechas';
 import { contabilizarAsiento, anularAsiento } from './motorAsientos';
@@ -590,7 +589,7 @@ export function guardarCsvArchivo(ruta: string, contenido: string): void {
   if (!/\.csv$/i.test(ruta)) {
     throw new ErrorFiscal('El archivo de exportación interna debe terminar en .csv');
   }
-  fs.writeFileSync(ruta, `${contenido}\n`, 'utf8');
+  plataformaEscritorioPorDefecto().archivos.writeFileSync(ruta, `${contenido}\n`, 'utf8');
 }
 
 export function guardarExportacionArchivo(
@@ -600,7 +599,7 @@ export function guardarExportacionArchivo(
   ruta: string
 ): { guardado: true; ruta: string; version: string; advertencia: string } {
   const exportacion = generarCsvLibro(db, tipo, mes);
-  const rutaFinal = path.extname(ruta) === '' ? `${ruta}.csv` : ruta;
+  const rutaFinal = plataformaEscritorioPorDefecto().rutas.extname(ruta) === '' ? `${ruta}.csv` : ruta;
   guardarCsvArchivo(rutaFinal, exportacion.csv);
   registroEvento(db, 'sistema', 'exportacion_guardada', 'archivo_csv', rutaFinal, {
     tipo,

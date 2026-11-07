@@ -27,9 +27,28 @@ La inicialización del módulo WASM (`sqlite3InitModule`) es asíncrona; todas l
 - `pragma('journal_mode = WAL')` y demás pragmas de `conexion.ts` no aplican a OPFS/memoria del mismo modo; `foreign_keys = ON` sí debe fijarse al abrir.
 - Nombres de error distintos: p. ej. `SQLITE_CONSTRAINT_UNIQUE`/`CHECK` llegan serializados por WASM, sin clase `SqliteError` de `better-sqlite3` ni códigos idénticos en todos los casos.
 
-## Persistencia prevista con OPFS en un Worker
+## AND3: primera entrada Android
 
-SQLite WASM se inicializará una sola vez dentro de un Worker dedicado, que será el único dueño de la conexión. Al abrir, usará `sqlite3.oo1.OpfsDb` con un único archivo (una sola base activa); el hilo de interfaz enviará comandos serializados y recibirá resultados, nunca tocará OPFS directamente. Sin OPFS/co-aislamiento (`COOP`/`COEP`) la base queda en memoria y no persiste.
+Implementado (pendiente de validar en dispositivo):
+
+- `android.worker.ts` es el único dueño de SQLite. `motorAndroid.ts` inicializa WASM, instala **`opfs-sahpool`** en `/arkon-administrativo` y abre `/arkon.db`. Reutiliza migraciones, catálogo y `src/main/comandos.ts`, sin alterar reglas contables. Usa `foreign_keys`, diario DELETE y sincronización FULL; no activa WAL. Los mensajes se ejecutan en serie, incluidos comandos asíncronos.
+- SAH pool no requiere COOP/COEP ni `SharedArrayBuffer`; sí contexto seguro, Worker y OPFS con `createSyncAccessHandle` en la WebView. **No hay fallback a memoria**: si no se puede abrir la base persistente, la app muestra el fallo y no permite registrar datos. Un segundo dueño del mismo pool debe fallar, no crear otra base.
+- La entrada `src/renderer/movil.html` instala `window.arkon` mediante mensajes correlacionados por id y monta el mismo renderer tras abrir la base. Los errores se devuelven como mensajes; los resultados conservan `bigint` mediante structured clone.
+- Solo una base administrativa. Navegación fiscal y respaldos ocultos en Android; ámbitos distintos y comandos fiscales/archivos rechazados en el Worker. PDF, importación/exportación, adjuntos y diálogos nativos avisan que aún no están disponibles. Sin Google Drive.
+- `vite.movil.config.ts` genera `movil/www/index.html`, Worker, recursos locales y `sqlite3.wasm` con las URL generadas por Vite. Sustituye el proveedor nativo por uno que falla explícitamente; no incluye Electron, better-sqlite3 ni módulos Node. `.arkon/apk.cmd` hace este build **antes** de `capacitor sync android` y `assembleDebug`, sin firma de distribución.
+- `movil.css` se importa solo desde la entrada móvil: menú plegable hasta 600 px, tablas con scroll horizontal propio, formularios contenidos. Escritorio conserva sus estilos y navegación.
+
+### Cómo probar
+
+1. `.arkon\prueba.cmd pruebas/android.prueba.ts`: compila el bundle y lo sirve en localhost sin COOP/COEP. Usa el Chromium de Electron ya instalado como navegador (página sin Node). No instala dependencias. Escribe un aporte sintético de **123.45** con servicios reales, termina el Worker y abre otro: activo y patrimonio deben seguir en **12345** menores, pasivo y resultado **0**, balance cuadrado.
+2. La misma prueba abre una transacción, inserta contrapartes sintéticas y fuerza desalojo de páginas de caché, termina el Worker **sin COMMIT ni close**, reabre y exige cero contrapartes y el aporte intacto. Los comandos de SQL de la prueba solo existen en un Worker de fixture, nunca en el APK.
+3. Comprueba el menú y ausencia de desbordamiento a **360 y 800 px**, con una tabla deliberadamente más ancha que la pantalla; también verifica rechazo de ámbitos ajenos, comandos heredados y PDF.
+4. `.arkon\verificar.cmd` comprueba tipos (incluido `tsconfig.movil.json`), builds de escritorio/móvil y toda la suite. Ejecutarlo dos veces.
+5. `.arkon\apk.cmd` produce únicamente `movil/android/app/build/outputs/apk/debug/app-debug.apk`. En teléfono con WebView actual: crear el aporte sintético, forzar cierre de la app, reabrir y comprobar 123.45; repetir navegación y tablas en ambas anchuras. No borrar almacenamiento ni desinstalar entre aperturas: eso elimina OPFS. No usar datos reales mientras falte exportación externa.
+
+### Validación local y pendientes
+
+Tipos y builds de escritorio/móvil completados. Dos ejecuciones completas consecutivas de `.arkon\verificar.cmd`: **514 pruebas pasan (82 archivos), SUITE_EXIT=0**. La prueba Android usa Electron como navegador sin Node en la página, persiste un aporte sintético de 123.45 y verifica el corte transaccional, los ámbitos, el menú plegable y el scroll de tablas a 360/800 px. No se ha instalado el APK en un teléfono; quedan pendientes la validación en WebView/Capacitor, cuotas y ciclo de vida reales, permisos, exportación/importación física, SHA-256 de archivos y adjuntos.
 
 El traspaso entre dispositivos es por respaldo: exportar la base SQLite completa como archivo único, validar integridad, versión de esquema e inventario de adjuntos, y sustituir la única base activa solo tras esa validación, con la base anterior preservada hasta confirmar la nueva.
 
@@ -37,7 +56,7 @@ El traspaso entre dispositivos es por respaldo: exportar la base SQLite completa
 
 - Ciclo de vida: si la WebView o el Worker mueren, una escritura no confirmada puede perderse; se requiere confirmar cada transacción y probar el cierre limpio.
 - Almacenamiento OPFS: cuotas, desalojo por el sistema y versiones de WebView/SO pueden variar; el respaldo debe ser periódico y verificable fuera del dispositivo.
-- AND2 solo verifica una simulación en Node con archivos virtuales. Faltan implementación persistente OPFS/Worker, proveedor de SHA-256 para navegador, exportación/importación física en teléfono, permisos y pruebas de WebView/dispositivo (incluidos fallos y adjuntos en el intercambio real). La simulación pierde todo al destruirse su plataforma; no es persistencia Android.
+- AND2 solo verifica una simulación en Node con archivos virtuales. AND3 añade implementación OPFS/Worker; su validación real sigue pendiente por el bloqueo de arranque descrito arriba. Faltan SHA-256 para archivos del navegador, exportación/importación física en teléfono, permisos y pruebas de WebView/dispositivo, incluidos fallos y adjuntos.
 - Los importes deben seguir dentro del rango entero de 64 bits de SQLite y consultarse con `safeIntegers`; en WASM los enteros grandes llegan como `bigint`.
 - Rendimiento y tamaño del módulo WASM en dispositivos de gama baja: no medido en esta prueba (solo Node, base en memoria).
-- Sin interfaz Android ni Capacitor en AND2.
+- Capacitor 8.6 e interfaz compartida incorporados en AND3; quedan pendientes mediciones en teléfono y validación del APK de depuración.

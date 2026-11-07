@@ -68,6 +68,7 @@ h3 { font-size: 16px; }
 
 /* Shell: lateral marino + contenido sobre blanco. */
 .app { display: flex; min-height: 100vh; }
+.menu-movil { display: none; }
 
 .lateral {
   width: 232px;
