@@ -703,20 +703,28 @@ export function rentabilidadProyectos(
   // Criterio compartido con Costos: el proyecto procede del documento del asiento
   // original, también para su reverso. No se descarta el original anulado: netea
   // con su reverso según la fecha contable. Un asiento sin vínculo queda visible.
+  // Un único vínculo por asiento: documentos repetidos no multiplican líneas.
+  // Si discrepan en proyecto, el importe queda sin proyecto (sin asignarlo al azar).
   const cuentas = db.prepare(
-    `SELECT COALESCE(v.proyecto_id, co.proyecto_id) AS proyectoId,
+     `SELECT vinculo.proyecto_id AS proyectoId,
             c.codigo, c.nombre, c.tipo,
             SUM(CASE WHEN c.tipo = 'ingreso' THEN l.haber_minor - l.debe_minor
                      ELSE l.debe_minor - l.haber_minor END) AS importe
      FROM asiento_linea l
      JOIN asiento a ON a.id = l.asiento_id
      JOIN cuenta c ON c.id = l.cuenta_id
-     LEFT JOIN venta v ON v.asiento_id = COALESCE(a.reverso_de_id, a.id)
-     LEFT JOIN compra co ON co.asiento_id = COALESCE(a.reverso_de_id, a.id)
+      LEFT JOIN (
+        SELECT asiento_id,
+               CASE WHEN COUNT(DISTINCT COALESCE(proyecto_id, -1)) = 1
+                    THEN MIN(proyecto_id) ELSE NULL END AS proyecto_id
+        FROM (SELECT asiento_id, proyecto_id FROM venta
+              UNION ALL SELECT asiento_id, proyecto_id FROM compra)
+        GROUP BY asiento_id
+      ) vinculo ON vinculo.asiento_id = COALESCE(a.reverso_de_id, a.id)
      WHERE a.estado IN ('contabilizado','anulado') AND a.ambito_id = ?
        AND a.fecha_operacion BETWEEN ? AND ? AND ${SQL_FAMILIA_CIERRE_EXCLUIDA}
        AND c.es_grupo = 0 AND (c.tipo IN ('ingreso','costo') OR (? = 1 AND c.tipo = 'gasto'))
-     GROUP BY COALESCE(v.proyecto_id, co.proyecto_id), c.id
+      GROUP BY vinculo.proyecto_id, c.id
      ORDER BY c.codigo`
   ).safeIntegers(true).all(ambito, desde, hasta, entrada.incluirGastos === false ? 0 : 1) as Array<{
     proyectoId: bigint | null; codigo: string; nombre: string; tipo: string; importe: bigint;

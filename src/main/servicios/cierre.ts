@@ -30,38 +30,40 @@ export function registrarApertura(
   if (!entrada.referencia?.trim()) {
     throw new ErrorCierre('La apertura exige referencia de soporte');
   }
-  const previo = db
-    .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
-    .get(`${entrada.claveIdempotencia}:apertura`) as { id: number; folio: string } | undefined;
-  if (previo) {
-    return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
-  }
-  const lineasAsiento = entrada.lineas.map(l => {
-    const cuenta = db
-      .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
-      .get(l.cuentaCodigo) as { id: number } | undefined;
-    if (!cuenta) {
-      throw new ErrorCierre(`Cuenta inválida o inactiva para apertura: ${l.cuentaCodigo}`);
+  return db.transaction(() => {
+    const previo = db
+      .prepare('SELECT id, folio FROM asiento WHERE clave_idempotencia = ?')
+      .get(`${entrada.claveIdempotencia}:apertura`) as { id: number; folio: string } | undefined;
+    if (previo) {
+      return { id: previo.id, folio: previo.folio, duplicado: true, estado: 'contabilizado' };
     }
-    return { cuentaId: cuenta.id, debeMinor: l.debeMinor || '', haberMinor: l.haberMinor || '' };
-  });
-  const asiento = contabilizarAsiento(db, {
-    fechaOperacion: entrada.fechaOperacion,
-    concepto: entrada.concepto,
-    lineas: lineasAsiento,
-    origenTipo: 'apertura',
-    origenId: entrada.claveIdempotencia,
-    claveIdempotencia: `${entrada.claveIdempotencia}:apertura`,
-    responsable: entrada.responsable,
-    ambitoId: 'administrativo'
-  });
-  db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
-  registroEvento(db, entrada.responsable, 'apertura_registrada', 'asiento', String(asiento.asientoId), {
-    folio: asiento.folio,
-    concepto: entrada.concepto,
-    referencia: entrada.referencia
-  });
-  return { id: asiento.asientoId, folio: asiento.folio, duplicado: false, estado: 'contabilizado' };
+    const lineasAsiento = entrada.lineas.map(l => {
+      const cuenta = db
+        .prepare('SELECT id FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+        .get(l.cuentaCodigo) as { id: number } | undefined;
+      if (!cuenta) {
+        throw new ErrorCierre(`Cuenta inválida o inactiva para apertura: ${l.cuentaCodigo}`);
+      }
+      return { cuentaId: cuenta.id, debeMinor: l.debeMinor || '', haberMinor: l.haberMinor || '' };
+    });
+    const asiento = contabilizarAsiento(db, {
+      fechaOperacion: entrada.fechaOperacion,
+      concepto: entrada.concepto,
+      lineas: lineasAsiento,
+      origenTipo: 'apertura',
+      origenId: entrada.claveIdempotencia,
+      claveIdempotencia: `${entrada.claveIdempotencia}:apertura`,
+      responsable: entrada.responsable,
+      ambitoId: 'administrativo'
+    });
+    db.prepare('UPDATE asiento SET motivo = ? WHERE id = ?').run(entrada.referencia.trim(), asiento.asientoId);
+    registroEvento(db, entrada.responsable, 'apertura_registrada', 'asiento', String(asiento.asientoId), {
+      folio: asiento.folio,
+      concepto: entrada.concepto,
+      referencia: entrada.referencia
+    });
+    return { id: asiento.asientoId, folio: asiento.folio, duplicado: false, estado: 'contabilizado' };
+  })();
 }
 
 interface SaldoCuentaResultado {
@@ -71,7 +73,7 @@ interface SaldoCuentaResultado {
   saldoMinor: string;
 }
 
-function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: string): Array<{ codigo: string; nombre: string; tipo: string; saldo: number }> {
+function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: string): Array<{ codigo: string; nombre: string; tipo: string; saldo: bigint }> {
   return db
     .prepare(
       `SELECT c.codigo, c.nombre, c.tipo,
@@ -79,13 +81,15 @@ function saldosResultado(db: BetterSqlite3.Database, desde: string, hasta: strin
        FROM asiento_linea l
        JOIN asiento a ON a.id = l.asiento_id AND a.estado IN ('contabilizado','anulado')
        JOIN cuenta c ON c.id = l.cuenta_id
-       WHERE c.tipo IN ('ingreso','costo','gasto')
+        WHERE c.tipo IN ('ingreso','costo','gasto')
+          AND a.ambito_id = 'administrativo'
          AND a.fecha_operacion >= ? AND a.fecha_operacion <= ?
        GROUP BY c.id
        HAVING saldo <> 0
        ORDER BY c.codigo`
     )
-    .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: number }>;
+    .safeIntegers(true)
+    .all(desde, hasta) as Array<{ codigo: string; nombre: string; tipo: string; saldo: bigint }>;
 }
 
 export interface AvisoDepreciacionEjercicio {
@@ -245,7 +249,7 @@ export function cerrarEjercicio(
     }
     const codigoResultado = entrada.cuentaResultadoCodigo?.trim() || '3201';
     const cuentaResultado = db
-      .prepare('SELECT id, nombre FROM cuenta WHERE codigo = ? AND es_grupo = 0 AND activa = 1')
+      .prepare("SELECT id, nombre FROM cuenta WHERE codigo = ? AND tipo = 'patrimonio' AND es_grupo = 0 AND activa = 1")
       .get(codigoResultado) as { id: number; nombre: string } | undefined;
     if (!cuentaResultado) {
       throw new ErrorCierre(`Cuenta de resultados inválida o inactiva: ${codigoResultado}`);
